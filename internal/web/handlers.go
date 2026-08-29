@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"glocker/internal/config"
-	"glocker/internal/state"
-	"glocker/internal/utils"
 	"glocker/internal/monitoring"
 	"glocker/internal/notify"
+	"glocker/internal/state"
+	"glocker/internal/utils"
 )
 
 // blockedDomainCache stores domains that have been checked, populated on first access.
@@ -77,24 +77,6 @@ func HandleWebTrackingRequest(cfg *config.Config, w http.ResponseWriter, r *http
 		notify.SendNotification(cfg, "Glocker Alert",
 			fmt.Sprintf("Blocked access to %s", host),
 			"normal", "dialog-information")
-
-		// Send accountability email
-		if cfg.Accountability.Enabled {
-			subject := "GLOCKER ALERT: Blocked Site Access Attempt"
-			body := fmt.Sprintf("An attempt to access a blocked site was detected at %s:\n\n", time.Now().Format("2006-01-02 15:04:05"))
-			body += fmt.Sprintf("Host: %s\n", host)
-			body += fmt.Sprintf("Matched Domain: %s\n", matchedDomain)
-			body += fmt.Sprintf("Blocking Reason: %s\n", blockingReason)
-			body += fmt.Sprintf("URL: %s\n", r.URL.String())
-			body += fmt.Sprintf("Method: %s\n", r.Method)
-			body += fmt.Sprintf("User-Agent: %s\n", r.Header.Get("User-Agent"))
-			body += fmt.Sprintf("Remote Address: %s\n", r.RemoteAddr)
-			body += "\nThis is an automated alert from Glocker."
-
-			if err := notify.SendEmail(cfg, subject, body); err != nil {
-				log.Printf("Failed to send web tracking accountability email: %v", err)
-			}
-		}
 
 		// Redirect to localhost blocked page to avoid double violation
 		blockedURL := fmt.Sprintf("http://127.0.0.1/blocked?domain=%s&matched=%s&url=%s", host, matchedDomain, r.URL.String())

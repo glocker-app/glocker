@@ -76,9 +76,8 @@ domains:
 **How it works:**
 - Runs HTTP server on port 80 and HTTPS on port 443
 - When browser tries to access blocked domain (redirected by hosts file), server intercepts
-- Records violation to database
+- Records violation to database (synced to glockpeek, which handles any alerting)
 - Executes configured command (e.g., play alert sound)
-- Sends accountability email if enabled
 - Shows blocking reason (always blocked, time-based, etc.)
 
 **Configuration:**
@@ -132,7 +131,7 @@ list the monitor reads, so already-running matches are killed on the next tick.
 **Extensions:** A program marked `extendible: true` can be granted a one-hour
 reprieve via `glocker -extend "firefox:client call"` for legitimate edge cases.
 Grants are capped at one per rolling 24 hours, persisted across daemon restarts,
-and logged/emailed for accountability.
+and logged (synced to glockpeek for accountability).
 
 **Configuration:**
 
@@ -297,7 +296,7 @@ panic_command: "sudo pm-suspend"
      |  • Increment violation counter                       |
      |  • Log to database with timestamp                    |
      |  • Execute web_tracking.command (alert sound)        |
-     |  • Send to accountability partner (if enabled)       |
+     |  • Sync to glockpeek (handles any alerting)          |
      └──────────────────────────────────────────────────────┘
                                     |
                                     v
@@ -549,7 +548,8 @@ func RecordViolation(cfg *config.Config, violationType, domain, url string) {
 
 ### Go Modules
 
-- `github.com/mailgun/mailgun-go/v4` - Email notifications via Mailgun
+- `github.com/mailgun/mailgun-go/v4` - Email, used only by glockpeek (account
+  verification and notifications); the agent sends no email
 - `gopkg.in/yaml.v3` - YAML configuration parsing
 
 ### System Requirements
@@ -587,7 +587,9 @@ When enabled:
 
 ### Accountability
 
-- Sends email notifications via Mailgun when blocks are bypassed
 - Logs all unblock attempts with reasons
 - Logs install/uninstall lifecycle events with a required reason (gated by the configured list) and optional note
-- Daily violation reports (configurable)
+- All accountability records (violations, unblocks, extension grants, lifecycle)
+  are synced to glockpeek. Email notifications and the daily report are handled by
+  glockpeek, per-account — the agent itself sends no email and needs no Mailgun key
+  (glockpeek has its own `mail:` config, separate from the agent).

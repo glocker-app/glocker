@@ -84,16 +84,6 @@ type MailConfig struct {
 	Region  string `yaml:"region"` // "us" (default) or "eu"
 }
 
-// AccountabilityConfig configures email notifications via Mailgun.
-type AccountabilityConfig struct {
-	Enabled            bool   `yaml:"enabled"`
-	PartnerEmail       string `yaml:"partner_email"`
-	FromEmail          string `yaml:"from_email"`
-	ApiKey             string `yaml:"api_key"`
-	DailyReportTime    string `yaml:"daily_report_time"`
-	DailyReportEnabled bool   `yaml:"daily_report_enabled"`
-}
-
 // TamperConfig controls file integrity monitoring and tamper detection.
 type TamperConfig struct {
 	Enabled       bool   `yaml:"enabled"`
@@ -265,7 +255,6 @@ type Config struct {
 	EnforceInterval     int                     `yaml:"enforce_interval_seconds"`
 	Sudoers             SudoersConfig           `yaml:"sudoers"`
 	TamperDetection     TamperConfig            `yaml:"tamper_detection"`
-	Accountability      AccountabilityConfig    `yaml:"accountability"`
 	WebTracking         WebTrackingConfig       `yaml:"web_tracking"`
 	ContentMonitoring   ContentMonitoringConfig `yaml:"content_monitoring"`
 	ForbiddenPrograms   ForbiddenProgramsConfig `yaml:"forbidden_programs"`

@@ -605,10 +605,6 @@ func main() {
 		go monitoring.MonitorPanicMode(cfg)
 	}
 
-	if cfg.Accountability.DailyReportEnabled {
-		go monitoring.MonitorDailyReport(cfg)
-	}
-
 	// Start web tracking server (also hosts the /stats dashboard, so start it
 	// when the usage monitor is on even if web/content tracking is off).
 	if cfg.WebTracking.Enabled || cfg.ContentMonitoring.Enabled || cfg.UsageMonitor.Enabled {

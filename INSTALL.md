@@ -34,7 +34,6 @@ Open `conf/conf.yaml` and set what applies to you:
 | `domains` | Sites to block. Add your own, and/or use the automated blocklists (step 3). |
 | `forbidden_programs` | Programs to close, with `kill_windows` / `allow_windows`. |
 | `sudoers` | The `user:` whose `sudo` is held back during focus hours, and the `allow_windows` when it's permitted. |
-| `accountability` | Mailgun `api_key`, `from_email`, `partner_email` for the emails. Leave `enabled: false` if you don't want email. |
 | `usage_monitor` | `display` (e.g. `:0`) and `xauthority` so the root daemon can see your X session for usage tracking. |
 | `glockpeek_mode` | `local` (default — dashboard on `127.0.0.1:4317`, no login) or `hosted`. |
 | `database` | `sqlite` by default; point at `postgres` for a hosted setup. |
@@ -46,9 +45,8 @@ Open `conf/conf.yaml` and set what applies to you:
 Time windows follow the same `HH:MM` + `days` shape everywhere; the key name
 (`block_windows` / `allow_windows` / `kill_windows`) carries the meaning.
 
-> **Heads up:** the sample config ships with the author's personal values
-> (Mailgun key, email, username, `DISPLAY`, lock command). Replace them with your
-> own before installing.
+> **Heads up:** the sample config ships with placeholder values
+> (username, `DISPLAY`, lock command). Replace them with your own before installing.
 
 ## 3. (Optional) Pull the blocklists
 

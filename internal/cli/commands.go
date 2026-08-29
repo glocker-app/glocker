@@ -10,7 +10,6 @@ import (
 	"glocker/internal/config"
 	"glocker/internal/enforcement"
 	"glocker/internal/monitoring"
-	"glocker/internal/notify"
 	"glocker/internal/reports"
 	"glocker/internal/state"
 	"glocker/internal/syncer"
@@ -637,18 +636,6 @@ func ProcessExtendRequest(cfg *config.Config, programName, reason string) error 
 	// it stays distinguishable from domain unblocks.
 	if err := web.LogUnblockEntry(cfg, "program:"+programName, reason, grant.GrantedAt, grant.ExpiresAt); err != nil {
 		log.Printf("WARN: failed to log program extension: %v", err)
-	}
-
-	if cfg.Accountability.Enabled {
-		subject := fmt.Sprintf("GLOCKER: program extension granted (%s)", programName)
-		body := fmt.Sprintf(
-			"A one-hour extension was granted at %s.\n\nProgram: %s\nReason: %s\nExpires: %s\n",
-			grant.GrantedAt.Format("2006-01-02 15:04:05"),
-			programName, reason, grant.ExpiresAt.Format("2006-01-02 15:04:05"),
-		)
-		if err := notify.SendEmail(cfg, subject, body); err != nil {
-			log.Printf("WARN: failed to send extension accountability email: %v", err)
-		}
 	}
 
 	return nil

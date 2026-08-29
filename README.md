@@ -91,9 +91,9 @@ open-core hosted tier — is captured in [`ROADMAP.md`](ROADMAP.md).
 
 - **Time-Based Blocking** - Block sites only during work hours
 - **Temporary Unblocking** - Unblock domains for short periods with logged reasons
-- **Program Extensions** - Mark a forbidden program `extendible: true` to allow `glocker -extend` to grant a one-hour reprieve for legitimate edge cases (e.g. an unplanned evening business call); capped at one grant per rolling 24 hours, persisted across daemon restarts, logged and emailed
+- **Program Extensions** - Mark a forbidden program `extendible: true` to allow `glocker -extend` to grant a one-hour reprieve for legitimate edge cases (e.g. an unplanned evening business call); capped at one grant per rolling 24 hours, persisted across daemon restarts, and logged
 - **Allow Windows for Programs** - In addition to `kill_windows`, programs can be configured with `allow_windows` (killed outside the listed times) for inverse semantics
-- **Accountability** - Email notifications to partner on violations, unblocks, and extension grants
+- **Accountability** - Violations, unblocks, extension grants, and lifecycle events are synced to glockpeek; email notifications and the daily report are handled there, per-account, not by the agent (the agent sends no email and needs no Mailgun key)
 - **DNS Cache Flushing** - Configured browsers (`kill_on_block`) are killed right after `glocker -block` applies, forcing a fresh lookup so a newly blocked domain isn't still reachable from a browser's internal DNS cache
 - **Lifecycle Logging** - Install and uninstall events are recorded with a required reason and optional note; valid reasons are gated by config
 - **Content Monitoring** - Firefox extension watches for keywords on any page
@@ -224,9 +224,14 @@ sudo glocker -security-check
 
 It reports the ways glocker could still be bypassed or recovered from — a root
 password (`su`), an unprotected recovery mode, extra `sudoers` grants, SSH root
-login, other sudo users, autologin — and how to close each by hand. It changes
-nothing. Recovery mode is flagged as a **break-glass to keep**: it's how you'd
-uninstall glocker if it ever broke (see [manual-uninstall.md](manual-uninstall.md)).
+login, other sudo users, autologin — and prints the exact command to close each
+(`close: …`). It changes nothing.
+
+Hardening is deliberately **manual** — glocker won't touch your system security
+config for you. Run the check, then apply the `close:` steps for whichever routes
+you want shut. Keep at least one **break-glass**, though: recovery mode is flagged
+to keep, because it's how you'd uninstall glocker if it ever broke (see
+[manual-uninstall.md](manual-uninstall.md)).
 
 ## Stats Dashboard (glockpeek)
 

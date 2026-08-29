@@ -7,12 +7,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"glocker/internal/config"
 	"glocker/internal/envcheck"
-	"glocker/internal/notify"
-	"glocker/internal/reports"
 	"glocker/internal/utils"
 	"glocker/internal/web"
 )
@@ -232,11 +229,6 @@ func InstallGlocker() error {
 		}
 	}
 
-	// Accountability: flag a "maintenance" uninstall that overstayed its grace
-	// window before this reinstall. Done here, not at uninstall time, because the
-	// config (and Mailgun creds) only exists while installed.
-	checkMaintenanceOverstay(&cfg)
-
 	// Log the installation event
 	if err := web.LogInstallEntry(); err != nil {
 		log.Printf("Warning: Failed to log install entry: %v", err)
@@ -352,45 +344,6 @@ func installHeartbeat(cfg *config.Config, exePath string) error {
 
 	log.Printf("✓ Heartbeat watchdog scheduled every %d min (%s)", interval, config.HeartbeatCronPath)
 	return nil
-}
-
-// checkMaintenanceOverstay sends an accountability email if the uninstall this
-// install is reversing used the gate-exempt "maintenance" reason but stayed down
-// longer than Lifecycle.MaintenanceGraceMinutes — i.e. the label was likely used
-// to skip the mindful gate. No-op unless accountability email is enabled and a
-// grace window is configured.
-func checkMaintenanceOverstay(cfg *config.Config) {
-	grace := cfg.Lifecycle.MaintenanceGraceMinutes
-	if grace <= 0 || !cfg.Accountability.Enabled {
-		return
-	}
-
-	last, ok := reports.LastLifecycleEntry(cfg.Lifecycle.LogFile)
-	if !ok || last.Type != "uninstall" || !strings.EqualFold(last.Reason, config.MaintenanceReason) {
-		return
-	}
-
-	down := time.Since(last.Timestamp)
-	if down <= time.Duration(grace)*time.Minute {
-		return
-	}
-
-	subject := "glocker: maintenance uninstall overstayed"
-	body := fmt.Sprintf(
-		"A %q uninstall was not reversed for %s (grace is %d min).\n\n"+
-			"Uninstalled: %s\nReinstalled: %s\nNote: %s\n\n"+
-			"%q skips the mindful uninstall gate, so an overstay may mean the label "+
-			"was used to avoid it.",
-		config.MaintenanceReason, down.Round(time.Minute), grace,
-		last.Timestamp.Format(time.RFC1123), time.Now().Format(time.RFC1123), last.Note,
-		config.MaintenanceReason,
-	)
-
-	if err := notify.SendEmail(cfg, subject, body); err != nil {
-		log.Printf("Warning: couldn't send maintenance-overstay email: %v", err)
-	} else {
-		log.Printf("⚠ Flagged maintenance overstay (%s down) — accountability email sent", down.Round(time.Minute))
-	}
 }
 
 // RunningAsRoot checks if the process is running with root privileges.

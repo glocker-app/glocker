@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"glocker/internal/config"
-	"glocker/internal/state"
 	"glocker/internal/notify"
+	"glocker/internal/state"
 )
 
 // RecordViolation adds a violation to the tracking system and checks thresholds.
@@ -60,11 +60,6 @@ func checkViolationThreshold(cfg *config.Config) {
 			executeViolationCommand(cfg, recentCount)
 		}
 
-		// Send accountability email
-		if cfg.Accountability.Enabled {
-			sendViolationEmail(cfg, recentCount)
-		}
-
 		log.Printf("Violation command executed - violations will continue to trigger until daily reset")
 	}
 }
@@ -101,17 +96,6 @@ func executeViolationCommand(cfg *config.Config, count int) {
 	} else {
 		log.Printf("Violation command executed successfully")
 	}
-}
-
-// sendViolationEmail sends an email notification about violation threshold being exceeded.
-func sendViolationEmail(cfg *config.Config, count int) {
-	subject := "GLOCKER ALERT: Violation Threshold Exceeded"
-	body := fmt.Sprintf("Violation threshold was exceeded at %s.\n\n", time.Now().Format("2006-01-02 15:04:05"))
-	body += fmt.Sprintf("Recent violations: %d/%d in last %d minutes\n\n",
-		count, cfg.ViolationTracking.MaxViolations, cfg.ViolationTracking.TimeWindowMinutes)
-	body += "This is an automated alert from Glocker."
-
-	notify.SendEmail(cfg, subject, body)
 }
 
 // MonitorViolations monitors and automatically resets violations daily.

@@ -190,16 +190,10 @@ sudoers:
       end: "15:00"
       days: ["Sat", "Sun"]
 
-# Accountability emails via Mailgun (the free tier works). The sending domain is
-# derived from from_email's domain, so use an address at your verified Mailgun
-# domain. Leave enabled:false to send nothing.
-accountability:
-  enabled: false
-  partner_email: "partner@example.com"     # who receives violation/unblock notices
-  from_email: "glocker@mg.example.com"      # an address at your Mailgun domain
-  api_key: ""                               # your Mailgun API key
-  daily_report_enabled: false
-  daily_report_time: "21:00"
+# Accountability notifications (violation/unblock/extension alerts and the daily
+# report) are handled by glockpeek, not the agent — configured per-account there.
+# The agent itself sends no email and needs no Mailgun key. See the `sync` stanza
+# for pointing the agent at a hosted glockpeek.
 
 # Desktop notification command. {urgency} {icon} {title} {message} are filled in.
 notification_command: "notify-send -u {urgency} -i {icon} '{title}' '{message}'"

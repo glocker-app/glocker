@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"glocker/internal/config"
-	"glocker/internal/state"
 	"glocker/internal/notify"
+	"glocker/internal/state"
 )
 
 // MonitorTampering continuously monitors file checksums and system state for tampering.
@@ -157,18 +157,6 @@ func RaiseAlarm(cfg *config.Config, reasons []string) {
 	message := "GLOCKER TAMPER DETECTED:\\n"
 	for _, reason := range reasons {
 		message += "  - " + reason + "\\n"
-	}
-
-	// Send accountability email
-	if cfg.Accountability.Enabled {
-		subject := "GLOCKER ALERT: Tampering Detected"
-		body := fmt.Sprintf("Tampering was detected at %s:\n\n", time.Now().Format("2006-01-02 15:04:05"))
-		for _, reason := range reasons {
-			body += "  - " + reason + "\n"
-		}
-		body += "\nThis is an automated alert from Glocker."
-
-		notify.SendEmail(cfg, subject, body)
 	}
 
 	// Execute alarm command - split on spaces for proper argument handling

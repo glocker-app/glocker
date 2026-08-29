@@ -204,18 +204,6 @@ func killMatchingProcesses(cfg *config.Config, programName string) {
 		notify.SendNotification(cfg, "Glocker Alert", message, "normal", "dialog-warning")
 	}
 
-	// Send accountability email if processes were killed
-	if len(killedProcesses) > 0 && cfg.Accountability.Enabled {
-		subject := "GLOCKER ALERT: Forbidden Programs Terminated"
-		body := fmt.Sprintf("Forbidden programs were detected and terminated at %s:\n\n", time.Now().Format("2006-01-02 15:04:05"))
-		body += fmt.Sprintf("Filter: %s\n", programName)
-		body += "Terminated processes:\n"
-		for _, proc := range killedProcesses {
-			body += fmt.Sprintf("  - %s\n", proc)
-		}
-
-		notify.SendEmail(cfg, subject, body)
-	}
 }
 
 // KillForbiddenNow immediately kills any processes matching the given program

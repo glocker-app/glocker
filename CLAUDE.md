@@ -119,10 +119,11 @@ glocker -uninstall
   - `GET /blocked` - Blocked page display
 
 ### Notifications (`internal/notify/`)
-- **`notify.go`** - Email notifications
-  - Mailgun integration
-  - Accountability notifications
-  - Violation reports
+- **`desktop.go`** - Desktop notifications (local toasts via `notification_command`)
+  - `SendNotification()` - fills `{title}/{message}/{urgency}/{icon}` into the command
+  - The agent sends **no email** — accountability notifications are glockpeek's job
+    (`internal/mailer`, configured server-side). See `internal/report` for the
+    DB-backed daily-report builder that lives on the glockpeek side.
 
 ### State Management (`internal/state/`)
 - **`state.go`** - Thread-safe global state
@@ -235,7 +236,6 @@ type Config struct {
     KillOnBlock             []string                // process names killed after `glocker -block` (DNS-cache flush)
     Sudoers                 SudoersConfig
     TamperDetection         TamperConfig
-    Accountability          AccountabilityConfig
     ContentMonitoring       ContentMonitoringConfig
     ForbiddenPrograms       ForbiddenProgramsConfig
     ExtensionKeywords       ExtensionKeywordsConfig
@@ -340,9 +340,9 @@ type ForbiddenProgram struct {
 - Mindful delay (configurable, default 60s) before uninstall completes
 
 **Accountability**:
-- Sends email notifications via Mailgun when blocks are bypassed
-- Logs all unblock attempts with reasons
-- Daily violation reports (configurable)
+- Logs all unblock attempts with reasons; syncs violations/unblocks/lifecycle to glockpeek
+- Email notifications and the daily report are handled by **glockpeek**, per-account —
+  the agent sends no email and holds no Mailgun key
 
 ### Time Window Logic
 
@@ -470,7 +470,7 @@ glocker/
 │   ├── install/                # Installation and uninstallation
 │   ├── ipc/                    # Unix socket server
 │   ├── monitoring/             # Background monitoring tasks
-│   ├── notify/                 # Email notifications
+│   ├── notify/                 # Desktop notifications (no email)
 │   ├── state/                  # Thread-safe global state
 │   ├── utils/                  # Shared utilities
 │   └── web/                    # HTTP server for extension
@@ -496,7 +496,7 @@ When searching for functionality:
 ## Dependencies
 
 Go modules (go.mod):
-- `github.com/mailgun/mailgun-go/v4` - Email notifications
+- `github.com/mailgun/mailgun-go/v4` - Email, used only by glockpeek (`internal/mailer`); the agent sends no email
 - `gopkg.in/yaml.v3` - Configuration parsing
 
 System dependencies:
