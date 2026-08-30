@@ -176,11 +176,24 @@ func InstallGlocker() error {
 		log.Printf("Warning: failed to install heartbeat watchdog: %v", err)
 	}
 
-	// Step 5: Create and install Firefox extension
+	// Step 5: Install the signed Firefox extension (fetched from the site if not
+	// built locally) and its enterprise force-install policy. If the signed xpi
+	// can't be obtained, DON'T fail the whole install — enforcement works without
+	// the extension — but flag it loudly here and summarise again at the end.
+	firefoxExtensionOK := false
 	if err := CreateFirefoxExtension(); err != nil {
-		log.Printf("Warning: Failed to create Firefox extension: %v", err)
+		log.Println()
+		log.Printf("⚠️  Firefox extension NOT installed — couldn't obtain the signed xpi:")
+		log.Printf("       %v", err)
+		log.Println("⚠️  Firefox content monitoring will be INACTIVE until it's added manually.")
+		log.Println()
 	} else if err := InstallFirefoxExtension(); err != nil {
-		log.Printf("Warning: Failed to install Firefox extension: %v", err)
+		log.Println()
+		log.Printf("⚠️  Firefox extension policy NOT installed: %v", err)
+		log.Println("⚠️  Firefox content monitoring will be INACTIVE until this is fixed.")
+		log.Println()
+	} else {
+		firefoxExtensionOK = true
 	}
 
 	// Step 5b: Install the GNOME Shell window-bridge extension (GNOME/Wayland
@@ -237,6 +250,14 @@ func InstallGlocker() error {
 	log.Println()
 	log.Println("🎉 Installation complete!")
 	log.Println("   Run 'glocker -status' to check the current status")
+
+	if !firefoxExtensionOK {
+		log.Println()
+		log.Println("⚠️  Firefox content monitoring is NOT active.")
+		log.Println("    The browser extension couldn't be installed (see the warning above).")
+		log.Println("    Everything else — domain blocking, forbidden programs, sudoers — still works.")
+		log.Println("    To enable it, follow \"Firefox extension (manual install)\" in the README.")
+	}
 
 	return nil
 }

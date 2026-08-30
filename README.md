@@ -233,6 +233,31 @@ you want shut. Keep at least one **break-glass**, though: recovery mode is flagg
 to keep, because it's how you'd uninstall glocker if it ever broke (see
 [manual-uninstall.md](manual-uninstall.md)).
 
+## Firefox extension (manual install)
+
+Content monitoring runs as a Firefox extension that `glocker -install` sets up
+**automatically**: it fetches the Mozilla-signed `.xpi` from
+`https://glockerapp.com/glocker.xpi` and force-installs it system-wide via a
+Firefox enterprise policy (`/etc/firefox/policies/policies.json`) — no store
+visit, and it can't be toggled off in `about:addons`.
+
+If the installer couldn't fetch it (e.g. no network during install), it prints a
+warning and Firefox content monitoring stays **inactive** — everything else
+(domain blocking, forbidden programs, sudoers) keeps working. To add it by hand:
+
+```bash
+# 1. Download the signed extension
+sudo install -d /usr/local/share/glocker
+sudo curl -fL -o /usr/local/share/glocker/glocker.xpi https://glockerapp.com/glocker.xpi
+
+# 2. Re-run the installer — it detects the local xpi and installs the policy
+sudo glocker -install
+```
+
+**Note — snap / Flatpak Firefox:** Firefox installed via snap (the Ubuntu default)
+or Flatpak does **not** read `/etc/firefox/policies/`, so the enterprise install
+can't reach it. Use the distro `.deb` Firefox for the extension to force-install.
+
 ## Stats Dashboard (glockpeek)
 
 `glockpeek` runs as its own systemd service and serves a web dashboard of your
@@ -241,7 +266,7 @@ hosted instance — via GORM, so switching is just a driver + DSN change) and
 **multi-tenant** under the hood, which lets the same code run as a zero-config
 personal desktop tool or as a shared/hosted instance. The glocker agent doesn't
 write to the dashboard directly; a syncer pushes local records into glockpeek's
-**ingest API**, so the two can live on different machines (see PLAN, untracked).
+**ingest API**, so the two can live on different machines (see [`ROADMAP.md`](ROADMAP.md)).
 
 glockpeek runs in one of two modes (`glockpeek_mode`, default `local`):
 
@@ -330,6 +355,30 @@ See [CLAUDE.md](CLAUDE.md) for complete file map and developer guide.
 
 - **[Domain Blocklist Updater](update_domains.py)** - Automated domain list updates from curated sources
 - **[Android Port Architecture](ANDROID.md)** - Design docs for Android version
+
+## Verifying a release
+
+The primary path is building from source (`make full-install`). If you instead
+download **prebuilt binaries** from a GitHub release, verify them first — each
+release ships a `SHA256SUMS` file signed with the project's
+[minisign](https://jedisct1.github.io/minisign/) key. The signature covers the
+checksums; the checksums cover the binaries.
+
+Public key (also at `https://glockerapp.com/minisign.pub`):
+
+```
+<paste the minisign public key here — the RWQ… line from minisign.pub>
+```
+
+```bash
+# 1. confirm SHA256SUMS is authentically signed
+minisign -Vm SHA256SUMS -P '<public key>'      # or: minisign -Vm SHA256SUMS -p minisign.pub
+# 2. confirm the binaries match their checksums
+sha256sum -c SHA256SUMS
+```
+
+If either step fails, don't run the binary. The signing key is offline, so a
+valid signature holds even if GitHub or the website were compromised.
 
 ## System Requirements
 
