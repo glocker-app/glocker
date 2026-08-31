@@ -320,7 +320,11 @@ func TestTenantSeparationOverHTTP(t *testing.T) {
 	}
 }
 
-func TestIgnoredHidesViolation(t *testing.T) {
+// The dashboard data endpoint is content-blind: it returns every violation,
+// even ignored ones. Hiding the false-positives happens in the browser from the
+// separately-served /api/ignored overlay — the prerequisite for serving E2E
+// ciphertext blobs here later (the server can't read violation content).
+func TestDataUnfilteredIgnoreOverlayStaysServed(t *testing.T) {
 	mux, sdb := newMux(t)
 	_, cookie, api := account(t, sdb, "alice")
 
@@ -336,12 +340,26 @@ func TestIgnoredHidesViolation(t *testing.T) {
 		t.Fatalf("put ignored: %d %s", rec.Code, rec.Body.String())
 	}
 
+	// /api/data returns the violation unfiltered (server no longer hides it).
 	get := httptest.NewRequest("GET", "/api/data", nil)
 	get.AddCookie(cookie)
 	var d dataResponse
 	json.Unmarshal(do(mux, get).Body.Bytes(), &d)
-	if len(d.Violations) != 0 {
-		t.Errorf("ignored violation should be hidden, got %+v", d.Violations)
+	if len(d.Violations) != 1 {
+		t.Fatalf("server should return the violation unfiltered, got %+v", d.Violations)
+	}
+
+	// The overlay is still stored and readable, so the client can hide it.
+	gi := httptest.NewRequest("GET", "/api/ignored", nil)
+	gi.AddCookie(cookie)
+	var ig struct {
+		Ignored []struct {
+			TS int64 `json:"ts"`
+		} `json:"ignored"`
+	}
+	json.Unmarshal(do(mux, gi).Body.Bytes(), &ig)
+	if len(ig.Ignored) != 1 || ig.Ignored[0].TS != 1000 {
+		t.Errorf("ignore overlay should persist for the client, got %+v", ig.Ignored)
 	}
 }
 

@@ -235,6 +235,21 @@ async function bootDashboard(me) {
     if (gres.ok) state.ignored = (await gres.json()).ignored || [];
   } catch { /* keep empty ignore list */ }
 
+  // Content-side post-processing the server no longer does — it stays
+  // content-blind so the same endpoint can serve E2E ciphertext later
+  // (docs/e2e-design.md). Hide ignored violations and fill any missing domain
+  // from the URL. Done once here, so all downstream aggregation sees the same
+  // filtered list it always did.
+  if (state.data && Array.isArray(state.data.violations)) {
+    const ign = new Set(state.ignored.map(ignoreKeyOf));
+    // Domain fallback (mirrors the old server-side hostFromURL): fill a missing
+    // domain from the URL client-side, so the server never parses URLs.
+    const hostFromUrl = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
+    state.data.violations = state.data.violations
+      .filter((v) => !ign.has(ignoreKeyOf(v)))
+      .map((v) => (v.domain ? v : { ...v, domain: hostFromUrl(v.url) }));
+  }
+
   document.getElementById("loading").hidden = true;
   document.getElementById("dash").hidden = false;
 

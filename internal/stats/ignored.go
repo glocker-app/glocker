@@ -35,16 +35,6 @@ func loadIgnored(db *store.DB, userID uint) ([]IgnoredEntry, error) {
 	return out, nil
 }
 
-// ignoredSet returns the account's ignore list as a lookup set of match keys.
-func ignoredSet(db *store.DB, userID uint) map[string]bool {
-	list, _ := loadIgnored(db, userID)
-	set := make(map[string]bool, len(list))
-	for _, e := range list {
-		set[ignoreKey(e.TS, e.Keyword, e.URL)] = true
-	}
-	return set
-}
-
 // dedupeIgnored drops entries with no timestamp and collapses duplicates by key,
 // preserving the stored field values exactly so matching stays reliable.
 func dedupeIgnored(in []IgnoredEntry) []IgnoredEntry {

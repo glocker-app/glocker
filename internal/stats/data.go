@@ -1,7 +1,6 @@
 package stats
 
 import (
-	"net/url"
 	"sort"
 	"time"
 
@@ -89,21 +88,16 @@ func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 		return resp
 	}
 
-	// Violations, minus the ones marked false-positive (non-destructive overlay:
-	// the stored rows are untouched; this just hides them from the response).
+	// All violations, unfiltered, with the domain exactly as stored. The
+	// false-positive (ignored) overlay and the domain-from-URL fallback are
+	// applied in the browser now — so this endpoint never reads violation
+	// content. That's the prerequisite for serving ciphertext blobs here under
+	// E2E (see docs/e2e-design.md): the server stays content-blind.
 	if rows, err := db.Violations(userID); err == nil {
 		resp.Sources.Reports = len(rows) > 0
-		ignored := ignoredSet(db, userID)
 		for _, e := range rows {
-			if ignored[ignoreKey(e.TS, e.Keyword, e.URL)] {
-				continue
-			}
-			domain := e.Domain
-			if domain == "" {
-				domain = hostFromURL(e.URL)
-			}
 			resp.Violations = append(resp.Violations, violationJSON{
-				TS: e.TS, Type: e.Type, Keyword: e.Keyword, URL: e.URL, Domain: domain,
+				TS: e.TS, Type: e.Type, Keyword: e.Keyword, URL: e.URL, Domain: e.Domain,
 			})
 		}
 	}
@@ -192,11 +186,4 @@ func unmanagedPeriods(entries []reports.LifecycleEntry, now time.Time) []unmanag
 		})
 	}
 	return out
-}
-
-func hostFromURL(raw string) string {
-	if u, err := url.Parse(raw); err == nil {
-		return u.Hostname()
-	}
-	return ""
 }
