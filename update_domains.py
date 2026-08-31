@@ -74,6 +74,63 @@ def confd_path(source: Dict) -> str:
     return os.path.join(CONFD_DIR, source['file'])
 
 
+def include_marker(source: Dict) -> str:
+    """The `!include conf.d/<file>` reference for a source (matched as a substring)."""
+    return f"!include conf.d/{source['file']}"
+
+
+def ensure_include(source: Dict) -> bool:
+    """Make sure conf.yaml pulls this source in via `!include conf.d/<file>`.
+
+    Idempotent: does nothing if the line is already there. Text-based on purpose —
+    conf.yaml uses the custom !include tag, which a YAML round-trip would mangle.
+    Inserts inside the `domains:` block, after the last existing include (or right
+    after `domains:` if there are none). Returns True if it added the line.
+    """
+    marker = include_marker(source)
+    with open(CONFIG_FILE) as f:
+        lines = f.read().split('\n')
+    if any(marker in ln for ln in lines):
+        return False
+
+    domains_idx = next((i for i, ln in enumerate(lines) if ln.rstrip() == 'domains:'), None)
+    if domains_idx is None:
+        print(f"  WARN: no 'domains:' section in {CONFIG_FILE}; not adding include "
+              f"for {source['name']}", file=sys.stderr)
+        return False
+
+    # Stay inside the domains: block (stop at the next column-0 key) and land
+    # after the last existing include so they group together in order.
+    insert_at = domains_idx + 1
+    for i in range(domains_idx + 1, len(lines)):
+        if re.match(r'^[A-Za-z_]', lines[i]):
+            break
+        if '!include conf.d/domains-' in lines[i]:
+            insert_at = i + 1
+
+    lines.insert(insert_at, f"  - {marker}")
+    with open(CONFIG_FILE, 'w') as f:
+        f.write('\n'.join(lines))
+    print(f"  + wired {source['file']} into {CONFIG_FILE} via !include")
+    return True
+
+
+def remove_include(source: Dict) -> bool:
+    """Remove a source's `!include` line from conf.yaml — the mirror of
+    ensure_include, so stripping a source never leaves conf.yaml pointing at a
+    file that's just been deleted. Returns True if it removed a line."""
+    marker = include_marker(source)
+    with open(CONFIG_FILE) as f:
+        lines = f.read().split('\n')
+    kept = [ln for ln in lines if marker not in ln]
+    if len(kept) == len(lines):
+        return False
+    with open(CONFIG_FILE, 'w') as f:
+        f.write('\n'.join(kept))
+    print(f"  - removed {source['file']} !include from {CONFIG_FILE}")
+    return True
+
+
 def read_source_timestamp(path: str) -> Optional[str]:
     """Read the '# Last updated: TIMESTAMP' header from a conf.d file (for the
     idempotency check). Returns None if the file is absent or has no header."""
@@ -465,6 +522,7 @@ def update_source(source_id: int) -> str:
 
     if existing_timestamp and existing_timestamp == timestamp:
         print(f"\n  Already up to date (last update: {timestamp})")
+        ensure_include(source)  # self-heal the include even when nothing was re-downloaded
         return 'skipped'
     if existing_timestamp:
         print("  Update available, proceeding...")
@@ -517,6 +575,7 @@ def update_source(source_id: int) -> str:
     print(f"  Writing {path}...")
     try:
         write_source_file(source, formatted_domains, timestamp, len(unique_domains))
+        ensure_include(source)  # wire it into conf.yaml if it isn't already
         print(f"  Successfully wrote {len(unique_domains)} domains\n")
         return 'updated'
     except Exception as e:
@@ -526,13 +585,15 @@ def update_source(source_id: int) -> str:
 ## Strip Managed Sources
 
 def strip_managed_sources():
-    """Delete all generated conf.d/ blocklist files. Manual domains kept inline in
-    conf.yaml are untouched."""
+    """Delete every generated conf.d/ blocklist file AND its `!include` line in
+    conf.yaml (so nothing is left pointing at a deleted file). The hand-maintained
+    conf.d/domains-personal.yaml and its include are untouched."""
     print("\nRemoving all generated blocklist files from conf.d/...\n")
 
     removed_sources = []
     for source in SOURCES:
         path = confd_path(source)
+        removed_include = remove_include(source)  # unwire from conf.yaml either way
         try:
             os.remove(path)
         except FileNotFoundError:
@@ -542,13 +603,14 @@ def strip_managed_sources():
             sys.exit(1)
         removed_sources.append(source['name'])
         print(f"  ✓ Removed: {path}")
+        _ = removed_include
 
     if not removed_sources:
         print("  No generated blocklist files found.\n")
         return
 
     print(f"\n  Removed {len(removed_sources)} generated blocklist file(s).")
-    print("  Any domains kept inline in conf.yaml are untouched.\n")
+    print("  The personal list (conf.d/domains-personal.yaml) is untouched.\n")
 
 ## Source Listing
 def list_sources():
