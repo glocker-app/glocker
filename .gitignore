@@ -21,3 +21,8 @@ README.html
 *.swp
 *.swo
 __pycache__/
+
+# e2ekit prototype secret outputs — a real master key / vault; never commit
+master.key
+vault.json
+*.key
