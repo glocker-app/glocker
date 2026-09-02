@@ -59,6 +59,16 @@ func GetStatusResponse(cfg *config.Config) string {
 		}
 	}
 
+	// Daily unblock budget (unblocking.max_per_day). Counted off the unblock log,
+	// so it resets at local midnight and survives a restart.
+	usedToday := countUnblocksToday(cfg)
+	if cfg.Unblocking.MaxPerDay > 0 {
+		left := max(0, cfg.Unblocking.MaxPerDay-usedToday)
+		response.WriteString(fmt.Sprintf("Unblocks Today: %d/%d used (%d left)\n", usedToday, cfg.Unblocking.MaxPerDay, left))
+	} else {
+		response.WriteString(fmt.Sprintf("Unblocks Today: %d (no daily cap)\n", usedToday))
+	}
+
 	// Show program extensions (one-hour runtime grants for extendible
 	// forbidden programs). Mirror the temp-unblock section's shape.
 	extensions := state.GetProgramExtensions()

@@ -128,8 +128,8 @@ func TestProcessPanicRequest(t *testing.T) {
 func TestProcessUnblockRequest_RejectsPermanentDomains(t *testing.T) {
 	cfg := &config.Config{
 		Domains: []config.Domain{
-			{Name: "permanent.com"},                          // Permanent by default
-			{Name: "unblockable.com", Unblockable: true},    // Can be unblocked
+			{Name: "permanent.com"},                      // Permanent by default
+			{Name: "unblockable.com", Unblockable: true}, // Can be unblocked
 		},
 		Unblocking: config.UnblockingConfig{
 			TempUnblockTime: 30,
@@ -289,6 +289,50 @@ func TestProcessUnblockRequest_ZeroCapIsUnlimited(t *testing.T) {
 		if err := ProcessUnblockRequest(cfg, "example.com", "work"); err != nil {
 			t.Fatalf("unblock #%d should be allowed when cap is 0, got: %v", i, err)
 		}
+	}
+}
+
+func TestGetStatusResponse_UnblocksLeft(t *testing.T) {
+	logFile := filepath.Join(t.TempDir(), "unblocks.log")
+	cfg := &config.Config{
+		Domains: []config.Domain{{Name: "example.com", Unblockable: true}},
+		Unblocking: config.UnblockingConfig{
+			TempUnblockTime: 30,
+			LogFile:         logFile,
+			MaxPerDay:       3,
+		},
+	}
+	enforcement.InitializeTestCache(cfg.Domains)
+	state.SetTempUnblocks([]state.TempUnblock{})
+
+	// Two unblocks today → status should read 2/3 used, 1 left.
+	for i := range 2 {
+		if err := ProcessUnblockRequest(cfg, "example.com", "work"); err != nil {
+			t.Fatalf("unblock #%d: %v", i, err)
+		}
+	}
+
+	out := GetStatusResponse(cfg)
+	if !strings.Contains(out, "Unblocks Today: 2/3 used (1 left)") {
+		t.Errorf("status should show 2/3 used, 1 left; got:\n%s", out)
+	}
+}
+
+func TestGetStatusResponse_NoDailyCap(t *testing.T) {
+	cfg := &config.Config{
+		Domains: []config.Domain{{Name: "example.com"}},
+		Unblocking: config.UnblockingConfig{
+			// Empty (nonexistent) log so the count is a clean zero; cap 0 = unlimited.
+			LogFile:   filepath.Join(t.TempDir(), "unblocks.log"),
+			MaxPerDay: 0,
+		},
+	}
+	enforcement.InitializeTestCache(cfg.Domains)
+	state.SetTempUnblocks([]state.TempUnblock{})
+
+	out := GetStatusResponse(cfg)
+	if !strings.Contains(out, "Unblocks Today: 0 (no daily cap)") {
+		t.Errorf("status should show no daily cap; got:\n%s", out)
 	}
 }
 
@@ -601,4 +645,3 @@ func TestGetStatusResponse_TruncatesViolationDetails(t *testing.T) {
 		t.Errorf("expected truncation line for 7 violations (cap 5):\n%s", resp)
 	}
 }
-
