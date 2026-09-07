@@ -105,7 +105,9 @@ func (db *DB) IgnoredViolations(userID uint) ([]IgnoredViolation, error) {
 
 // ── Ingest (idempotent; stamps UserID on every row) ──
 
-// IngestViolations upserts report lines; a re-sent (user,ts,keyword,url) no-ops.
+// IngestViolations upserts report lines; a re-sent (user, record_id) no-ops.
+// RecordID is the agent-computed dedup key (opaque under E2E); URLHash is still
+// filled for plaintext-mode ignored-matching but no longer keys the index.
 func (db *DB) IngestViolations(userID uint, rows []Violation) error {
 	if len(rows) == 0 {
 		return nil
@@ -115,7 +117,7 @@ func (db *DB) IngestViolations(userID uint, rows []Violation) error {
 		rows[i].URLHash = hashURL(rows[i].URL)
 	}
 	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "user_id"}, {Name: "ts"}, {Name: "keyword"}, {Name: "url_hash"}},
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "record_id"}},
 		DoNothing: true,
 	}).CreateInBatches(rows, 500).Error
 }
@@ -130,7 +132,7 @@ func (db *DB) IngestUnblocks(userID uint, rows []Unblock) error {
 		rows[i].UserID = userID
 	}
 	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "user_id"}, {Name: "ts"}, {Name: "domain"}},
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "record_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"restore_ts", "reason"}),
 	}).CreateInBatches(rows, 500).Error
 }

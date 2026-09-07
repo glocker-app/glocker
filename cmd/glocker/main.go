@@ -19,6 +19,7 @@ import (
 
 	"glocker/internal/cli"
 	"glocker/internal/config"
+	"glocker/internal/connect"
 	"glocker/internal/enforcement"
 	"glocker/internal/envcheck"
 	"glocker/internal/install"
@@ -31,7 +32,26 @@ import (
 	"glocker/internal/syncer"
 	"glocker/internal/usage"
 	"glocker/internal/web"
+
+	"golang.org/x/term"
 )
+
+// readPassphrase reads without echo from a terminal; when stdin is piped it reads
+// a single line so `-connect` stays scriptable.
+func readPassphrase(prompt string) ([]byte, error) {
+	fd := int(os.Stdin.Fd())
+	if term.IsTerminal(fd) {
+		fmt.Fprint(os.Stderr, prompt)
+		p, err := term.ReadPassword(fd)
+		fmt.Fprintln(os.Stderr)
+		return p, err
+	}
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil && line == "" {
+		return nil, err
+	}
+	return []byte(strings.TrimRight(line, "\r\n")), nil
+}
 
 func main() {
 	// Parse command-line flags
@@ -50,6 +70,7 @@ func main() {
 	panicMinutes := flag.Int("panic", 0, "Enter panic mode for N minutes (suspends system and re-suspends on early wake)")
 	lockFlag := flag.Bool("lock", false, "Immediately lock sudoers access (ignores time windows)")
 	securityCheckFlag := flag.Bool("security-check", false, "Report bypass/recovery routes (root login, recovery mode, extra sudoers, SSH root, autologin); read-only")
+	connectFlag := flag.Bool("connect", false, "Connect this machine to your dashboard's encryption: fetch your key vault, unlock it with your passphrase, and install the key so synced data is end-to-end encrypted")
 	purgeFlag := flag.Bool("purge", false, "With -uninstall: also remove the glockdoc watchdog + its cron. Alone: clean up a leftover watchdog from an earlier uninstall.")
 	versionFlag := flag.Bool("version", false, "Show version information")
 
@@ -91,6 +112,36 @@ func main() {
 		}
 		if err := install.InstallGlocker(); err != nil {
 			log.Fatalf("Installation failed: %v", err)
+		}
+		return
+	}
+
+	// Connect this agent to the account's end-to-end encryption. Writes the master
+	// key to /etc/glocker (root), so it needs sudo.
+	if *connectFlag {
+		if !install.RunningAsRoot(true) {
+			log.Fatal("Connect must be run as root (it installs the encryption key under /etc/glocker) — use sudo")
+		}
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			log.Fatalf("Failed to load config: %v", err)
+		}
+		pass, err := readPassphrase("Dashboard encryption passphrase: ")
+		if err != nil {
+			log.Fatalf("Could not read passphrase: %v", err)
+		}
+		keyPath, err := connect.Run(cfg, pass)
+		if err != nil {
+			log.Fatalf("Connect failed: %v", err)
+		}
+		fmt.Printf("\nEncryption key installed at %s (from your dashboard vault).\n\n", keyPath)
+		fmt.Println("To start encrypting synced data, set this in your config and re-install/reload:")
+		fmt.Println("    sync:")
+		fmt.Println("      e2e: true")
+		fmt.Printf("      e2e_key_file: %s\n\n", keyPath)
+		fmt.Println("Then run `make full-install` (or restart the glocker service).")
+		if !cfg.Sync.Encryption() {
+			fmt.Println("\nNote: sync.e2e is currently OFF, so records still upload as plaintext until you enable it.")
 		}
 		return
 	}

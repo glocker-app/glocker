@@ -27,16 +27,16 @@ func TestBuildWindowsAndSummarizes(t *testing.T) {
 
 	// Two violations inside the 24h window, one well outside it.
 	if err := db.IngestViolations(uid, []store.Violation{
-		{TS: ms(-1 * time.Hour), Keyword: "reddit", URL: "https://reddit.com/a", Type: "web_access", Domain: "reddit.com"},
-		{TS: ms(-2 * time.Hour), Keyword: "reddit", URL: "https://reddit.com/b", Type: "web_access", Domain: "reddit.com"},
-		{TS: ms(-30 * time.Hour), Keyword: "reddit", URL: "https://reddit.com/old", Type: "web_access", Domain: "reddit.com"},
+		{TS: ms(-1 * time.Hour), RecordID: "v1", Keyword: "reddit", URL: "https://reddit.com/a", Type: "web_access", Domain: "reddit.com"},
+		{TS: ms(-2 * time.Hour), RecordID: "v2", Keyword: "reddit", URL: "https://reddit.com/b", Type: "web_access", Domain: "reddit.com"},
+		{TS: ms(-30 * time.Hour), RecordID: "v3", Keyword: "reddit", URL: "https://reddit.com/old", Type: "web_access", Domain: "reddit.com"},
 	}); err != nil {
 		t.Fatalf("ingest violations: %v", err)
 	}
 
 	restore := ms(-45 * time.Minute) // 15 min after the unblock
 	if err := db.IngestUnblocks(uid, []store.Unblock{
-		{TS: ms(-1 * time.Hour), Domain: "news.com", RestoreTS: &restore, Reason: "reading"},
+		{TS: ms(-1 * time.Hour), RecordID: "u1", Domain: "news.com", RestoreTS: &restore, Reason: "reading"},
 	}); err != nil {
 		t.Fatalf("ingest unblocks: %v", err)
 	}

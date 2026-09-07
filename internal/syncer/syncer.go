@@ -15,15 +15,19 @@ package syncer
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"glocker/internal/config"
+	"glocker/internal/e2e"
 	"glocker/internal/reports"
 	"glocker/internal/state"
 	"glocker/internal/usage"
@@ -40,14 +44,18 @@ type Payload struct {
 }
 
 type violation struct {
-	TS      int64  `json:"ts"`
-	Type    string `json:"type"`
-	Keyword string `json:"keyword"`
-	URL     string `json:"url"`
-	Domain  string `json:"domain"`
+	TS int64 `json:"ts"`
+	// RecordID is the stable dedup key over the plaintext (see e2e.RecordID);
+	// keeps re-syncs idempotent even though the content fields re-encrypt each time.
+	RecordID string `json:"recordId"`
+	Type     string `json:"type"`
+	Keyword  string `json:"keyword"`
+	URL      string `json:"url"`
+	Domain   string `json:"domain"`
 }
 type unblock struct {
 	TS        int64  `json:"ts"`
+	RecordID  string `json:"recordId"`
 	Domain    string `json:"domain"`
 	RestoreTS *int64 `json:"restoreTs"`
 	Reason    string `json:"reason"`
@@ -82,6 +90,14 @@ type Syncer struct {
 	// cursors[source] is the max TS already accepted for that source; each cycle
 	// sends records with TS >= cursor (the boundary re-send is idempotent).
 	cursors map[string]int64
+
+	// e2e end-to-end encryption: when on, sensitive fields are encrypted under mk
+	// before upload (see enc). e2eBroken is set when E2E was requested but the key
+	// couldn't be loaded — the syncer then refuses to run, so it never falls back
+	// to uploading plaintext to a hosted server.
+	e2e       bool
+	mk        []byte
+	e2eBroken bool
 }
 
 // New builds a Syncer from config, applying defaults.
@@ -94,7 +110,69 @@ func New(cfg *config.Config) *Syncer {
 		cursors:  map[string]int64{},
 	}
 	s.paths = resolveLogPaths(cfg)
+
+	if cfg.Sync.Encryption() {
+		keyPath := cfg.Sync.KeyFile()
+		mk, err := loadMasterKey(keyPath)
+		if err != nil {
+			// Fail closed: do NOT sync at all rather than upload plaintext to a
+			// server the user asked us to hide it from.
+			slog.Error("syncer: e2e enabled but master key unusable — refusing to sync (would leak plaintext)", "path", keyPath, "err", err)
+			s.e2eBroken = true
+		} else {
+			s.mk = mk
+			s.e2e = true
+		}
+	}
 	return s
+}
+
+// loadMasterKey reads a base64-encoded 32-byte master key from path.
+func loadMasterKey(path string) ([]byte, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	mk, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(raw)))
+	if err != nil {
+		return nil, fmt.Errorf("decode master key: %w", err)
+	}
+	if len(mk) != e2e.MasterKeyLen {
+		return nil, fmt.Errorf("master key is %d bytes, want %d", len(mk), e2e.MasterKeyLen)
+	}
+	return mk, nil
+}
+
+// enc returns v unchanged when e2e is off (local mode → plaintext, identical to
+// before). When on, it encrypts v under the master key and returns base64 of
+// nonce||ciphertext. The aad binds the field to its record identity (ts|kind|
+// field) so a blob can't be moved to another field/record. Empty strings pass
+// through so an absent field stays absent.
+func (s *Syncer) enc(v string, ts int64, kind, field string) string {
+	if !s.e2e || v == "" {
+		return v
+	}
+	aad := fmt.Appendf(nil, "%d|%s|%s", ts, kind, field)
+	box, err := e2e.EncryptRecord(s.mk, []byte(v), aad)
+	if err != nil {
+		// mk is validated at load, so this is effectively impossible; still fail
+		// closed (drop the field) rather than ever emit plaintext.
+		slog.Error("syncer: field encryption failed; dropping field", "field", field, "err", err)
+		return ""
+	}
+	buf := make([]byte, 0, len(box.Nonce)+len(box.Ct))
+	buf = append(buf, box.Nonce...)
+	buf = append(buf, box.Ct...)
+	return base64.StdEncoding.EncodeToString(buf)
+}
+
+// recordID computes the stable dedup key for a record over its PLAINTEXT parts.
+// Under E2E it's keyed with the master key (HMAC); in plaintext mode s.mk is nil
+// and e2e.RecordID falls back to a plain SHA-256. It must be computed from the
+// cleartext, before enc() encrypts the same fields.
+func (s *Syncer) recordID(kind string, ts int64, parts ...string) string {
+	all := append([]string{kind, strconv.FormatInt(ts, 10)}, parts...)
+	return e2e.RecordID(s.mk, all...)
 }
 
 // logPaths are the local logs the syncer reads (all under /var/log by default).
@@ -170,7 +248,11 @@ func PendingCounts(cfg *config.Config, cursors map[string]int64) map[string]int 
 // then syncs on the interval. Blocks; run in a goroutine. Every error is logged
 // and retried next tick — enforcement is never affected.
 func (s *Syncer) Run() {
-	slog.Info("syncer starting", "target", s.url, "interval", s.interval)
+	if s.e2eBroken {
+		slog.Error("syncer: not starting — e2e was enabled but the master key is unusable")
+		return
+	}
+	slog.Info("syncer starting", "target", s.url, "interval", s.interval, "e2e", s.e2e)
 	s.seedCursors() // ask glockpeek what it already has, so we only send the gap
 	s.syncOnce()
 	t := time.NewTicker(s.interval)
@@ -252,7 +334,12 @@ func (s *Syncer) build() (Payload, map[string]int64) {
 				continue
 			}
 			p.Violations = append(p.Violations, violation{
-				TS: ts, Type: string(e.Type), Keyword: e.Keyword, URL: e.URL, Domain: e.Domain,
+				TS:       ts,
+				RecordID: s.recordID("violation", ts, e.Keyword, e.URL), // over plaintext
+				Type:     string(e.Type),                                // metadata — stays clear
+				Keyword:  s.enc(e.Keyword, ts, "violation", "keyword"),
+				URL:      s.enc(e.URL, ts, "violation", "url"),
+				Domain:   s.enc(e.Domain, ts, "violation", "domain"),
 			})
 			max["reports"] = maxi(max["reports"], ts)
 		}
@@ -268,7 +355,12 @@ func (s *Syncer) build() (Payload, map[string]int64) {
 			if ts < cur {
 				continue
 			}
-			u := unblock{TS: ts, Domain: e.Domain, Reason: e.Reason}
+			u := unblock{
+				TS:       ts,
+				RecordID: s.recordID("unblock", ts, e.Domain), // over plaintext
+				Domain:   s.enc(e.Domain, ts, "unblock", "domain"),
+				Reason:   s.enc(e.Reason, ts, "unblock", "reason"),
+			}
 			if !e.RestoreTime.IsZero() {
 				r := e.RestoreTime.UnixMilli()
 				u.RestoreTS = &r
@@ -285,7 +377,12 @@ func (s *Syncer) build() (Payload, map[string]int64) {
 			if ts < cur {
 				continue
 			}
-			p.Lifecycle = append(p.Lifecycle, lifecycle{TS: ts, Type: e.Type, Reason: e.Reason, Note: e.Note})
+			p.Lifecycle = append(p.Lifecycle, lifecycle{
+				TS:     ts,
+				Type:   e.Type,   // metadata — drives the UNMANAGED overlay, stays clear
+				Reason: e.Reason, // gated enum (maintenance/work/…), low sensitivity, stays clear
+				Note:   s.enc(e.Note, ts, "lifecycle", "note"),
+			})
 			max["lifecycle"] = maxi(max["lifecycle"], ts)
 		}
 	}
@@ -308,6 +405,9 @@ func (s *Syncer) build() (Payload, map[string]int64) {
 			if r.TS < cur {
 				continue
 			}
+			// The window title is the sensitive bit; class/instance (app names)
+			// stay clear for now.
+			r.ActiveTitle = s.enc(r.ActiveTitle, r.TS, "usage", "activeTitle")
 			p.Usage = append(p.Usage, r)
 			max["usage"] = maxi(max["usage"], r.TS)
 		}
@@ -335,6 +435,12 @@ func (s *Syncer) post(p Payload) error {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		// Surface the server's error body (capped) so the failure is diagnosable
+		// from the agent's own log — no need to read glockpeek's logs to see why.
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if trimmed := strings.TrimSpace(string(msg)); trimmed != "" {
+			return fmt.Errorf("ingest returned %s: %s", resp.Status, trimmed)
+		}
 		return fmt.Errorf("ingest returned %s", resp.Status)
 	}
 	return nil

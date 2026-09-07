@@ -78,6 +78,14 @@ func ValidateConfig(config *Config) error {
 		}
 	}
 
+	// Encryption is a deliberate, explicit choice: when sync is enabled you must
+	// state sync.encrypt (true or false). Refusing an unset value prevents the
+	// footgun of silently shipping plaintext to a hosted glockpeek because the key
+	// was forgotten.
+	if config.Sync.Enabled && config.Sync.Encrypt == nil {
+		return fmt.Errorf("sync.encrypt is required when sync is enabled: set it to true (encrypt records before upload — required for a hosted glockpeek) or false (plaintext — only for a local/loopback glockpeek)")
+	}
+
 	return nil
 }
 

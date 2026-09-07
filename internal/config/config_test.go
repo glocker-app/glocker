@@ -1,8 +1,49 @@
 package config
 
 import (
+	"strings"
 	"testing"
 )
+
+// sync.encrypt is compulsory when sync is enabled: an unset value is rejected so
+// plaintext can't silently ship to a hosted glockpeek. An explicit true or false
+// is accepted, and encrypt is irrelevant (not required) when sync is disabled.
+func TestValidateConfig_EncryptCompulsoryWhenSyncEnabled(t *testing.T) {
+	boolPtr := func(b bool) *bool { return &b }
+
+	// Enabled + unset -> error.
+	err := ValidateConfig(&Config{Sync: SyncConfig{Enabled: true}})
+	if err == nil || !strings.Contains(err.Error(), "sync.encrypt is required") {
+		t.Fatalf("expected 'sync.encrypt is required' error, got: %v", err)
+	}
+
+	// Enabled + explicit (true or false) -> ok.
+	for _, v := range []bool{true, false} {
+		if err := ValidateConfig(&Config{Sync: SyncConfig{Enabled: true, Encrypt: boolPtr(v)}}); err != nil {
+			t.Errorf("explicit encrypt=%v should validate, got: %v", v, err)
+		}
+	}
+
+	// Disabled + unset -> ok (encrypt irrelevant).
+	if err := ValidateConfig(&Config{Sync: SyncConfig{Enabled: false}}); err != nil {
+		t.Errorf("encrypt should not be required when sync is disabled, got: %v", err)
+	}
+}
+
+// KeyFile applies the default only when unset; Encryption() is nil-safe.
+func TestSyncConfigKeyFileAndEncryption(t *testing.T) {
+	var unset SyncConfig
+	if unset.Encryption() {
+		t.Error("unset Encrypt must read as false")
+	}
+	if unset.KeyFile() != DefaultEncryptKeyFile {
+		t.Errorf("unset key file should default to %q, got %q", DefaultEncryptKeyFile, unset.KeyFile())
+	}
+	custom := SyncConfig{EncryptKeyFile: "/tmp/k.key"}
+	if custom.KeyFile() != "/tmp/k.key" {
+		t.Errorf("explicit key file should win, got %q", custom.KeyFile())
+	}
+}
 
 func TestValidateConfig_EmptyDomainName(t *testing.T) {
 	cfg := &Config{

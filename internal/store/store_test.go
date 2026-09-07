@@ -181,17 +181,17 @@ func TestUsersSessionsTokens(t *testing.T) {
 	}
 }
 
-// TestIngestViolationsHashKey verifies the URL is deduped via its hash: the same
-// (user,ts,keyword,url) no-ops, different URLs at the same (user,ts,keyword) are
-// distinct, and a very long URL — the case that overflows Postgres's btree index
-// on the raw column — ingests fine. (SQLite has no btree size limit, so this
-// asserts the hash *logic*; the Postgres row-size fix is validated on deploy.)
-func TestIngestViolationsHashKey(t *testing.T) {
+// TestIngestViolationsRecordID verifies dedup is keyed on RecordID (the
+// agent-computed fingerprint), not the content columns: the same RecordID no-ops,
+// distinct RecordIDs are distinct rows, a very long URL still ingests, and —
+// crucially for E2E — the same RecordID de-dups even when every content column
+// arrives as different bytes (fresh ciphertext on each sync).
+func TestIngestViolationsRecordID(t *testing.T) {
 	db := openMem(t)
 	const uid = uint(1)
 
 	huge := "https://www.google.com/search?q=x&sca_esv=" + strings.Repeat("a", 5000)
-	v := Violation{TS: 1000, Keyword: "porn", URL: huge, Type: "url-keyword"}
+	v := Violation{TS: 1000, RecordID: "rid-a", Keyword: "porn", URL: huge, Type: "url-keyword"}
 
 	if err := db.IngestViolations(uid, []Violation{v}); err != nil {
 		t.Fatalf("ingest long url: %v", err)
@@ -208,13 +208,24 @@ func TestIngestViolationsHashKey(t *testing.T) {
 		t.Errorf("stored row lost url/hash: hash=%q urlLen=%d", got[0].URLHash, len(got[0].URL))
 	}
 
-	// A different URL at the same (user,ts,keyword) is a distinct violation.
-	v2 := Violation{TS: 1000, Keyword: "porn", URL: "https://other.example/z", Type: "url-keyword"}
+	// A different RecordID (distinct content) is a distinct violation, even at the
+	// same (user, ts).
+	v2 := Violation{TS: 1000, RecordID: "rid-b", Keyword: "porn", URL: "https://other.example/z", Type: "url-keyword"}
 	if err := db.IngestViolations(uid, []Violation{v2}); err != nil {
 		t.Fatalf("ingest distinct url: %v", err)
 	}
 	if got, _ := db.Violations(uid); len(got) != 2 {
-		t.Errorf("distinct URLs should yield 2 rows, got %d", len(got))
+		t.Errorf("distinct RecordIDs should yield 2 rows, got %d", len(got))
+	}
+
+	// The E2E guarantee: the same RecordID re-sent with entirely different content
+	// bytes (as ciphertext would be every sync) must NOT create a new row.
+	v3 := Violation{TS: 1000, RecordID: "rid-a", Keyword: "ciphertext-blob-2", URL: "different-ciphertext", Type: "url-keyword"}
+	if err := db.IngestViolations(uid, []Violation{v3}); err != nil {
+		t.Fatalf("re-ingest ciphertext variant: %v", err)
+	}
+	if got, _ := db.Violations(uid); len(got) != 2 {
+		t.Errorf("same RecordID with changed content must stay deduped, got %d rows", len(got))
 	}
 }
 

@@ -14,7 +14,7 @@ const sampleVault = `{"version":1,"kdf":"pbkdf2-sha256","pbkdf2":{"iterations":6
 
 func TestVaultRoundTripAndIsolation(t *testing.T) {
 	mux, sdb := newMux(t)
-	_, aliceCookie, _ := account(t, sdb, "alice@x.com")
+	_, aliceCookie, aliceToken := account(t, sdb, "alice@x.com")
 	_, bobCookie, _ := account(t, sdb, "bob@x.com")
 
 	put := func(cookie *http.Cookie, body string) int {
@@ -55,6 +55,19 @@ func TestVaultRoundTripAndIsolation(t *testing.T) {
 	// Junk that isn't a vault is rejected.
 	if code := put(aliceCookie, `{"hello":"world"}`); code != http.StatusBadRequest {
 		t.Fatalf("PUT junk: got %d, want 400", code)
+	}
+
+	// The agent fetches its vault with its ingest token (no browser session).
+	rtok := httptest.NewRequest("GET", "/api/vault", nil)
+	rtok.Header.Set("Authorization", "Bearer "+aliceToken)
+	if rec := do(mux, rtok); rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != sampleVault {
+		t.Fatalf("token GET should return the vault: code=%d", rec.Code)
+	}
+	// But a token cannot PUT a vault (browser-only).
+	ptok := httptest.NewRequest("PUT", "/api/vault", strings.NewReader(sampleVault))
+	ptok.Header.Set("Authorization", "Bearer "+aliceToken)
+	if rec := do(mux, ptok); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("token PUT should be rejected: got %d, want 401", rec.Code)
 	}
 
 	// /api/me reflects the vault state.

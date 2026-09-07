@@ -1,158 +1,198 @@
 # glockpeek end-to-end encryption — design
 
-**Status:** design, not built. Needs a real cryptographer to review key handling
-before any zero-knowledge claim is made or shipped. This document is the starting
-point for that review and for implementation.
+**Status:** partly built (crypto core + agent-side encryption exist; browser +
+key-lifecycle + dedup are next). Needs a real cryptographer to review key handling
+before any zero-knowledge claim is made or shipped.
+
+> **Author TODO (Noufal):** understand these primitives properly before shipping —
+> **PBKDF2** (and why iteration count matters / what "memory-hard" means and why
+> Argon2 has it), **AES-256-GCM** (nonce, the auth tag, AAD/context-binding),
+> **HMAC-SHA256** (why a *keyed* hash defeats the dictionary attack on the record
+> id), **HKDF** (why the full-entropy recovery code needs no slow KDF). This design
+> is AI-drafted; don't stake a zero-knowledge claim on trust in it.
 
 **Goal:** for the **hosted** glockpeek tier, the operator (us) cannot read a user's
 content. Zero-knowledge is a *feature we sell*, not just hygiene.
 
 ---
 
-## 1. Scope — what changes and what doesn't
+## 1. Deployment paths — E2E is Path-3 only
 
-- **Local mode is unaffected.** A desktop glockpeek binds loopback, has one
-  implicit account, and reads a normal plaintext DB (or the `/var` logs). No
-  encryption there — there's no untrusted operator. E2E is a **hosted-mode only**
-  concern.
-- **The agent keeps recording plaintext locally.** The `/var` logs stay the source
-  of truth; enforcement never depends on the network or on crypto. Encryption
-  happens only in the **syncer**, at the moment data leaves the machine.
-- **The dashboard keeps showing the same views** — it just decrypts and aggregates
-  in the browser instead of receiving server-computed stats.
+| Path | Setup | glockpeek | Sync | Encryption |
+|---|---|---|---|---|
+| **1. Client-only (free)** | `make full-install` | none | none | **none** — `/var` logs, plaintext |
+| **2. Client + local glockpeek (free)** | `make full-install` | local, loopback | agent → `localhost:4317` | **none** — no untrusted operator |
+| **3. Client + hosted (paid)** | install, then **sign up** | hosted | agent → hosted + token | **E2E on** |
+
+The entire E2E feature is **additive and Path-3-gated**. Paths 1 & 2 never generate
+a key, never make a vault, never sign up: `sync.encrypt` defaults off, there's no
+`/etc/glocker/e2e.key`, nothing changes from today. The free experience is untouched.
+
+**Hosted = E2E from the first byte.** A paid account is created *with* the vault, so
+the agent uploads ciphertext from its first sync — the hosted server **never holds
+plaintext**. Therefore **there is no plaintext→ciphertext migration**, and the
+hosted dashboard *always* decrypts (no mixed mode). (A dev account with old
+plaintext is a throwaway; wipe it once.)
 
 ## 2. Threat model
 
 **Protected:** the *content* of a user's activity — URLs, window titles, keyword
 hits, unblock reasons, domain/program names — is unreadable to the server operator,
-to anyone who dumps the database, and to anyone who compromises the server at rest.
+to a DB dump, and to server-at-rest compromise.
 
-**NOT protected (honest limitations — must be disclosed in the privacy policy):**
-- **Metadata:** record timestamps, per-type counts, sync times, upload volume, and
-  client IP. E2E hides *what*, not *that you're active and how much*.
-- **The web-crypto trust hole:** because we serve the dashboard JavaScript, a
-  compromised/malicious server could serve JS that exfiltrates the key at decrypt
-  time. Every browser-based E2E product (Proton, Bitwarden, Standard Notes) lives
-  with this. Mitigations: OSS web client, reproducible builds, Subresource
-  Integrity, and an optional pinned native/extension client for the paranoid. We
-  **cannot** claim "we can never see it" without this asterisk.
+**NOT protected (must be disclosed in the privacy policy):**
+- **Metadata:** record timestamps, per-type counts, record *structure* (which fields
+  exist, roughly how long), sync times, upload volume, client IP. E2E hides *what*,
+  not *that you're active and how much*.
+- **The web-crypto trust hole:** because we serve the dashboard JS, a compromised
+  server could serve JS that steals the key at decrypt time. Every browser-E2E
+  product lives with this. Mitigate: OSS client, reproducible builds, Subresource
+  Integrity, an optional pinned native client. We **cannot** claim "we can never see
+  it" without this asterisk.
 
-## 3. Data classification
+## 3. What's encrypted — per-field, in the SAME record shape
 
-| Field | Disposition | Why |
+**Decision: encrypt each sensitive field in place; do NOT bundle a record into one
+blob.** This keeps the wire format, the ingest API, the storage schema, and
+`/api/data` **identical** between local and hosted — the server treats those fields
+as opaque strings either way (the "content-blind" property Phase 1 established). A
+field like `url` just holds `"https://reddit.com"` locally and `"<base64 nonce‖ct>"`
+hosted. Local mode's payload is literally unchanged.
+
+Trade-off accepted: the server sees each record's *structure* (that a `url`/`keyword`
+field exists, roughly its length) — a minor metadata leak, and it already knows the
+record's `kind`. The blob alternative hides structure but would change the record
+shape and force local onto blobs too; not worth it.
+
+| Record | Plaintext (metadata) | Encrypted (content) |
 |---|---|---|
-| Account id | plaintext | scoping; it's identity, not content |
-| Record timestamp (`TS`) | plaintext | ordering, retention, range queries, dedup |
-| Record kind (violation/unblock/usage/lifecycle) | plaintext (coarse) | lets the dashboard fetch a type + range without pulling everything; encrypt too if we want zero type-leak |
-| Liveness / heartbeat (`alive`) | **plaintext** | the watchdog's "went dark during committed hours" alert must work with no decryption |
-| Lifecycle *type* (install/uninstall) | plaintext | drives the UNMANAGED/downtime overlay; keep computable server-side |
-| URLs, window titles, keyword hits, unblock reasons, domain/program names, lifecycle *note* | **encrypted** | the sensitive content |
+| violation | `ts`, `type` | `keyword`, `url`, `domain` |
+| unblock | `ts`, `restoreTs` | `domain`, `reason` |
+| lifecycle | `ts`, `type`, `reason` (gated enum) | `note` |
+| usage | `ts`, `idleMs`, `windowCount` | `activeTitle` (class/instance clear for now) |
+| heartbeat | `ts`, `alive` | — |
 
-**Consequence:** the server can no longer aggregate content. All content-based
-aggregation moves into the browser. (Liveness and unmanaged/downtime, being
-plaintext, may still be computed server-side.)
+Metadata stays clear because the server needs it: `ts` (ordering/range), `type`/`alive`
+(the UNMANAGED + liveness computations that legitimately stay server-side).
 
-## 4. Key management
+## 4. Dedup — a KEYED record id (this is a crypto trap)
 
-Do **not** hand-roll. Do **not** put the key in a cookie (cookies are sent to the
-server on every request — that would hand the server the key and defeat E2E).
+The idempotent re-send relies on a unique index that currently keys on content
+(`keyword`, `url_hash`, `domain`). Under per-field encryption those are ciphertext
+with a **fresh nonce each sync**, so every re-send looks new → **duplicates**. Fix:
 
-- **Master key (MK):** a random 256-bit key generated once at registration. All
-  content is encrypted under MK (or per-purpose subkeys via HKDF).
-- **Passphrase-wrapped MK:** derive a key-encryption key `KEK = Argon2id(passphrase,
-  salt)`; store `WrappedMK = AEAD(KEK, MK)` on the server. The server holds only the
-  wrapped blob + salt — useless without the passphrase. It never sees MK or the
-  passphrase.
-- **Any device unlocks:** enter passphrase → derive KEK → fetch WrappedMK → unwrap →
-  MK in memory. Portable across the agent (laptop) and the browser (any device).
-- **Agent storage:** the agent stores MK in a root-only local file so it can encrypt
-  each sync without prompting.
-- **Browser storage:** MK lives in memory (session) or guarded IndexedDB — **never a
-  cookie**, never sent to the server. Re-derived from the passphrase per session.
-- **Recovery code:** a second wrapping `WrappedMK_Recovery = AEAD(recoveryKey, MK)`
-  under a random, one-time, printable code — so "forgot passphrase" is not instant
-  data loss. (The #1 support issue of every E2E product.)
+- The agent computes **`RecordID = HMAC-SHA256(masterKey, canonical-plaintext-fields)`**
+  from the plaintext *before* encrypting, and sends it in the clear. The unique index
+  becomes `(user, RecordID)`; `keyword`/`url`/`domain` become pure ciphertext payload.
+- It's **deterministic** (same record → same id → dedup works across re-sends) and
+  **keyed** (the server can't reverse it).
 
-**Key loss is softened by local-first:** losing the key loses only *server* data
-that can't be regenerated. Because the agent keeps the `/var` logs, the user can
-re-key and re-encrypt-and-upload from local logs.
+**Do NOT use a plain hash** (`sha256(url)` / `sha256(keyword)`): the content is
+low-entropy and guessable, so `sha256("porn")` / `sha256("reddit.com")` is a two-line
+dictionary attack — the operator would recover exactly what we encrypted. The HMAC
+key (the master key, which the server never has) is what makes the id safe.
 
-## 5. Crypto primitives (candidates — cryptographer to confirm)
+## 5. Key management
 
-- **Record encryption:** AEAD with a per-record nonce — **AES-256-GCM** (Go
-  `crypto/cipher`, browser **WebCrypto** — both stdlib-grade) or libsodium
-  `secretbox` (XSalsa20-Poly1305).
-- **KDF:** **Argon2id** (Go `golang.org/x/crypto/argon2`; browser needs a wasm
-  argon2 — WebCrypto has no Argon2).
-- **Single-library option:** **libsodium** (Go binding + libsodium.js) gives
-  Argon2id + secretbox consistently on both sides; cost is a sizeable wasm blob.
-- **Key-wrap shortcut:** **`age`** (Go + JS impls) has passphrase-based wrapping
-  (scrypt) built in — use it for the MK wrap and AES-GCM for bulk records, so we
-  don't hand-manage the KDF.
+- **Master key (MK):** random 256 bytes. Minted **in the browser at signup** ("Set up
+  encryption") — that's the natural place, and where Path-3 onboarding starts.
+- **Vault = passphrase-wrapped MK:** `KEK = PBKDF2-HMAC-SHA256(passphrase, salt, iters)`;
+  `WrappedMK = AES-GCM(KEK, MK)`. Plus `WrappedMK_Recovery = AES-GCM(HKDF(recoveryCode), MK)`
+  under a printed one-time code. The server stores only the vault (wrapped blobs +
+  salt + params) — never MK or the passphrase.
+- **Agent gets MK** via a one-time `glocker -e2e-setup`: prompts the passphrase,
+  fetches the vault (authed by the ingest token), unwraps MK, writes it to
+  **`/etc/glocker/e2e.key`** (root, 0600), and sets `sync: {url, token, encrypt: true}`.
+- **Browser gets MK** by re-deriving from the passphrase per session; held in memory
+  (never a cookie, never localStorage of the raw key).
+- **Fail closed:** if `sync.encrypt` is on but the key can't load, the syncer refuses to
+  run rather than upload plaintext. *(Built.)*
 
-## 6. Server schema (hosted)
+## 6. Crypto primitives (settled)
 
-```
-EncRecord {
-  UserID   uint     // plaintext — scope
-  TS       int64    // plaintext — ordering / retention / range
-  Kind     string   // plaintext coarse type (or encrypted for zero type-leak)
-  RecordID string   // client-assigned unique id → idempotent upsert without the
-                     //   server reading content (replaces the url_hash unique key)
-  Nonce    []byte
-  Cipher   []byte   // AEAD(MK, canonical-plaintext-record)
-}
+- **Field encryption:** AES-256-GCM, 12-byte random nonce, `aad = ts|kind|field`
+  (context-binding). Go `crypto/cipher`; browser `WebCrypto`. Wire form per field:
+  **`base64(nonce ‖ ciphertext-with-tag)`**.
+- **KDF:** PBKDF2-HMAC-SHA256, **600,000 iterations**, 32-byte key, 16-byte salt
+  (iterations stored in the vault, upgradable). **Native in both WebCrypto and the Go
+  stdlib (`crypto/pbkdf2`) — no wasm, no vendoring.** Chosen over Argon2id to avoid a
+  wasm dependency; the trade-off is that PBKDF2 isn't memory-hard (more
+  GPU-parallelizable), which is a defensible "serious, not missile-codes" choice —
+  it's Bitwarden's long-time default (600k) and used by 1Password/LastPass. The
+  iteration count, not the algorithm, is what matters; keep it ≥ 600k. Argon2id
+  (via a ~7 KB `@openpgpjs/argon2id` wasm) stays an option if we ever want
+  memory-hardness — the vault stores its KDF name + params so a future switch is a
+  per-vault upgrade.
+- **Record id:** HMAC-SHA256(MK, canonical plaintext).
+- **Recovery-code key:** HKDF-SHA256 (the code is full-entropy, so no slow KDF).
+- libsodium and `age` were evaluated and rejected (too heavy / wrong shape).
 
-KeyVault {           // one per account
-  UserID            uint
-  Salt              []byte
-  WrappedMK         []byte   // AEAD(KEK from passphrase, MK)
-  WrappedMK_Recovery []byte  // AEAD(recovery code, MK)
-}
-```
-Heartbeat and lifecycle-type stay their own **plaintext** tables so liveness and
-the UNMANAGED overlay still compute server-side.
+## 7. Mode gating & the (near-zero) server change
 
-## 7. Data flow
+- **Agent:** `sync.encrypt` bool + `sync.encrypt_key_file`. `enc()` is a pass-through when off
+  (local byte-identical), else encrypts. *(Built.)*
+- **Server:** stays a **dumb, key-blind store** — `handleIngest`/`handleData` never
+  read a record's content. The *only* server change is a single **`e2e` bool in
+  `/api/me`** so the browser knows to decrypt. Storage columns already hold strings,
+  so they take ciphertext unchanged.
+- **Browser:** if `me.e2e`, unlock (passphrase → MK) and decrypt each field before the
+  (already client-side) aggregation.
 
-1. **Agent → server:** syncer reads `/var` logs, builds records, encrypts the
-   content fields under MK, POSTs `{UserID, TS, Kind, RecordID, Nonce, Cipher}` to
-   `/api/ingest`. Idempotent on `RecordID`.
-2. **Browser → server:** dashboard fetches ciphertext blobs (by kind + range),
-   plus WrappedMK + salt; user types passphrase → derive KEK → unwrap MK → decrypt
-   blobs → **aggregate in JS** → render.
+## 8. Data flow
 
-## 8. Feature impacts
+1. **Agent → server:** `syncer.build()` reads `/var` logs, computes `RecordID`
+   (HMAC), encrypts the sensitive fields (`enc`), POSTs the same-shaped batch to
+   `/api/ingest`. Idempotent on `(user, RecordID)`.
+2. **Server:** stores/serves opaque records; computes only metadata things
+   (unmanaged, liveness) that use plaintext fields.
+3. **Browser → server:** fetch the vault + records; passphrase → KEK → unwrap MK →
+   decrypt fields → run the Phase-1 aggregation → render.
 
-- **Server-side aggregation → browser.** `internal/stats` stops computing content
-  stats; it serves blobs. All the current `buildData` logic is reimplemented in JS.
-  *(This is the bulk of the work and is done first, plaintext, as its own phase —
-  see below.)*
-- **Notification layer** can only alert on **metadata** (counts, downtime), never
-  "you visited X" — consistent with "accountability stays content-free."
-- **Server-side search is lost** (server can't read content). Search becomes a
-  client-side filter over decrypted data.
+## 9. Export / opt-out
 
-## 9. Phased plan
+The **agent** holds the master key *and* the plaintext logs, so decrypted export is
+agent-native and needs no browser:
+- `glocker -export` — dump the local `/var` logs (plaintext; no crypto), or
+  decrypt-from-server for the full account.
+- Browser "Export" (decrypt-in-browser → download) is a **secondary** convenience for
+  agent-less devices — later.
 
-- **Phase 1 — client-side aggregation (plaintext, no crypto).** Move all dashboard
-  aggregation from the server (`internal/stats/buildData`) into the browser: the
-  server returns raw records; the JS computes everything it currently receives
-  pre-computed. Ships as a normal, non-crypto refactor and is independently
-  useful/testable. **← doing this first.**
-- **Phase 2 — encryption at rest in transit.** Encrypt content fields in the syncer;
-  blob schema + ingest changes; browser decrypts blobs before the Phase-1
-  aggregation runs. Key management minimal (single passphrase-derived key).
-- **Phase 3 — key lifecycle + hardening.** Master-key-wrapped-under-passphrase,
-  recovery code, key rotation, SRI/reproducible-build hardening, and the
-  cryptographer review before any public zero-knowledge claim.
+## 10. Status
 
-## 10. Open questions (for review)
+- **Built & tested:** `internal/e2e` (master key, vault wrap/unwrap, recovery code,
+  `EncryptRecord`/`DecryptRecord`); `cmd/e2ekit` CLI prototype; **Phase 1** (`/api/data`
+  content-blind, aggregation already client-side — shipped); agent syncer per-field
+  encryption (`sync.encrypt`, `enc`, `build()` wrapping, fail-closed) — *off by default;
+  not yet correct without the RecordID dedup (§4).*
+- **To build:** the steps below.
 
-- Encrypt `Kind` too, or accept the per-type count leak for query efficiency?
-- Per-record blobs (full detail, more storage) vs agent-side encrypted rollups
-  (compact, less detail)? Start per-record; revisit.
-- HKDF subkeys per purpose vs MK directly?
-- Nonce strategy (random 96-bit for GCM vs counter) and re-key cadence.
-- AEAD associated data: bind `UserID|TS|Kind|RecordID` as AAD so the server can't
-  splice a record into another account/time.
+## 11. Build steps (one at a time)
+
+1. **Browser crypto ↔ Go interop.** JS `deriveKEK`/wrap/unwrap/recovery helpers
+   (native WebCrypto — PBKDF2/AES-GCM/HMAC/HKDF, no wasm), validated by a **round-trip with `e2ekit`**: a
+   vault made in the browser opens with `e2ekit unlock`/`recover`, and vice-versa.
+   Isolates the one risky, review-worthy piece before any UI.
+2. **Server vault storage.** `KeyVault` table + `PUT/GET /api/vault`; add the `e2e`
+   bool to `/api/me`.
+3. **Browser "Set up encryption" UI.** Passphrase → generate MK → wrap → `PUT /api/vault`
+   → show recovery code once.
+4. **Agent `-e2e-setup`.** Prompt passphrase → fetch vault → unwrap → write
+   `/etc/glocker/e2e.key` + `sync {url, token, encrypt:true}`.
+5. **HMAC `RecordID` dedup (§4).** Agent computes it; store unique index → `(user,
+   RecordID)`; ingest/store updated.
+6. **Browser unlock + decrypt.** Decrypt fields before the Phase-1 aggregation, gated
+   on `me.e2e`.
+7. **End-to-end.** Sign up on `my.glockerapp.com`, set up encryption, connect the
+   agent, watch ciphertext decrypt in the dashboard — i.e. be a paying customer on
+   your own site.
+
+## 12. Footguns
+
+- **Never reuse a GCM nonce** under a key — fresh random 12 bytes every encryption.
+- **Never persist MK/KEK wrong** — in-memory (browser), root-only file (agent); never
+  a cookie or localStorage of the raw key.
+- **AAD must match byte-for-byte** across Go and JS (`ts|kind|field`), and the
+  **PBKDF2 iteration count + salt** must match both sides. One mismatch → nothing
+  decrypts.
+- **Record id must be HMAC, not a plain hash** (§4) — else the dedup id leaks content.
+- **Fail closed** if e2e is on but the key is missing — never fall back to plaintext.

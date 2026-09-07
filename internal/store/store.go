@@ -92,8 +92,33 @@ func (db *DB) Migrate() error {
 	if err := db.migrateURLHash(); err != nil {
 		return fmt.Errorf("store: url_hash migration: %w", err)
 	}
+	if err := db.migrateRecordIDIndexes(); err != nil {
+		return fmt.Errorf("store: record_id index migration: %w", err)
+	}
 	if err := db.AutoMigrate(AllModels()...); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
+	}
+	return nil
+}
+
+// migrateRecordIDIndexes drops the stale natural-key unique indexes for the
+// tables whose idempotency key moved to record_id (violations, unblocks) when
+// records became content-blind — the old key columns (keyword/url, domain) are
+// now ciphertext that re-encrypts every sync. GORM's AutoMigrate won't ALTER an
+// existing same-named index, so the new (user_id, record_id) definition only
+// takes effect if the old index is dropped first; AutoMigrate then rebuilds it.
+//
+// Idempotent (drop-if-exists, then AutoMigrate recreates) and safe over existing
+// rows: their record_id is NULL, and NULLs don't collide in a unique index. Note
+// ux_violation is also dropped by migrateURLHash; dropping again here is harmless.
+func (db *DB) migrateRecordIDIndexes() error {
+	for _, idx := range []string{"ux_violation", "ux_unblock"} {
+		// Raw SQL, not Migrator().DropIndex — the latter emits invalid
+		// `DROP INDEX CURRENT_SCHEMA()."name"` on Postgres. `DROP INDEX IF EXISTS`
+		// is valid on both Postgres and SQLite; the names are fixed literals.
+		if err := db.Exec("DROP INDEX IF EXISTS " + idx).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }

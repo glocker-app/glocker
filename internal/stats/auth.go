@@ -120,6 +120,30 @@ func requireToken(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// requireSessionOrToken accepts EITHER a browser session (cookie) or an API
+// bearer token, injecting the resolved account. It backs read endpoints the agent
+// needs (fetching its own key vault via its ingest token) that a human also reads
+// from the dashboard. With auth disabled it injects the implicit account.
+func requireSessionOrToken(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !authEnabled {
+			h(w, withUser(r, defaultUser()))
+			return
+		}
+		if c, err := r.Cookie(sessionCookie); err == nil {
+			if u, err := db.UserBySession(c.Value); err == nil {
+				h(w, withUser(r, u))
+				return
+			}
+		}
+		if u, err := db.UserByAPIToken(bearer(r)); err == nil {
+			h(w, withUser(r, u))
+			return
+		}
+		http.Error(w, "authentication required", http.StatusUnauthorized)
+	}
+}
+
 // bearer extracts a token from "Authorization: Bearer <tok>".
 func bearer(r *http.Request) string {
 	const p = "Bearer "

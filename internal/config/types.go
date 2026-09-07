@@ -15,6 +15,10 @@ const (
 	// DefaultGlockpeekURL is where the syncer ships records when Sync.GlockpeekURL
 	// is unset — the local glockpeek on its default port.
 	DefaultGlockpeekURL = "http://127.0.0.1:4317"
+	// DefaultEncryptKeyFile is where the agent reads the master key (base64 of 32
+	// bytes) when sync.encrypt is on and sync.encrypt_key_file is unset. Root-only;
+	// see docs/e2e-design.md.
+	DefaultEncryptKeyFile = "/etc/glocker/e2e.key"
 	// DefaultSyncIntervalSeconds is the incremental sync cadence default.
 	DefaultSyncIntervalSeconds = 300
 	HostsMarkerStart           = "### GLOCKER START ###"
@@ -284,6 +288,32 @@ type SyncConfig struct {
 	// IntervalSeconds is the incremental sync cadence (default
 	// DefaultSyncIntervalSeconds).
 	IntervalSeconds int `yaml:"interval_seconds"`
+	// Encrypt is COMPULSORY when sync is enabled: you must state it explicitly —
+	// true (encrypt each record's sensitive fields before upload, so a hosted
+	// glockpeek only ever stores ciphertext; required for a hosted target) or false
+	// (plaintext, only sensible for a local/loopback glockpeek with no untrusted
+	// operator). It's a pointer so an omitted key is detectable and rejected by the
+	// validator, rather than silently defaulting to plaintext and leaking content
+	// to a hosted server. Use Encryption() to read it safely.
+	Encrypt *bool `yaml:"encrypt"`
+	// EncryptKeyFile is the master-key path; optional, defaults to
+	// DefaultEncryptKeyFile when unset. Read only when Encrypt is true. Use
+	// KeyFile() to read it with the default applied.
+	EncryptKeyFile string `yaml:"encrypt_key_file"`
+}
+
+// Encryption reports whether the syncer should encrypt records before upload. It
+// is nil-safe: an unset Encrypt reads as false (the validator rejects an unset
+// Encrypt when sync is enabled, so in practice it's always explicit here).
+func (s SyncConfig) Encryption() bool { return s.Encrypt != nil && *s.Encrypt }
+
+// KeyFile resolves the master-key path, applying DefaultEncryptKeyFile when the
+// config leaves EncryptKeyFile unset.
+func (s SyncConfig) KeyFile() string {
+	if s.EncryptKeyFile != "" {
+		return s.EncryptKeyFile
+	}
+	return DefaultEncryptKeyFile
 }
 
 // DatabaseConfig selects glockpeek's DB backend. The abstraction is GORM, so

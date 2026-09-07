@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -106,7 +107,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	mux.HandleFunc("/api/ignored", requireUser(handleIgnored))
 	mux.HandleFunc("/api/sync", requireUser(handleSync))
 	mux.HandleFunc("/api/tokens", requireUser(handleTokens))
-	mux.HandleFunc("/api/vault", requireUser(handleVault))
+	mux.HandleFunc("/api/vault", handleVault) // gates per-method internally
 
 	// Admin-gated: account management (only the configured admin account).
 	mux.HandleFunc("/api/admin/users", requireAdmin(handleAdminUsers))
@@ -157,15 +158,21 @@ func handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := userFrom(r).ID
-	for _, step := range []func() error{
-		func() error { return db.IngestViolations(uid, in.Violations) },
-		func() error { return db.IngestUnblocks(uid, in.Unblocks) },
-		func() error { return db.IngestLifecycle(uid, in.Lifecycle) },
-		func() error { return db.IngestUsage(uid, in.Usage) },
-		func() error { return db.IngestHeartbeats(uid, in.Heartbeat) },
+	for _, step := range []struct {
+		name string
+		fn   func() error
+	}{
+		{"violations", func() error { return db.IngestViolations(uid, in.Violations) }},
+		{"unblocks", func() error { return db.IngestUnblocks(uid, in.Unblocks) }},
+		{"lifecycle", func() error { return db.IngestLifecycle(uid, in.Lifecycle) }},
+		{"usage", func() error { return db.IngestUsage(uid, in.Usage) }},
+		{"heartbeat", func() error { return db.IngestHeartbeats(uid, in.Heartbeat) }},
 	} {
-		if err := step(); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+		if err := step.fn(); err != nil {
+			// Name the failing stage and pass the error back in the body so the
+			// syncer can log something actionable instead of a bare 500. The error
+			// is a DB/constraint message, not row content, so it's safe to return.
+			http.Error(w, fmt.Sprintf("ingest %s failed: %v", step.name, err), http.StatusInternalServerError)
 			return
 		}
 	}

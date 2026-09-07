@@ -50,7 +50,7 @@ func TestAdminUsers(t *testing.T) {
 	}
 	// Give bob some synced records so the stats are non-trivial.
 	if err := sdb.IngestViolations(bob.ID, []store.Violation{
-		{TS: 1, Keyword: "k", URL: "http://x"}, {TS: 2, Keyword: "k", URL: "http://y"},
+		{TS: 1, RecordID: "r1", Keyword: "k", URL: "http://x"}, {TS: 2, RecordID: "r2", Keyword: "k", URL: "http://y"},
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -72,27 +72,35 @@ type APIToken struct {
 
 // ── Per-account stats (all scoped by UserID) ─────────────
 
-// Violation is one content/URL-keyword report. (UserID, TS, Keyword, URL) is the
-// idempotency key so re-ingesting a report line is a no-op.
+// Violation is one content/URL-keyword report. Dedup is by RecordID, not by the
+// content columns: under E2E, Keyword/URL/Domain are ciphertext that re-encrypts
+// to fresh bytes on every sync, so they can't be the idempotency key. RecordID is
+// a stable per-record fingerprint the agent computes over the plaintext (see
+// e2e.RecordID); (UserID, RecordID) is the natural key.
 type Violation struct {
-	ID      uint   `gorm:"primaryKey" json:"-"`
-	UserID  uint   `gorm:"index;uniqueIndex:ux_violation,priority:1" json:"-"`
-	TS      int64  `gorm:"index;uniqueIndex:ux_violation,priority:2" json:"ts"`
-	Keyword string `gorm:"uniqueIndex:ux_violation,priority:3" json:"keyword"`
-	// URLHash is sha256(URL); it stands in for the URL in the unique index because
-	// a raw URL can exceed Postgres's btree row-size limit. Set on ingest.
-	URLHash string `gorm:"uniqueIndex:ux_violation,priority:4" json:"-"`
+	ID     uint  `gorm:"primaryKey" json:"-"`
+	UserID uint  `gorm:"index;uniqueIndex:ux_violation,priority:1" json:"-"`
+	TS     int64 `gorm:"index" json:"ts"`
+	// RecordID is HMAC(masterKey, ts|keyword|url) under E2E, or sha256 of the same
+	// in plaintext mode. The dedup key; set by the agent, opaque to the server.
+	RecordID string `gorm:"uniqueIndex:ux_violation,priority:2" json:"recordId"`
+	Keyword  string `json:"keyword"`
+	// URLHash is sha256(URL). Vestigial for dedup now that RecordID is the key, but
+	// still populated so plaintext-mode ignored-matching keeps working.
+	URLHash string `json:"-"`
 	URL     string `json:"url"`
 	Type    string `json:"type"`
 	Domain  string `json:"domain"`
 }
 
 // Unblock is one temporary-unblock event; RestoreTS is nil while still open.
+// Dedup is by RecordID (see Violation) since Domain is encrypted under E2E.
 type Unblock struct {
 	ID        uint   `gorm:"primaryKey" json:"-"`
 	UserID    uint   `gorm:"index;uniqueIndex:ux_unblock,priority:1" json:"-"`
-	TS        int64  `gorm:"index;uniqueIndex:ux_unblock,priority:2" json:"ts"`
-	Domain    string `gorm:"uniqueIndex:ux_unblock,priority:3" json:"domain"`
+	TS        int64  `gorm:"index" json:"ts"`
+	RecordID  string `gorm:"uniqueIndex:ux_unblock,priority:2" json:"recordId"`
+	Domain    string `json:"domain"`
 	RestoreTS *int64 `json:"restoreTs"`
 	Reason    string `json:"reason"`
 }
