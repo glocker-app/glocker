@@ -12,16 +12,6 @@ const (
 	// in via `!include conf.d/<file>`. Installed alongside the config.
 	GlockerConfDDir = "/etc/glocker/conf.d"
 
-	// DefaultDatabaseDriver / DefaultDatabaseDSN are glockpeek's store defaults
-	// when config.Database is unset. sqlite file under /var/lib (mutable state,
-	// not /etc). Swap to "postgres" + a connection-string DSN for a hosted instance.
-	DefaultDatabaseDriver = "sqlite"
-	DefaultDatabaseDSN    = "/var/lib/glocker/glockpeek.db"
-
-	// GlockpeekMode values (see Config.GlockpeekMode). Empty defaults to local.
-	GlockpeekModeLocal  = "local"
-	GlockpeekModeHosted = "hosted"
-
 	// DefaultGlockpeekURL is where the syncer ships records when Sync.GlockpeekURL
 	// is unset — the local glockpeek on its default port.
 	DefaultGlockpeekURL = "http://127.0.0.1:4317"
@@ -269,39 +259,14 @@ type Config struct {
 	PanicCommand        string                  `yaml:"panic_command"`
 	Dev                 bool                    `yaml:"dev"`
 	LogLevel            string                  `yaml:"log_level"`
-	// GlockpeekListen is the address the standalone glockpeek dashboard process
-	// serves on (localhost only). Empty falls back to the built-in default.
-	GlockpeekListen string `yaml:"glockpeek_listen"`
-	// Database configures glockpeek's store. Dialect-agnostic (via GORM): sqlite
-	// locally, postgres for a hosted instance. Empty fields fall back to defaults.
-	Database DatabaseConfig `yaml:"database"`
-	// GlockpeekSecureCookies marks the dashboard's session cookie Secure. Set
-	// true for a hosted instance served over HTTPS (including behind a
-	// TLS-terminating proxy). Leave false for plain-http local use.
-	GlockpeekSecureCookies bool `yaml:"glockpeek_secure_cookies"`
-	// GlockpeekMode selects how the dashboard runs. Default GlockpeekModeLocal:
-	//   local  - personal desktop. Binds 127.0.0.1 only (unreachable from other
-	//            hosts), no login/registration, and the ingest endpoint is open
-	//            to same-machine clients (no token).
-	//   hosted - shared/remote instance: per-account logins + ingest tokens +
-	//            isolation (see GlockpeekSecureCookies). Bind address honored as
-	//            configured. [not the focus yet.]
-	GlockpeekMode string `yaml:"glockpeek_mode"`
-	// Sync configures the agent-side syncer (a goroutine in the daemon) that
-	// ships local /var records to a glockpeek instance. Local-first: recording
-	// and enforcement never depend on it.
+	// Sync configures how the agent ships its local /var records to a glockpeek
+	// instance. Local-first: recording and enforcement never depend on it, so a
+	// glockpeek that's down or unreachable only delays the dashboard, nothing else.
+	//
+	// glockpeek's own server settings (mode, listen, database, mail, …) are NOT
+	// here — they live in a separate file (see GlockpeekConfig / GlockpeekConfigFile)
+	// that only the glockpeek process reads.
 	Sync SyncConfig `yaml:"sync"`
-	// Mail is glockpeek's outbound transactional email (account verification).
-	Mail MailConfig `yaml:"mail"`
-	// GlockpeekAppURL is glockpeek's own public base URL (e.g.
-	// https://glockerapp.com), used to build links in emails (verification).
-	// No trailing slash. Server-side (glockpeek), like Mail.
-	GlockpeekAppURL string `yaml:"app_url"`
-	// GlockpeekAdminEmail names the account granted admin powers (user management
-	// in the dashboard). Hosted mode only; empty means no admin account.
-	GlockpeekAdminEmail string `yaml:"admin_email"`
-	// GlockpeekCaptcha turns on the proof-of-work captcha on signup (hosted).
-	GlockpeekCaptcha bool `yaml:"captcha"`
 }
 
 // SyncConfig controls the glocker->glockpeek syncer. The agent keeps recording

@@ -1,0 +1,47 @@
+# glockpeek dashboard config — /etc/glocker/glockpeek.yaml
+#
+# This file belongs to the glockpeek dashboard process ONLY. The glocker agent
+# never reads it, and glockpeek never reads the agent's config. Keep them apart:
+# a hosted glockpeek box has only this file; an agent laptop has only the agent
+# config. On a personal desktop you may not need this file at all — glockpeek
+# defaults to local mode + sqlite when it's absent.
+#
+# Everything lives under a single top-level `glockpeek:` stanza.
+
+glockpeek:
+  # Run mode:
+  #   local  — personal desktop: binds loopback only, no login, ingest open to
+  #            same-machine clients (no token).
+  #   hosted — shared/remote: per-account logins + ingest tokens + isolation.
+  mode: "local"
+
+  # Address the process binds. Behind a TLS-terminating proxy (e.g. Caddy) this is
+  # typically loopback; the proxy faces the public. In local mode the bind is
+  # forced to loopback regardless.
+  listen: "127.0.0.1:4317"
+
+  # Stats database (GORM; sqlite locally, postgres for a hosted instance — then the
+  # dsn is a connection string).
+  database:
+    driver: "sqlite"
+    dsn: "/var/lib/glocker/glockpeek.db"
+
+  # ── Hosted only (leave commented for a local/desktop setup) ────────────────
+  # The settings below apply only when mode is "hosted". If you deploy the hosted
+  # dashboard with the bundled tooling (deploy/ansible) they're generated for you;
+  # set them here only if you run a hosted glockpeek by hand.
+  #
+  # secure_cookies: true                    # HTTPS-only session cookies (serve behind TLS)
+  #
+  # app_url: "https://glockpeek.example.com"  # public base URL, used for email links
+  #
+  # admin_email: "you@example.com"          # account granted user-management powers
+  #
+  # captcha: true                           # proof-of-work captcha on signup
+  #
+  # mail:                                   # account-verification emails (Mailgun)
+  #   enabled: true
+  #   domain: "mg.example.com"
+  #   api_key: ""
+  #   from: "noreply@mg.example.com"
+  #   region: "us"                          # "us" or "eu" (match your Mailgun domain)

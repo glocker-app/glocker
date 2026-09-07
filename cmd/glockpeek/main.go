@@ -56,26 +56,26 @@ func main() {
 	adminEmail := ""
 	captcha := false
 
-	if cfg, err := config.LoadConfig(); err != nil {
-		log.Printf("glockpeek: could not load %s (%v); using defaults", config.GlockerConfigFile, err)
+	if gp, err := config.LoadGlockpeekConfig(); err != nil {
+		log.Printf("glockpeek: could not load %s (%v); using defaults", config.GlockpeekConfigFile, err)
 	} else {
-		if cfg.GlockpeekListen != "" {
-			addr = cfg.GlockpeekListen
+		if gp.Listen != "" {
+			addr = gp.Listen
 		}
-		if cfg.Database.Driver != "" {
-			driver = cfg.Database.Driver
+		if gp.Database.Driver != "" {
+			driver = gp.Database.Driver
 		}
-		if cfg.Database.DSN != "" {
-			dsn = cfg.Database.DSN
+		if gp.Database.DSN != "" {
+			dsn = gp.Database.DSN
 		}
-		secureCookies = cfg.GlockpeekSecureCookies
-		if cfg.GlockpeekMode != "" {
-			mode = cfg.GlockpeekMode
+		secureCookies = gp.SecureCookies
+		if gp.Mode != "" {
+			mode = gp.Mode
 		}
-		mailCfg = cfg.Mail
-		appURL = cfg.GlockpeekAppURL
-		adminEmail = cfg.GlockpeekAdminEmail
-		captcha = cfg.GlockpeekCaptcha
+		mailCfg = gp.Mail
+		appURL = gp.AppURL
+		adminEmail = gp.AdminEmail
+		captcha = gp.Captcha
 	}
 	if *listen != "" {
 		addr = *listen
@@ -139,7 +139,8 @@ func main() {
 	mux := http.NewServeMux()
 	stats.Register(mux, db, opts)
 
-	log.Printf("glockpeek serving the dashboard at http://%s/ (%s); db %s: %s", addr, desc, driver, dsn)
+	// Note: the DSN is deliberately NOT logged — it can carry a database password.
+	log.Printf("glockpeek serving the dashboard at http://%s/ (%s); db driver %s", addr, desc, driver)
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
 

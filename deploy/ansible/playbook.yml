@@ -94,12 +94,16 @@
       register: glockpeek_bin
     - name: Write glockpeek config
       ansible.builtin.template:
-        src: config.yaml.j2
-        dest: /etc/glocker/config.yaml
+        src: glockpeek.yaml.j2
+        dest: /etc/glocker/glockpeek.yaml
         owner: root
         group: glockpeek
         mode: "0640"      # secret DSN — readable by the service user only
       notify: restart glockpeek
+    - name: Remove the retired agent-style config (glockpeek reads glockpeek.yaml now)
+      ansible.builtin.file:
+        path: /etc/glocker/config.yaml
+        state: absent
     - name: Install systemd unit
       ansible.builtin.template:
         src: glockpeek.service.j2

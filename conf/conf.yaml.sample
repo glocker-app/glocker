@@ -18,52 +18,26 @@ dev: false
 # Log verbosity: debug | info | warn | error
 log_level: "info"
 
-# ── glockpeek dashboard (stats service; reads this same config file) ─────────
+# ── glockpeek dashboard ──────────────────────────────────────────────────────
+# The glockpeek dashboard is a separate process with its OWN config file,
+# /etc/glocker/glockpeek.yaml (see conf/glockpeek.yaml.sample). Nothing about the
+# dashboard — mode, listen address, database, mail, captcha — lives here anymore.
+# This file is the agent's; that file is the server's. On a personal desktop you
+# may not need one at all (glockpeek defaults to local mode + sqlite).
 
-# Listen address for the glockpeek dashboard. Default 127.0.0.1:4317 (localhost
-# only). Honored as configured in hosted mode.
-glockpeek_listen: "127.0.0.1:4317"
-
-# glockpeek mode:
-#   local  — personal desktop: loopback-only, no login, open same-machine ingest.
-#   hosted — shared/remote: per-account logins + ingest tokens + isolation.
-glockpeek_mode: "local"
-
-# Stats database (GORM; sqlite locally, postgres for a hosted instance — then the
-# dsn is a connection string).
-database:
-  driver: "sqlite"
-  dsn: "/var/lib/glocker/glockpeek.db"
-
-# ── Hosted glockpeek only (leave commented for a local/desktop setup) ────────
-# These configure glockpeek's web/login side and apply ONLY when glockpeek_mode
-# is "hosted". A local install doesn't use them, so they're commented out. If you
-# deploy the hosted dashboard with the bundled tooling (deploy/ansible), they're
-# generated for you — uncomment and set them here only if you run a hosted
-# glockpeek by hand.
-#
-# glockpeek_secure_cookies: true            # HTTPS-only session cookies (serve behind TLS)
-#
-# mail:                                     # account-verification emails (Mailgun)
-#   enabled: true
-#   domain: "mg.example.com"
-#   api_key: ""
-#   from: "noreply@mg.example.com"
-#   region: "us"                            # "us" or "eu" (match your Mailgun domain)
-#
-# app_url: "https://glockpeek.example.com"  # public base URL, used for email links
-#
-# captcha: true                             # proof-of-work captcha on signup
-
-# ── Syncer ───────────────────────────────────────────────────────────────────
-# Daemon goroutine that ships local /var records to glockpeek's ingest API.
-# Local-first: it never blocks enforcement — backfills at startup, then
-# incremental on a timer, retrying if glockpeek is down.
+# ── Sync ─────────────────────────────────────────────────────────────────────
+# How the agent ships its local /var records to a glockpeek instance. Local-first:
+# it never blocks enforcement — it backfills at startup, then pushes new records
+# on a timer, retrying if glockpeek is down.
 sync:
   enabled: false                          # turn on to sync to a glockpeek instance
   glockpeek_url: "http://127.0.0.1:4317"  # local glockpeek; point at a remote host to sync off-box
   token: ""                               # ingest bearer token (only for a hosted glockpeek)
   interval_seconds: 300                   # incremental sync cadence
+  e2e: false                              # end-to-end encryption: encrypt sensitive fields before upload
+                                          #   so a hosted glockpeek only stores ciphertext. Needs the master
+                                          #   key (see e2e_key_file). Leave off for a local/loopback glockpeek.
+  e2e_key_file: "/etc/glocker/e2e.key"    # master key (base64 of 32 bytes); read only when e2e is on
 
 # ── Blocking mechanisms ──────────────────────────────────────────────────────
 
