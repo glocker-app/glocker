@@ -174,6 +174,15 @@ type IgnoredViolation struct {
 	Domain  string `json:"domain"`
 }
 
+// KeyVault holds the account's passphrase-wrapped master key for end-to-end
+// encryption (see internal/e2e / docs/e2e-design.md). The server stores it
+// opaquely — it's wrapped material (never a key), and the server can't open it.
+// One row per account; Vault is the vault JSON verbatim from the client.
+type KeyVault struct {
+	UserID uint   `gorm:"primaryKey" json:"-"`
+	Vault  string `json:"-"`
+}
+
 // AllModels is the migration set. Kept in one place so Migrate and tests stay in
 // sync.
 func AllModels() []any {
@@ -181,6 +190,6 @@ func AllModels() []any {
 		&User{}, &Session{}, &APIToken{}, &VerificationToken{},
 		&Violation{}, &Unblock{}, &LifecycleEvent{}, &UsageSample{},
 		&Heartbeat{}, &Rule{}, &TagColor{}, &IgnoredViolation{},
-		&SyncStatus{},
+		&SyncStatus{}, &KeyVault{},
 	}
 }

@@ -208,6 +208,15 @@ async function bootDashboard(me) {
       if (r.ok) me = await r.json();
     } catch { /* keep partial me */ }
   }
+  // Hosted is end-to-end-encrypted only: an account with no key vault must set a
+  // passphrase before it can reach the dashboard. Both the fresh-load and the
+  // post-login paths funnel through here. (Temporary bounce to the standalone
+  // setup page; the planned HTMX/SSR migration replaces this with a real
+  // server-side /settings/encryption route and clean URL.)
+  if (me && me.auth && !me.e2e) {
+    location.href = "setup-encryption.html";
+    return;
+  }
   restoreWindow(); // apply the saved range/offset before building controls
   buildRangeButtons();
   try {

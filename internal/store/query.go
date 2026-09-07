@@ -71,6 +71,32 @@ func (db *DB) Colors(userID uint) (map[string]string, error) {
 	return m, nil
 }
 
+// GetVault returns the account's stored vault JSON (ok=false if none). The server
+// never parses it — it's opaque wrapped material.
+func (db *DB) GetVault(userID uint) (string, bool, error) {
+	var v KeyVault
+	err := db.Where("user_id = ?", userID).First(&v).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return v.Vault, true, nil
+}
+
+// SetVault stores (or replaces) the account's vault JSON.
+func (db *DB) SetVault(userID uint, vaultJSON string) error {
+	return db.Save(&KeyVault{UserID: userID, Vault: vaultJSON}).Error
+}
+
+// HasVault reports whether the account has set up encryption.
+func (db *DB) HasVault(userID uint) bool {
+	var n int64
+	db.Model(&KeyVault{}).Where("user_id = ?", userID).Count(&n)
+	return n > 0
+}
+
 func (db *DB) IgnoredViolations(userID uint) ([]IgnoredViolation, error) {
 	var out []IgnoredViolation
 	err := db.Where("user_id = ?", userID).Order("ts asc").Find(&out).Error
