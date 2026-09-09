@@ -242,9 +242,20 @@ func (db *DB) RecordIngest(userID uint, s SyncStatus) error {
 		Columns: []clause.Column{{Name: "user_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"last_ingest_at", "last_violations", "last_unblocks",
-			"last_lifecycle", "last_usage", "last_heartbeat",
+			"last_lifecycle", "last_usage", "last_heartbeat", "encrypted",
 		}),
 	}).Create(&s).Error
+}
+
+// AccountEncrypted reports whether the account's most recent ingest was encrypted,
+// so the dashboard knows to decrypt records before rendering. False if the account
+// has never synced.
+func (db *DB) AccountEncrypted(userID uint) bool {
+	var s SyncStatus
+	if err := db.Where("user_id = ?", userID).First(&s).Error; err != nil {
+		return false
+	}
+	return s.Encrypted
 }
 
 // HighWaterMarks returns the max stored TS per source for an account, keyed by

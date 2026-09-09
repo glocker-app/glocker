@@ -6,6 +6,11 @@ glockpeek:
   listen: "127.0.0.1:4317"
   secure_cookies: true
 
+  # Reject any ingest batch not marked encrypted — a hosted instance should never
+  # store cleartext. Override with -e require_encryption=false if agents aren't
+  # encrypting yet.
+  require_encryption: {{ (require_encryption | default(true)) | string | lower }}
+
   database:
     driver: "postgres"
     dsn: "host=127.0.0.1 port=5432 user={{ pg_user }} password={{ pg_password }} dbname={{ pg_db }} sslmode=disable"

@@ -51,12 +51,12 @@ func TestConnectFetchesUnwrapsAndWritesKey(t *testing.T) {
 	defer srv.Close()
 
 	keyPath := filepath.Join(t.TempDir(), "e2e.key")
-	got, err := Run(cfgFor(srv.URL, "tok-123", keyPath), pass)
+	got, res, err := Run(cfgFor(srv.URL, "tok-123", keyPath), pass, false)
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if got != keyPath {
-		t.Errorf("returned path %q, want %q", got, keyPath)
+	if got != keyPath || res != Installed {
+		t.Errorf("returned path %q res %v, want %q Installed", got, res, keyPath)
 	}
 
 	// The file holds base64(masterKey), 0600, and round-trips to the same key.
@@ -84,7 +84,7 @@ func TestConnectWrongPassphraseFails(t *testing.T) {
 	defer srv.Close()
 
 	keyPath := filepath.Join(t.TempDir(), "e2e.key")
-	if _, err := Run(cfgFor(srv.URL, "tok", keyPath), []byte("wrong passphrase")); err == nil {
+	if _, _, err := Run(cfgFor(srv.URL, "tok", keyPath), []byte("wrong passphrase"), false); err == nil {
 		t.Fatal("expected failure with wrong passphrase")
 	}
 	if _, err := os.Stat(keyPath); !os.IsNotExist(err) {
@@ -95,7 +95,7 @@ func TestConnectWrongPassphraseFails(t *testing.T) {
 func TestConnectNoVaultIsActionable(t *testing.T) {
 	srv := vaultServer(t, "tok", "") // 404: account has no vault yet
 	defer srv.Close()
-	_, err := Run(cfgFor(srv.URL, "tok", filepath.Join(t.TempDir(), "k")), []byte("x"))
+	_, _, err := Run(cfgFor(srv.URL, "tok", filepath.Join(t.TempDir(), "k")), []byte("x"), false)
 	if err == nil || !strings.Contains(err.Error(), "set one up in the dashboard") {
 		t.Fatalf("want a 'set up a vault first' hint, got %v", err)
 	}
@@ -103,10 +103,44 @@ func TestConnectNoVaultIsActionable(t *testing.T) {
 
 func TestConnectRequiresSyncConfig(t *testing.T) {
 	// No URL -> refuses before touching the network.
-	if _, err := Run(cfgFor("", "tok", "/tmp/k"), []byte("x")); err == nil {
+	if _, _, err := Run(cfgFor("", "tok", "/tmp/k"), []byte("x"), false); err == nil {
 		t.Error("expected error when glockpeek_url is unset")
 	}
-	if _, err := Run(cfgFor("http://x", "", "/tmp/k"), []byte("x")); err == nil {
+	if _, _, err := Run(cfgFor("http://x", "", "/tmp/k"), []byte("x"), false); err == nil {
 		t.Error("expected error when token is unset")
+	}
+}
+
+// -connect must not silently clobber an existing key: an identical key is a
+// no-op (AlreadyMatches, confirming the installed key is the vault's), a
+// different key is refused without force, and replaced with force.
+func TestConnectKeyExistsGuard(t *testing.T) {
+	pass := []byte("correct horse battery staple")
+	mk, _ := e2e.GenerateMasterKey()
+	v, _, _ := e2e.WrapMasterKey(mk, pass)
+	vj, _ := json.Marshal(v)
+	srv := vaultServer(t, "tok", string(vj))
+	defer srv.Close()
+	keyPath := filepath.Join(t.TempDir(), "e2e.key")
+	cfg := cfgFor(srv.URL, "tok", keyPath)
+
+	// First connect installs it.
+	if _, res, err := Run(cfg, pass, false); err != nil || res != Installed {
+		t.Fatalf("first connect: res=%v err=%v", res, err)
+	}
+	// Re-connect with the same vault -> AlreadyMatches, no error, no force.
+	if _, res, err := Run(cfg, pass, false); err != nil || res != AlreadyMatches {
+		t.Fatalf("re-connect should match: res=%v err=%v", res, err)
+	}
+	// A different key already on disk -> refused without force.
+	if err := os.WriteFile(keyPath, []byte("Zm9yZWlnbmtleWZvcmVpZ25rZXlmb3JlaWdua2V5MDA=\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := Run(cfg, pass, false); err == nil || !strings.Contains(err.Error(), "different key is already installed") {
+		t.Fatalf("expected refusal on mismatched key, got %v", err)
+	}
+	// With force, it replaces.
+	if _, res, err := Run(cfg, pass, true); err != nil || res != Installed {
+		t.Fatalf("force replace: res=%v err=%v", res, err)
 	}
 }

@@ -166,6 +166,10 @@ type SyncStatus struct {
 	LastLifecycle  int       `json:"lifecycle"`
 	LastUsage      int       `json:"usage"`
 	LastHeartbeat  int       `json:"heartbeat"`
+	// Encrypted mirrors the most recent ingest batch's marker: whether the agent is
+	// encrypting sensitive fields. The dashboard reads it (via /api/me) to decide
+	// whether records need decrypting in the browser before rendering.
+	Encrypted bool `json:"-"`
 }
 
 // IgnoredViolation marks a report line as a false positive so the dashboard

@@ -4,6 +4,8 @@
 // where you actually slip — and hatches the slots where glocker was off, so a
 // blank cell is never mistaken for a safe one.
 
+import { openVault, decryptField } from "./e2e-crypto.js";
+
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY = 86400000;
 const HOUR = 3600000;
@@ -199,6 +201,124 @@ function setupRegister() {
   };
 }
 
+// ── End-to-end decryption ────────────────────────────────────────────────────
+// When the account's records are encrypted (me.encrypted), the browser holds the
+// master key for the session and decrypts each record's sensitive fields before
+// any aggregation runs — the server only ever sees ciphertext.
+
+let masterKey = null; // Uint8Array once unlocked; null otherwise
+
+// Which fields are encrypted per collection, and the record "kind" — must match
+// the agent's enc() calls (internal/syncer/syncer.go). The aad each field was
+// sealed under is `${ts}|${kind}|${field}`.
+// Flat collections: the JSON field name equals the aad label the agent sealed
+// under. Usage is handled separately below because /api/data nests it as
+// active.{title} while the agent's aad label is "activeTitle".
+const ENC_FIELDS = {
+  violations: { kind: "violation", fields: ["keyword", "url", "domain"] },
+  unblocks: { kind: "unblock", fields: ["domain", "reason"] },
+  lifecycle: { kind: "lifecycle", fields: ["note"] },
+};
+
+// promptPassphrase shows a minimal overlay asking for the vault passphrase and
+// resolves with the entered string. (A styled screen can replace this with the
+// planned frontend migration; it's self-contained for now.)
+function promptPassphrase(errMsg) {
+  return new Promise((resolve) => {
+    const ov = document.createElement("div");
+    ov.style.cssText =
+      "position:fixed;inset:0;background:rgba(7,9,13,.94);display:flex;align-items:center;justify-content:center;z-index:9999;";
+    ov.innerHTML = `
+      <form style="background:#0d1017;border:1px solid #1b2230;border-radius:12px;padding:24px;width:min(420px,90vw);color:#e7ecf3;font-family:inherit;">
+        <h2 style="margin:0 0 8px;font-size:1.1rem;">Unlock your data</h2>
+        <p style="color:#8b97a8;font-size:.9rem;margin:0 0 14px;">Enter your passphrase to view your dashboard.</p>
+        <input type="password" autocomplete="current-password" placeholder="passphrase" style="width:100%;padding:10px 12px;background:#05070a;border:1px solid #1b2230;border-radius:8px;color:#e7ecf3;font-size:1rem;box-sizing:border-box;" />
+        <div class="pp-err" style="color:#ff4d4d;font-size:.85rem;min-height:1.2em;margin-top:8px;"></div>
+        <button type="submit" style="margin-top:12px;width:100%;padding:11px;background:#ff4d4d;color:#150404;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Unlock</button>
+      </form>`;
+    ov.querySelector(".pp-err").textContent = errMsg || "";
+    const form = ov.querySelector("form");
+    const input = ov.querySelector("input");
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const v = input.value;
+      document.body.removeChild(ov);
+      resolve(v);
+    });
+    document.body.appendChild(ov);
+    input.focus();
+  });
+}
+
+// unlockVault fetches the vault and opens it with the user's passphrase, retrying
+// on a wrong passphrase. Sets masterKey. Returns false only if the vault can't be
+// fetched.
+async function unlockVault() {
+  if (masterKey) return true;
+  let vault;
+  try {
+    const r = await fetch("api/vault", { credentials: "same-origin" });
+    if (!r.ok) return false;
+    vault = await r.json();
+  } catch {
+    return false;
+  }
+  let err = "";
+  for (;;) {
+    const pass = await promptPassphrase(err);
+    try {
+      masterKey = await openVault(vault, new TextEncoder().encode(pass));
+      return true;
+    } catch {
+      err = "That passphrase didn't work — try again.";
+    }
+  }
+}
+
+// decryptData decrypts every encrypted field of the fetched data in place, so all
+// downstream aggregation/categorization sees plaintext (exactly as before E2E).
+// A field that fails to decrypt (e.g. data encrypted under a different key) is
+// marked with a lock glyph; the count of failures is returned.
+async function decryptData(data) {
+  if (!masterKey || !data) return 0;
+  const td = new TextDecoder();
+  const te = new TextEncoder();
+  let failures = 0;
+  for (const [coll, spec] of Object.entries(ENC_FIELDS)) {
+    const rows = data[coll];
+    if (!Array.isArray(rows)) continue;
+    for (const row of rows) {
+      for (const f of spec.fields) {
+        const val = row[f];
+        if (!val) continue; // empty fields were sent unencrypted
+        try {
+          const aad = te.encode(`${row.ts}|${spec.kind}|${f}`);
+          row[f] = td.decode(await decryptField(masterKey, val, aad));
+        } catch {
+          row[f] = "🔒";
+          failures++;
+        }
+      }
+    }
+  }
+  // Usage nests the active window (active.title), sealed under the aad label
+  // "activeTitle"; class/instance stay plaintext for now.
+  if (Array.isArray(data.usage)) {
+    for (const row of data.usage) {
+      const a = row.active;
+      if (a && a.title) {
+        try {
+          a.title = td.decode(await decryptField(masterKey, a.title, te.encode(`${row.ts}|usage|activeTitle`)));
+        } catch {
+          a.title = "🔒";
+          failures++;
+        }
+      }
+    }
+  }
+  return failures;
+}
+
 async function bootDashboard(me) {
   // The login path calls us with a partial {auth:true}; fetch the full identity
   // (email/admin) so admin-only UI can gate on it without a page reload.
@@ -217,6 +337,11 @@ async function bootDashboard(me) {
     location.href = "setup-encryption.html";
     return;
   }
+  // If the account's data is encrypted, unlock the vault (prompt for passphrase)
+  // so records can be decrypted below. Done before any data is rendered.
+  if (me && me.encrypted) {
+    await unlockVault();
+  }
   restoreWindow(); // apply the saved range/offset before building controls
   buildRangeButtons();
   try {
@@ -224,6 +349,11 @@ async function bootDashboard(me) {
     if (res.status === 401) { showLogin(); return; }
     if (!res.ok) throw new Error(`server returned ${res.status}`);
     state.data = await res.json();
+    // Decrypt in the browser before any aggregation sees the records.
+    const failed = await decryptData(state.data);
+    if (failed > 0) {
+      console.warn(`glockpeek: ${failed} field(s) could not be decrypted — the installed agent key may not match this vault.`);
+    }
   } catch (err) {
     showError(`Could not load logs: ${err.message}`);
     return;
@@ -1074,6 +1204,7 @@ async function reloadData() {
     const res = await fetch("api/data");
     if (!res.ok) return;
     state.data = await res.json();
+    await decryptData(state.data); // same in-browser decrypt as the initial load
     render();
     if (state.openDay != null) showDay(state.openDay);
   } catch { /* keep current view */ }

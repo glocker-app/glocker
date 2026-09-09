@@ -34,10 +34,13 @@ sync:
   glockpeek_url: "http://127.0.0.1:4317"  # local glockpeek; point at a remote host to sync off-box
   token: ""                               # ingest bearer token (only for a hosted glockpeek)
   interval_seconds: 300                   # incremental sync cadence
-  e2e: false                              # end-to-end encryption: encrypt sensitive fields before upload
-                                          #   so a hosted glockpeek only stores ciphertext. Needs the master
-                                          #   key (see e2e_key_file). Leave off for a local/loopback glockpeek.
-  e2e_key_file: "/etc/glocker/e2e.key"    # master key (base64 of 32 bytes); read only when e2e is on
+  encrypt: false                          # REQUIRED when enabled is true — choose explicitly:
+                                          #   true  = encrypt sensitive fields before upload so a hosted
+                                          #           glockpeek only ever stores ciphertext (needs the master
+                                          #           key; install it with `glocker -connect`).
+                                          #   false = plaintext; only sensible for a local/loopback glockpeek.
+  # encrypt_key_file: "/etc/glocker/e2e.key"   # optional; master key path (base64 of 32 bytes). Read only
+                                          #   when encrypt is true. Defaults to /etc/glocker/e2e.key if unset.
 
 # ── Blocking mechanisms ──────────────────────────────────────────────────────
 

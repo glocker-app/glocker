@@ -21,40 +21,67 @@ import (
 	"glocker/internal/e2e"
 )
 
-// Run fetches the account vault, unwraps it with passphrase, and writes the master
-// key to the configured key file. Returns the key-file path on success. It is
-// idempotent: re-running overwrites the key with the same value.
-func Run(cfg *config.Config, passphrase []byte) (string, error) {
+// Result reports what Run did with the key file.
+type Result int
+
+const (
+	// Installed means the key was written (freshly, or replacing a different one
+	// under force).
+	Installed Result = iota
+	// AlreadyMatches means a key was already present and equals the vault key, so
+	// nothing was written — and, usefully, it confirms the installed key really is
+	// this account's vault key (so already-synced ciphertext is decryptable).
+	AlreadyMatches
+)
+
+// Run fetches the account vault, unwraps it with passphrase, and installs the
+// master key at the configured key file.
+//
+// If a key is already present it is NOT blindly overwritten: an identical key is a
+// no-op (AlreadyMatches), and a *different* key is refused unless force is set —
+// clobbering it would make any data encrypted under the old key unreadable.
+func Run(cfg *config.Config, passphrase []byte, force bool) (string, Result, error) {
 	url := strings.TrimRight(strings.TrimSpace(cfg.Sync.GlockpeekURL), "/")
 	if url == "" {
-		return "", fmt.Errorf("sync.glockpeek_url is not set — connect needs a hosted glockpeek to fetch your vault from")
+		return "", 0, fmt.Errorf("sync.glockpeek_url is not set — connect needs a hosted glockpeek to fetch your vault from")
 	}
 	if strings.TrimSpace(cfg.Sync.Token) == "" {
-		return "", fmt.Errorf("sync.token is not set — connect authenticates to glockpeek with your device token")
+		return "", 0, fmt.Errorf("sync.token is not set — connect authenticates to glockpeek with your device token")
 	}
 	keyPath := cfg.Sync.KeyFile()
 
 	vaultJSON, err := fetchVault(url, cfg.Sync.Token)
 	if err != nil {
-		return "", err
+		return "", 0, err
 	}
 
 	var v e2e.Vault
 	if err := json.Unmarshal(vaultJSON, &v); err != nil {
-		return "", fmt.Errorf("vault from server is not valid JSON: %w", err)
+		return "", 0, fmt.Errorf("vault from server is not valid JSON: %w", err)
 	}
 	mk, err := v.Open(passphrase)
 	if err != nil {
-		return "", fmt.Errorf("could not unlock the vault — wrong passphrase, or the vault is corrupt: %w", err)
+		return "", 0, fmt.Errorf("could not unlock the vault — wrong passphrase, or the vault is corrupt: %w", err)
 	}
 	if len(mk) != e2e.MasterKeyLen {
-		return "", fmt.Errorf("unwrapped key is %d bytes, want %d", len(mk), e2e.MasterKeyLen)
+		return "", 0, fmt.Errorf("unwrapped key is %d bytes, want %d", len(mk), e2e.MasterKeyLen)
+	}
+
+	// Guard against clobbering an existing key: identical is a no-op; different is
+	// refused unless forced (overwriting orphans data encrypted under the old key).
+	if existing, rerr := os.ReadFile(keyPath); rerr == nil {
+		if strings.TrimSpace(string(existing)) == base64.StdEncoding.EncodeToString(mk) {
+			return keyPath, AlreadyMatches, nil
+		}
+		if !force {
+			return keyPath, 0, fmt.Errorf("a different key is already installed at %s — overwriting it makes any data encrypted under the old key unreadable; re-run `glocker -connect -force` to replace it", keyPath)
+		}
 	}
 
 	if err := writeKey(keyPath, mk); err != nil {
-		return "", err
+		return "", 0, err
 	}
-	return keyPath, nil
+	return keyPath, Installed, nil
 }
 
 // fetchVault GETs the account's vault, authenticating with the ingest token. It

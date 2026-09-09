@@ -71,6 +71,7 @@ func main() {
 	lockFlag := flag.Bool("lock", false, "Immediately lock sudoers access (ignores time windows)")
 	securityCheckFlag := flag.Bool("security-check", false, "Report bypass/recovery routes (root login, recovery mode, extra sudoers, SSH root, autologin); read-only")
 	connectFlag := flag.Bool("connect", false, "Connect this machine to your dashboard's encryption: fetch your key vault, unlock it with your passphrase, and install the key so synced data is end-to-end encrypted")
+	connectForce := flag.Bool("force", false, "With -connect: replace an existing key even if it differs from your vault (WARNING: makes data encrypted under the old key unreadable)")
 	purgeFlag := flag.Bool("purge", false, "With -uninstall: also remove the glockdoc watchdog + its cron. Alone: clean up a leftover watchdog from an earlier uninstall.")
 	versionFlag := flag.Bool("version", false, "Show version information")
 
@@ -130,9 +131,14 @@ func main() {
 		if err != nil {
 			log.Fatalf("Could not read passphrase: %v", err)
 		}
-		keyPath, err := connect.Run(cfg, pass)
+		keyPath, res, err := connect.Run(cfg, pass, *connectForce)
 		if err != nil {
 			log.Fatalf("Connect failed: %v", err)
+		}
+		if res == connect.AlreadyMatches {
+			fmt.Printf("\nThe key at %s already matches your dashboard vault — nothing to change.\n", keyPath)
+			fmt.Println("(So data already encrypted under it is decryptable with your passphrase.)")
+			return
 		}
 		fmt.Printf("\nEncryption key installed at %s (from your dashboard vault).\n\n", keyPath)
 		if cfg.Sync.Encryption() {

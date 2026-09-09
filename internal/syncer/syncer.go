@@ -411,8 +411,9 @@ func (s *Syncer) build() (Payload, map[string]int64) {
 			if r.TS < cur {
 				continue
 			}
-			// The window title is the sensitive bit; class/instance (app names)
-			// stay clear for now.
+			// The window title is the sensitive bit (document/URL/message text);
+			// class/instance (app names) stay clear for now. Encrypting them too is a
+			// follow-up that needs a coordinated agent+browser change + re-sync.
 			r.ActiveTitle = s.enc(r.ActiveTitle, r.TS, "usage", "activeTitle")
 			p.Usage = append(p.Usage, r)
 			max["usage"] = maxi(max["usage"], r.TS)

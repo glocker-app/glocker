@@ -196,7 +196,7 @@ func handleIngest(w http.ResponseWriter, r *http.Request) {
 	_ = db.RecordIngest(uid, store.SyncStatus{
 		LastViolations: len(in.Violations), LastUnblocks: len(in.Unblocks),
 		LastLifecycle: len(in.Lifecycle), LastUsage: len(in.Usage),
-		LastHeartbeat: len(in.Heartbeat),
+		LastHeartbeat: len(in.Heartbeat), Encrypted: in.Encrypted,
 	})
 	writeJSON(w, map[string]any{
 		"accepted": map[string]int{

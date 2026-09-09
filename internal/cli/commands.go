@@ -167,6 +167,12 @@ func GetStatusResponse(cfg *config.Config) string {
 				response.WriteString(fmt.Sprintf("  Pending: %s; next push imminent\n", pending))
 			}
 		}
+		// Whether records are encrypted before upload (end-to-end) or sent as plaintext.
+		if cfg.Sync.Encryption() {
+			response.WriteString("  Encryption: ON — records end-to-end encrypted before upload\n")
+		} else {
+			response.WriteString("  Encryption: OFF — records uploaded as plaintext\n")
+		}
 		// Surface the most recent push failure (e.g. a require_encryption 422) so a
 		// stuck sync is visible without digging through the journal.
 		if ss.LastError != "" {
