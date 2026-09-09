@@ -386,25 +386,52 @@ async function bootDashboard(me) {
   renderSync();
   setInterval(renderSync, 30000);
 
-  // In-app refresh, manual + timed. A full page reload (Ctrl-R) drops the
-  // in-memory master key and re-prompts for the passphrase; reloadData() re-fetches
-  // and re-decrypts in place, so the session stays unlocked.
+  // In-app refresh: a manual button plus a countdown-driven auto-refresh with
+  // backoff. reloadData() re-fetches and re-decrypts in place, so unlike Ctrl-R it
+  // keeps the session unlocked. The interval starts at 2m and doubles after each
+  // auto-refresh (an idle dashboard refreshes ever less often); a manual refresh
+  // resets it to 2m. Skips while the tab is hidden or the user is typing.
+  const BASE_REFRESH_MS = 2 * 60 * 1000;
+  const MAX_REFRESH_MS = 32 * 60 * 1000;
+  let refreshEveryMs = BASE_REFRESH_MS;
+  let nextRefreshAt = Date.now() + refreshEveryMs;
   const refreshBtn = document.getElementById("refresh-btn");
+
+  const cdText = (ms) => {
+    const s = Math.max(0, Math.round(ms / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  };
+  const paintRefresh = () => {
+    if (refreshBtn && !refreshBtn.disabled) refreshBtn.textContent = `↻ Refresh · ${cdText(nextRefreshAt - Date.now())}`;
+  };
+  const runRefresh = async () => {
+    if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.textContent = "↻ Refreshing…"; }
+    try { await reloadData(); renderSync(); } finally { if (refreshBtn) refreshBtn.disabled = false; }
+  };
+
   if (refreshBtn) {
     refreshBtn.onclick = async () => {
-      refreshBtn.disabled = true;
-      try { await reloadData(); renderSync(); } finally { refreshBtn.disabled = false; }
+      await runRefresh();
+      refreshEveryMs = BASE_REFRESH_MS; // manual refresh restarts the cadence at 2m
+      nextRefreshAt = Date.now() + refreshEveryMs;
+      paintRefresh();
     };
   }
-  // Auto-refresh every 60s, but skip when the tab is hidden or the user is typing
-  // (e.g. editing a rule) so a background refresh never disrupts them.
-  setInterval(() => {
-    if (document.hidden) return;
+
+  paintRefresh();
+  setInterval(async () => {
+    if (Date.now() < nextRefreshAt) { paintRefresh(); return; }
     const ae = document.activeElement;
-    if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
-    reloadData();
-    renderSync();
-  }, 60000);
+    if (document.hidden || (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName))) {
+      nextRefreshAt = Date.now() + 15000; // defer while hidden/typing; don't back off on a skip
+      paintRefresh();
+      return;
+    }
+    await runRefresh();
+    refreshEveryMs = Math.min(refreshEveryMs * 2, MAX_REFRESH_MS); // back off
+    nextRefreshAt = Date.now() + refreshEveryMs;
+    paintRefresh();
+  }, 1000);
 
   // Sign-out + device management: only meaningful when auth is on (single-user
   // mode has no login and ingest is tokenless).
