@@ -1224,9 +1224,16 @@ async function putIgnored() {
   } catch { /* keep local list; a reload will reconcile */ }
 }
 
-// Refetch the data (now filtered) and re-render, re-opening the same day.
+// Refetch the data (now filtered) and re-render, re-opening the same day. Also
+// reconciles the ignore list with the server so an in-app refresh can't drift from
+// server state. (Rules are NOT re-fetched here — that would clobber an in-progress
+// rule edit; they reconcile on a full load.)
 async function reloadData() {
   try {
+    try {
+      const gres = await fetch("api/ignored");
+      if (gres.ok) state.ignored = (await gres.json()).ignored || [];
+    } catch { /* keep current ignore list */ }
     const res = await fetch("api/data");
     if (!res.ok) return;
     state.data = await res.json();
