@@ -15,6 +15,16 @@ resource "digitalocean_droplet" "glockpeek" {
   ssh_keys = [data.digitalocean_ssh_key.default.id]
   ipv6     = true
   tags     = ["glockpeek"]
+
+  # Managed, off-box backups (~20% of droplet cost). Protects the DB-only data
+  # that can't be re-synced from the agent logs: accounts, API tokens, the key
+  # vault, usage rules, tag colours, and the ignore overlay. Daily so the restore
+  # window is a day, not a week.
+  backups = true
+  backup_policy {
+    plan = "daily"
+    hour = 4 # UTC backup window (~low activity)
+  }
 }
 
 # Place the droplet under the existing "Personal" project.
