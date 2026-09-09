@@ -217,7 +217,6 @@ func (db *DB) SetIgnored(userID uint, rows []IgnoredViolation) error {
 		if len(rows) > 0 {
 			for i := range rows {
 				rows[i].UserID = userID
-				rows[i].URLHash = hashURL(rows[i].URL)
 			}
 			return tx.Create(&rows).Error
 		}

@@ -1,25 +1,15 @@
 package stats
 
-import (
-	"fmt"
+import "glocker/internal/store"
 
-	"glocker/internal/store"
-)
-
-// IgnoredEntry marks a single recorded violation as a false positive so the
-// dashboard stops counting it. Matching is by ts + keyword + url (the fields
-// that uniquely identify one report line); domain is kept only for display.
-// The raw reports log is never touched — this is a separate, reversible overlay.
+// IgnoredEntry marks a recorded violation as a false positive so the dashboard
+// stops counting it. Identity is the opaque RecordID — the same content-blind
+// fingerprint the store dedups on — so the ignore overlay never carries plaintext
+// keyword/url to the server. TS is kept for display/sorting only. The raw reports
+// log is never touched; this is a separate, reversible overlay.
 type IgnoredEntry struct {
-	TS      int64  `json:"ts"` // event time, epoch milliseconds
-	Keyword string `json:"keyword"`
-	URL     string `json:"url"`
-	Domain  string `json:"domain,omitempty"`
-}
-
-// ignoreKey is the identity used to match a violation against the ignore list.
-func ignoreKey(ts int64, keyword, url string) string {
-	return fmt.Sprintf("%d\x00%s\x00%s", ts, keyword, url)
+	RecordID string `json:"recordId"`
+	TS       int64  `json:"ts,omitempty"` // event time (ms), display only
 }
 
 // loadIgnored reads the account's ignore list from the DB.
@@ -30,37 +20,32 @@ func loadIgnored(db *store.DB, userID uint) ([]IgnoredEntry, error) {
 	}
 	out := make([]IgnoredEntry, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, IgnoredEntry{TS: r.TS, Keyword: r.Keyword, URL: r.URL, Domain: r.Domain})
+		out = append(out, IgnoredEntry{RecordID: r.RecordID, TS: r.TS})
 	}
 	return out, nil
 }
 
-// dedupeIgnored drops entries with no timestamp and collapses duplicates by key,
-// preserving the stored field values exactly so matching stays reliable.
+// dedupeIgnored drops entries with no RecordID and collapses duplicates.
 func dedupeIgnored(in []IgnoredEntry) []IgnoredEntry {
 	out := []IgnoredEntry{}
 	seen := map[string]bool{}
 	for _, e := range in {
-		if e.TS == 0 {
+		if e.RecordID == "" || seen[e.RecordID] {
 			continue
 		}
-		k := ignoreKey(e.TS, e.Keyword, e.URL)
-		if seen[k] {
-			continue
-		}
-		seen[k] = true
+		seen[e.RecordID] = true
 		out = append(out, e)
 	}
 	return out
 }
 
 // saveIgnored replaces the account's ignore list in the DB and returns the
-// cleaned set.
+// cleaned set. Only the opaque RecordID (+ ts for display) is persisted.
 func saveIgnored(in []IgnoredEntry, db *store.DB, userID uint) ([]IgnoredEntry, error) {
 	clean := dedupeIgnored(in)
 	rows := make([]store.IgnoredViolation, 0, len(clean))
 	for _, e := range clean {
-		rows = append(rows, store.IgnoredViolation{TS: e.TS, Keyword: e.Keyword, URL: e.URL, Domain: e.Domain})
+		rows = append(rows, store.IgnoredViolation{RecordID: e.RecordID, TS: e.TS})
 	}
 	if err := db.SetIgnored(userID, rows); err != nil {
 		return clean, err

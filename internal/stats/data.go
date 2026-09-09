@@ -13,11 +13,12 @@ import (
 const minUnmanagedDuration = 2 * time.Minute
 
 type violationJSON struct {
-	TS      int64  `json:"ts"`
-	Type    string `json:"type"`
-	Keyword string `json:"keyword"`
-	URL     string `json:"url"`
-	Domain  string `json:"domain"`
+	TS       int64  `json:"ts"`
+	RecordID string `json:"recordId"` // opaque, content-blind id — the ignore overlay's key
+	Type     string `json:"type"`
+	Keyword  string `json:"keyword"`
+	URL      string `json:"url"`
+	Domain   string `json:"domain"`
 }
 
 type unblockJSON struct {
@@ -97,7 +98,7 @@ func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 		resp.Sources.Reports = len(rows) > 0
 		for _, e := range rows {
 			resp.Violations = append(resp.Violations, violationJSON{
-				TS: e.TS, Type: e.Type, Keyword: e.Keyword, URL: e.URL, Domain: e.Domain,
+				TS: e.TS, RecordID: e.RecordID, Type: e.Type, Keyword: e.Keyword, URL: e.URL, Domain: e.Domain,
 			})
 		}
 	}

@@ -329,12 +329,13 @@ func TestDataUnfilteredIgnoreOverlayStaysServed(t *testing.T) {
 	_, cookie, api := account(t, sdb, "alice")
 
 	ing := httptest.NewRequest("POST", "/api/ingest",
-		strings.NewReader(`{"violations":[{"ts":1000,"keyword":"porn","url":"https://x/?q=porn","domain":"x"}]}`))
+		strings.NewReader(`{"violations":[{"ts":1000,"recordId":"rid-1","keyword":"porn","url":"https://x/?q=porn","domain":"x"}]}`))
 	ing.Header.Set("Authorization", "Bearer "+api)
 	do(mux, ing)
 
+	// The overlay carries only the opaque recordId (content-blind) — no keyword/url.
 	put := httptest.NewRequest("PUT", "/api/ignored",
-		strings.NewReader(`{"ignored":[{"ts":1000,"keyword":"porn","url":"https://x/?q=porn","domain":"x"}]}`))
+		strings.NewReader(`{"ignored":[{"recordId":"rid-1","ts":1000}]}`))
 	put.AddCookie(cookie)
 	if rec := do(mux, put); rec.Code != http.StatusOK {
 		t.Fatalf("put ignored: %d %s", rec.Code, rec.Body.String())
@@ -354,11 +355,12 @@ func TestDataUnfilteredIgnoreOverlayStaysServed(t *testing.T) {
 	gi.AddCookie(cookie)
 	var ig struct {
 		Ignored []struct {
-			TS int64 `json:"ts"`
+			RecordID string `json:"recordId"`
+			TS       int64  `json:"ts"`
 		} `json:"ignored"`
 	}
 	json.Unmarshal(do(mux, gi).Body.Bytes(), &ig)
-	if len(ig.Ignored) != 1 || ig.Ignored[0].TS != 1000 {
+	if len(ig.Ignored) != 1 || ig.Ignored[0].RecordID != "rid-1" {
 		t.Errorf("ignore overlay should persist for the client, got %+v", ig.Ignored)
 	}
 }

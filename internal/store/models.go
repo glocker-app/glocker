@@ -172,18 +172,19 @@ type SyncStatus struct {
 	Encrypted bool `json:"-"`
 }
 
-// IgnoredViolation marks a report line as a false positive so the dashboard
-// stops counting it. Matched on (UserID, TS, Keyword, URL).
+// IgnoredViolation marks a report line as a false positive so the dashboard stops
+// counting it. Keyed on the opaque RecordID (the same content-blind fingerprint
+// the Violation dedups on) so the overlay stores no plaintext. The legacy
+// content columns are retained (nullable, no longer written) for old rows.
 type IgnoredViolation struct {
-	ID      uint   `gorm:"primaryKey" json:"-"`
-	UserID  uint   `gorm:"index;uniqueIndex:ux_ignored,priority:1" json:"-"`
-	TS      int64  `gorm:"uniqueIndex:ux_ignored,priority:2" json:"ts"`
-	Keyword string `gorm:"uniqueIndex:ux_ignored,priority:3" json:"keyword"`
-	// URLHash is sha256(URL) — see Violation.URLHash for why the hash is indexed
-	// rather than the raw URL.
-	URLHash string `gorm:"uniqueIndex:ux_ignored,priority:4" json:"-"`
-	URL     string `json:"url"`
-	Domain  string `json:"domain"`
+	ID       uint   `gorm:"primaryKey" json:"-"`
+	UserID   uint   `gorm:"index;uniqueIndex:ux_ignored,priority:1" json:"-"`
+	RecordID string `gorm:"uniqueIndex:ux_ignored,priority:2" json:"recordId"`
+	TS       int64  `gorm:"index" json:"ts"`
+	Keyword  string `json:"-"`
+	URLHash  string `json:"-"`
+	URL      string `json:"-"`
+	Domain   string `json:"-"`
 }
 
 // KeyVault holds the account's passphrase-wrapped master key for end-to-end

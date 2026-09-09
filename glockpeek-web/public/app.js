@@ -374,20 +374,10 @@ async function bootDashboard(me) {
     if (gres.ok) state.ignored = (await gres.json()).ignored || [];
   } catch { /* keep empty ignore list */ }
 
-  // Content-side post-processing the server no longer does — it stays
-  // content-blind so the same endpoint can serve E2E ciphertext later
-  // (docs/e2e-design.md). Hide ignored violations and fill any missing domain
-  // from the URL. Done once here, so all downstream aggregation sees the same
-  // filtered list it always did.
-  if (state.data && Array.isArray(state.data.violations)) {
-    const ign = new Set(state.ignored.map(ignoreKeyOf));
-    // Domain fallback (mirrors the old server-side hostFromURL): fill a missing
-    // domain from the URL client-side, so the server never parses URLs.
-    const hostFromUrl = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
-    state.data.violations = state.data.violations
-      .filter((v) => !ign.has(ignoreKeyOf(v)))
-      .map((v) => (v.domain ? v : { ...v, domain: hostFromUrl(v.url) }));
-  }
+  // Content-side post-processing the server no longer does — enrich + hide ignored
+  // violations and fill any missing domain, all client-side so the endpoint stays
+  // content-blind (docs/e2e-design.md). Shared with reloadData.
+  applyOverlay();
 
   document.getElementById("loading").hidden = true;
   document.getElementById("dash").hidden = false;
@@ -454,7 +444,7 @@ async function bootDashboard(me) {
     const btn = e.target.closest(".hit-x");
     if (!btn) return;
     ignoreViolation({
-      ts: Number(btn.dataset.ts), keyword: btn.dataset.kw,
+      recordId: btn.dataset.rid, ts: Number(btn.dataset.ts), keyword: btn.dataset.kw,
       url: btn.dataset.url, domain: btn.dataset.dom,
     });
   });
@@ -463,7 +453,7 @@ async function bootDashboard(me) {
   document.getElementById("ignored-list").addEventListener("click", (e) => {
     const btn = e.target.closest(".ign-restore");
     if (!btn) return;
-    restoreViolation({ ts: Number(btn.dataset.ts), keyword: btn.dataset.kw, url: btn.dataset.url });
+    restoreViolation({ recordId: btn.dataset.rid });
   });
 
   // Tag-contributor tree: click an app row to expand/collapse its windows and
@@ -1205,14 +1195,33 @@ function resetDayDetail() {
 // ── False-positive (ignored violation) handling ─────────
 // Non-destructive: entries are hidden via /api/ignored; the raw reports log is
 // never touched. Identity is ts + keyword + url (matches the server).
-const ignoreKeyOf = (e) => `${e.ts} ${e.keyword} ${e.url}`;
+const ignoreKeyOf = (e) => e.recordId || ""; // opaque, content-blind identity
+
+// applyOverlay runs client-side after every data load so the server stays
+// content-blind: it enriches the ignore list (which stores only recordIds) with
+// the decrypted keyword/url/domain for display, then hides ignored violations and
+// fills any missing domain from the URL. Shared by the initial load and reloads.
+function applyOverlay() {
+  if (!state.data || !Array.isArray(state.data.violations)) return;
+  const byRid = new Map(state.data.violations.map((v) => [v.recordId, v]));
+  for (const e of state.ignored) {
+    const v = byRid.get(e.recordId);
+    if (v) { e.keyword = v.keyword; e.url = v.url; e.domain = v.domain || ""; }
+  }
+  const ign = new Set(state.ignored.map(ignoreKeyOf));
+  const hostFromUrl = (u) => { try { return new URL(u).hostname; } catch { return ""; } };
+  state.data.violations = state.data.violations
+    .filter((v) => !ign.has(ignoreKeyOf(v)))
+    .map((v) => (v.domain ? v : { ...v, domain: hostFromUrl(v.url) }));
+}
 
 async function putIgnored() {
   try {
     const res = await fetch("api/ignored", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ignored: state.ignored }),
+      // Send only the opaque recordId (+ ts for display) — never keyword/url.
+      body: JSON.stringify({ ignored: state.ignored.map((e) => ({ recordId: e.recordId, ts: e.ts })) }),
     });
     if (res.ok) state.ignored = (await res.json()).ignored || [];
   } catch { /* keep local list; a reload will reconcile */ }
@@ -1225,6 +1234,7 @@ async function reloadData() {
     if (!res.ok) return;
     state.data = await res.json();
     await decryptData(state.data); // same in-browser decrypt as the initial load
+    applyOverlay();                // hide ignored + domain fallback, like initial load
     render();
     if (state.openDay != null) showDay(state.openDay);
   } catch { /* keep current view */ }
@@ -1257,9 +1267,9 @@ function renderIgnored() {
       const when = new Date(e.ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
       return `<div class="ign">
         <span class="ign-when">${when}</span>
-        <span class="ign-kw">${esc(e.keyword)}</span>
-        <span class="ign-dom" title="${esc(e.url)}">${esc(e.domain || "—")}</span>
-        <button class="ign-restore" type="button" title="Restore this violation" data-ts="${e.ts}" data-kw="${esc(e.keyword)}" data-url="${esc(e.url)}">&#8635;</button>
+        <span class="ign-kw">${esc(e.keyword || "(hidden)")}</span>
+        <span class="ign-dom" title="${esc(e.url || "")}">${esc(e.domain || "—")}</span>
+        <button class="ign-restore" type="button" title="Restore this violation" data-rid="${esc(e.recordId || "")}">&#8635;</button>
       </div>`;
     })
     .join("");
@@ -1312,7 +1322,7 @@ function showDay(dayTs) {
           <span class="ht">${time}</span>
           <span class="hk">${esc(h.keyword)}</span>
           <span class="hd" title="${esc(h.url)}">${esc(h.domain || "—")} <em>${kind}</em></span>
-          <button class="hit-x" type="button" title="Not a violation — hide it" data-ts="${h.ts}" data-kw="${esc(h.keyword)}" data-url="${esc(h.url)}" data-dom="${esc(h.domain || "")}">&times;</button>
+          <button class="hit-x" type="button" title="Not a violation — hide it" data-rid="${esc(h.recordId || "")}" data-ts="${h.ts}" data-kw="${esc(h.keyword)}" data-url="${esc(h.url)}" data-dom="${esc(h.domain || "")}">&times;</button>
         </div>`;
       })
       .join("");
