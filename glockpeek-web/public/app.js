@@ -1519,13 +1519,17 @@ function tagForSample(e, compiled) {
 }
 
 const UNTAGGED = "(untagged)";
+// Windows tagged "hidden" (by any user rule) are excluded from the usage stats
+// entirely — not a category, just dropped. Matched case-insensitively.
+const HIDDEN_TAG = "hidden";
+const isHidden = (tag) => !!tag && tag.trim().toLowerCase() === HIDDEN_TAG;
 
 function computeTagUsage(entries, compiled) {
   const byTag = new Map();
   const hourByTag = new Map(); // tag -> [24] ms, for the stacked hour-of-day chart
   const dayByTag = new Map();  // tag -> Map(dayKey -> ms), for the per-day stack
   const untaggedByWindow = new Map(); // "program\x00title" -> { program, title, ms }
-  let untagged = 0, active = 0;
+  let untagged = 0, active = 0, hidden = 0;
 
   const addHour = (name, hr, dt) => {
     let a = hourByTag.get(name);
@@ -1553,10 +1557,15 @@ function computeTagUsage(entries, compiled) {
 
   eachSampleDuration(entries, (e, dt, away) => {
     if (away) return;
+    const tag = tagForSample(e, compiled);
+    // "hidden" windows are dropped from every total (active time, tags, untagged).
+    if (isHidden(tag)) {
+      hidden += dt;
+      return;
+    }
     active += dt;
     const hr = new Date(e.ts).getHours();
     const dk = dayKey(e.ts);
-    const tag = tagForSample(e, compiled);
     if (tag) {
       byTag.set(tag, (byTag.get(tag) || 0) + dt);
       addHour(tag, hr, dt);
@@ -1581,7 +1590,7 @@ function computeTagUsage(entries, compiled) {
   // Rank individual untagged windows by active time (most-used first).
   const untaggedItems = [...untaggedByWindow.values()].sort((a, b) => b.ms - a.ms);
 
-  return { tags: rankMap(byTag), untagged, active, hourByTag, dayByTag, windowsByTag, untaggedItems };
+  return { tags: rankMap(byTag), untagged, active, hidden, hourByTag, dayByTag, windowsByTag, untaggedItems };
 }
 
 // Canonical ordering shared by the tag pie and the stacked hour chart, so a tag
@@ -1667,9 +1676,12 @@ function renderUntagged(tu, available) {
     el.innerHTML = `<div class="empty">usage tracking is off</div>`;
     return;
   }
+  const hiddenNote = tu.hidden > 0
+    ? `<div style="margin-top:10px;font-size:.82rem;color:#8b97a8;">${fmtDur(tu.hidden)} hidden by rules (tag “hidden”)</div>`
+    : "";
   const items = tu.untaggedItems || [];
   if (!items.length) {
-    el.innerHTML = `<div class="empty">nothing untagged — full coverage ✓</div>`;
+    el.innerHTML = `<div class="empty">nothing untagged — full coverage ✓</div>` + hiddenNote;
     return;
   }
   const max = items[0].ms || 1;
@@ -1687,7 +1699,7 @@ function renderUntagged(tu, available) {
         <span class="untag-bar"><span style="width:${pct}%"></span></span>
       </div>`;
     })
-    .join("");
+    .join("") + hiddenNote;
 }
 
 // Start a rule for a specific window: append a prefilled row (program anchored,
