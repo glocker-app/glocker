@@ -2004,42 +2004,62 @@ function renderUsagePerDay(tu, available, b) {
 
   const start = startOfDay(b.start);
   const end = Math.min(startOfDay(b.end), startOfDay(state.data.now));
-  const days = [];
-  for (let t = start; t <= end; t += DAY) days.push(t);
+  const spanDays = Math.floor((end - start) / DAY) + 1;
+  // Bucket granularity by span so a long window ("all") stays compact and readable
+  // instead of thousands of hairline bars: daily ≤45d, weekly ≤~7mo, else monthly.
+  const mode = spanDays <= 45 ? "day" : spanDays <= 210 ? "week" : "month";
+
+  // Roll each day into its bucket, summing ms per tag. Buckets keep insertion order.
+  const order = [];
+  const labelOf = new Map(), titleOf = new Map(), sums = new Map();
+  for (let t = start; t <= end; t += DAY) {
+    const d = new Date(t);
+    let key, label, title;
+    if (mode === "day") {
+      key = dayKey(t);
+      const date = d.getDate() === 1 ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : String(d.getDate());
+      label = [d.toLocaleDateString(undefined, { weekday: "short" }), date];
+      title = d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+    } else if (mode === "week") {
+      const ws = startOfDay(t - ((d.getDay() + 6) % 7) * DAY); // Monday of this week
+      key = "w" + dayKey(ws);
+      label = new Date(ws).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+      title = `Week of ${label}`;
+    } else {
+      key = d.getFullYear() + "-" + d.getMonth();
+      label = d.toLocaleDateString(undefined, { month: "short" });
+      title = d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    }
+    if (!sums.has(key)) { order.push(key); labelOf.set(key, label); titleOf.set(key, title); sums.set(key, new Map()); }
+    const s = sums.get(key);
+    for (const it of items) {
+      const ms = (tu.dayByTag.get(it.name) || new Map()).get(dayKey(t)) || 0;
+      if (ms) s.set(it.name, (s.get(it.name) || 0) + ms);
+    }
+  }
 
   const colors = tagColorMap(items);
-  const datasets = items.map((it) => {
-    const m = tu.dayByTag.get(it.name) || new Map();
-    return {
-      label: it.name,
-      data: days.map((t) => (m.get(dayKey(t)) || 0) / 3600000),
-      backgroundColor: colors.get(it.name),
-      stack: "day",
-      borderWidth: 0,
-      maxBarThickness: 40,
-    };
-  });
+  const datasets = items.map((it) => ({
+    label: it.name,
+    data: order.map((k) => (sums.get(k).get(it.name) || 0) / 3600000),
+    backgroundColor: colors.get(it.name),
+    stack: "day",
+    borderWidth: 0,
+    maxBarThickness: 40,
+  }));
 
-  // Total active time each day, with its share of the 24-hour day → the label
-  // on top. Always out of 24h (not the elapsed span), so days are comparable.
-  const topLabels = days.map((t) => {
-    const activeMs = items.reduce((s, it) => s + ((tu.dayByTag.get(it.name) || new Map()).get(dayKey(t)) || 0), 0);
+  // Bucket total on top: for daily, its share of the 24-hour day; for week/month
+  // just the total (a share-of-period is less meaningful there).
+  const topLabels = order.map((k) => {
+    const activeMs = items.reduce((a, it) => a + (sums.get(k).get(it.name) || 0), 0);
     if (activeMs <= 0) return "";
-    return `${fmtDur(activeMs)} (${Math.round((activeMs / DAY) * 100)}%)`;
+    return mode === "day" ? `${fmtDur(activeMs)} (${Math.round((activeMs / DAY) * 100)}%)` : fmtDur(activeMs);
   });
+  const xLabels = order.map((k) => labelOf.get(k));
+  const titles = order.map((k) => titleOf.get(k));
 
-  // Two-line axis label: weekday on top, date below (month added on the 1st).
-  const xLabels = days.map((t) => {
-    const d = new Date(t);
-    const wd = d.toLocaleDateString(undefined, { weekday: "short" });
-    const date = d.getDate() === 1 ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : String(d.getDate());
-    return [wd, date];
-  });
-  // Full weekday + date for the tooltip, which the abbreviated axis label lacks.
-  const titles = days.map((t) => new Date(t).toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" }));
-
-  // Labels overlap once bars get thin; show them only for reasonably short windows.
-  stackedBarChart("chart-usage-perday", xLabels, datasets, days.length <= 40 ? topLabels : null, titles);
+  // Top labels only when the bars are wide enough not to collide.
+  stackedBarChart("chart-usage-perday", xLabels, datasets, order.length <= 40 ? topLabels : null, titles);
 }
 
 // ── Rule editor ─────────────────────────────────────────
@@ -2268,6 +2288,13 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
   opts.interaction = { mode: "index", intersect: false };
   opts.scales.x.stacked = true;
   opts.scales.y.stacked = true;
+  // Over a long window (e.g. the per-day chart on "all") every label would draw on
+  // top of the next into an unreadable smear — let Chart.js thin them out. Short
+  // charts (≤31 categories) keep every label.
+  if (labels.length > 31) {
+    opts.scales.x.ticks.autoSkip = true;
+    opts.scales.x.ticks.maxTicksLimit = 16;
+  }
   opts.scales.y.ticks.callback = (v) => `${v}h`;
   opts.plugins.legend = {
     display: true,
