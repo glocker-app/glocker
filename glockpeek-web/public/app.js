@@ -27,7 +27,6 @@ const VIEW_TITLES = {
   overview: "Overview",
   history: "History",
   usage: "Usage",
-  sources: "Sources",
   bypasses: "Bypasses",
   devices: "Devices",
   users: "Admin",
@@ -676,8 +675,6 @@ function render() {
   renderCalendar(violations, b);
   renderTimeline(violations, b);
   resetDayDetail();
-  renderRanklist("top-keywords", tally(violations, "keyword"), "var(--danger)");
-  renderRanklist("top-domains", tally(violations, "domain"), "var(--signal)");
   renderRanklist("unblock-reasons", tally(unblocks, "reason"), "var(--safe)");
   renderUnmanaged(unmanaged);
   renderDowntime(downtime);
