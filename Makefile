@@ -1,4 +1,4 @@
-.PHONY: build-all install full-install security-check update-blocklists test release deploy deploy-full deploy-landing deploy-extension help
+.PHONY: build-all install full-install security-check update-blocklists test release deploy deploy-full deploy-landing deploy-extension db-backup db-restore help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -53,6 +53,29 @@ deploy: ## Deploy the glockpeek dashboard binary to the VPS
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o dist/glockpeek ./cmd/glockpeek
 	scp dist/glockpeek $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.new
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -m 0755 /tmp/glockpeek.new /usr/local/bin/glockpeek && rm -f /tmp/glockpeek.new && sudo systemctl restart glockpeek && sleep 2 && systemctl is-active glockpeek'
+
+# ── Database backup / restore ────────────────────────────────
+# DigitalOcean backups cover droplet loss; a local pg_dump also lets you rebuild
+# from scratch (terraform apply + ansible + db-restore) or move hosts — the DB
+# holds data that can't be re-synced from the agent logs (accounts, tokens, the
+# key vault, rules, tag colours, the ignore overlay). Dumps contain sensitive data
+# (argon2 password hashes, the wrapped master key), so DB_BACKUP_DIR is gitignored.
+DB_BACKUP_DIR ?= deploy/backups
+
+db-backup: ## Pull a compressed pg_dump of the glockpeek DB to DB_BACKUP_DIR (local, gitignored)
+	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST"; exit 1; }
+	@mkdir -p $(DB_BACKUP_DIR)
+	@f="$(DB_BACKUP_DIR)/glockpeek-$$(date -u +%Y%m%dT%H%M%SZ).dump"; \
+	 ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo -u postgres pg_dump -Fc glockpeek' > "$$f" && \
+	 echo "saved $$f ($$(du -h "$$f" | cut -f1))"
+
+db-restore: ## Restore a dump into the server DB (DESTRUCTIVE): make db-restore FILE=deploy/backups/x.dump
+	@test -n "$(FILE)" || { echo "set FILE=path/to/.dump"; exit 1; }
+	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST"; exit 1; }
+	@echo "Restoring $(FILE) into glockpeek on $(DEPLOY_HOST) — this DROPS and recreates objects."
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo systemctl stop glockpeek'
+	cat "$(FILE)" | ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo -u postgres pg_restore --clean --if-exists --no-owner -d glockpeek'
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo systemctl start glockpeek'
 
 # Ship just the static landing page (website/index.html) to the apex web root.
 # Same droplet as the dashboard, so DEPLOY_HOST can be the dashboard subdomain.

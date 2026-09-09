@@ -26,3 +26,6 @@ __pycache__/
 master.key
 vault.json
 *.key
+
+# Local DB dumps (make db-backup) — contain password hashes + the wrapped key vault
+deploy/backups/
