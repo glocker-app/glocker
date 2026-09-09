@@ -20,6 +20,9 @@ func loadIgnored(db *store.DB, userID uint) ([]IgnoredEntry, error) {
 	}
 	out := make([]IgnoredEntry, 0, len(rows))
 	for _, r := range rows {
+		if r.RecordID == "" {
+			continue // legacy pre-recordId entries: they match nothing, so drop them
+		}
 		out = append(out, IgnoredEntry{RecordID: r.RecordID, TS: r.TS})
 	}
 	return out, nil
