@@ -397,6 +397,26 @@ async function bootDashboard(me) {
   renderSync();
   setInterval(renderSync, 30000);
 
+  // In-app refresh, manual + timed. A full page reload (Ctrl-R) drops the
+  // in-memory master key and re-prompts for the passphrase; reloadData() re-fetches
+  // and re-decrypts in place, so the session stays unlocked.
+  const refreshBtn = document.getElementById("refresh-btn");
+  if (refreshBtn) {
+    refreshBtn.onclick = async () => {
+      refreshBtn.disabled = true;
+      try { await reloadData(); renderSync(); } finally { refreshBtn.disabled = false; }
+    };
+  }
+  // Auto-refresh every 60s, but skip when the tab is hidden or the user is typing
+  // (e.g. editing a rule) so a background refresh never disrupts them.
+  setInterval(() => {
+    if (document.hidden) return;
+    const ae = document.activeElement;
+    if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
+    reloadData();
+    renderSync();
+  }, 60000);
+
   // Sign-out + device management: only meaningful when auth is on (single-user
   // mode has no login and ingest is tokenless).
   if (me && me.auth) {
