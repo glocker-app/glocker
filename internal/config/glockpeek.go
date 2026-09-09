@@ -56,6 +56,12 @@ type GlockpeekConfig struct {
 	AdminEmail string `yaml:"admin_email"`
 	// Captcha turns on the proof-of-work captcha on the signup endpoint (hosted).
 	Captcha bool `yaml:"captcha"`
+	// RequireEncryption, when true, makes the ingest endpoint REJECT any batch not
+	// marked encrypted (the agent stamps the batch from its sync.encrypt setting).
+	// A server-side backstop so a misconfigured agent can't silently record
+	// cleartext. Default false (accept both), so turning it on is an explicit
+	// opt-in.
+	RequireEncryption bool `yaml:"require_encryption"`
 	// Database selects the store backend: sqlite locally, postgres for a hosted
 	// instance. Empty fields fall back to the Default* values above.
 	Database DatabaseConfig `yaml:"database"`

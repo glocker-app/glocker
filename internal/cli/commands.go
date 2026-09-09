@@ -167,6 +167,12 @@ func GetStatusResponse(cfg *config.Config) string {
 				response.WriteString(fmt.Sprintf("  Pending: %s; next push imminent\n", pending))
 			}
 		}
+		// Surface the most recent push failure (e.g. a require_encryption 422) so a
+		// stuck sync is visible without digging through the journal.
+		if ss.LastError != "" {
+			response.WriteString(fmt.Sprintf("  ⚠ last push FAILED %s ago: %s\n",
+				now.Sub(ss.LastErrorAt).Round(time.Second), ss.LastError))
+		}
 	}
 
 	response.WriteString("\nEND\n")

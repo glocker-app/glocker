@@ -20,6 +20,12 @@ glockpeek:
   # forced to loopback regardless.
   listen: "127.0.0.1:4317"
 
+  # Reject any ingest batch the agent didn't mark encrypted — a backstop so a
+  # misconfigured agent (sync.encrypt off) can't silently record cleartext here.
+  # Default false (accept both). Turn on for a hosted instance that must never
+  # store plaintext.
+  require_encryption: false
+
   # Stats database (GORM; sqlite locally, postgres for a hosted instance — then the
   # dsn is a connection string).
   database:

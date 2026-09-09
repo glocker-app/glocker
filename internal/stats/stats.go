@@ -52,7 +52,13 @@ type Options struct {
 	AdminEmail string
 	// Captcha turns on the proof-of-work captcha on the signup endpoint.
 	Captcha bool
+	// RequireEncryption rejects ingest batches not marked encrypted — a backstop
+	// against an agent silently recording cleartext.
+	RequireEncryption bool
 }
+
+// requireEncryption, when true, makes /api/ingest refuse plaintext batches.
+var requireEncryption bool
 
 // Register mounts the dashboard and its API onto mux, backed by database.
 // glockpeek owns the whole listener, so the dashboard is served at the root
@@ -68,6 +74,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	mail = o.Mailer
 	appURL = o.AppURL
 	adminEmail = strings.TrimSpace(o.AdminEmail)
+	requireEncryption = o.RequireEncryption
 	initCaptcha(o.Captcha)
 	sub, err := fs.Sub(assetsFS, "assets")
 	if err != nil {
@@ -128,6 +135,9 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 // so the syncer can send only what changed (or everything, on the one-shot
 // backfill). Ingest is idempotent, so overlapping batches are safe.
 type ingestPayload struct {
+	// Encrypted marks whether the batch's sensitive fields are ciphertext (the
+	// agent stamps it from sync.encrypt). Used to enforce require_encryption.
+	Encrypted  bool                   `json:"encrypted"`
 	Violations []store.Violation      `json:"violations"`
 	Unblocks   []store.Unblock        `json:"unblocks"`
 	Lifecycle  []store.LifecycleEvent `json:"lifecycle"`
@@ -155,6 +165,12 @@ func handleIngest(w http.ResponseWriter, r *http.Request) {
 	var in ingestPayload
 	if err := json.Unmarshal(body, &in); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	// Backstop: when the operator requires encryption, refuse a batch the agent
+	// didn't mark encrypted, so a misconfigured agent can't record cleartext here.
+	if requireEncryption && !in.Encrypted {
+		http.Error(w, "this glockpeek requires encrypted records (require_encryption is on) but the batch is not encrypted — set sync.encrypt: true on the agent", http.StatusUnprocessableEntity)
 		return
 	}
 	uid := userFrom(r).ID

@@ -36,6 +36,10 @@ import (
 // Payload mirrors glockpeek's ingest shape (store models' JSON tags). Defined
 // here rather than imported so the agent stays free of the DB layer.
 type Payload struct {
+	// Encrypted marks whether this batch's sensitive fields are ciphertext (true
+	// when the agent's sync.encrypt is on). glockpeek uses it to stamp the account
+	// and to enforce require_encryption.
+	Encrypted  bool        `json:"encrypted"`
 	Violations []violation `json:"violations,omitempty"`
 	Unblocks   []unblock   `json:"unblocks,omitempty"`
 	Lifecycle  []lifecycle `json:"lifecycle,omitempty"`
@@ -305,6 +309,7 @@ func (s *Syncer) syncOnce() {
 	}
 	if err := s.post(p); err != nil {
 		slog.Warn("syncer post failed; will retry", "error", err)
+		state.RecordSyncError(err.Error()) // surfaced by `glocker -status`
 		return
 	}
 	for src, ts := range maxTS {
@@ -324,6 +329,7 @@ func (s *Syncer) syncOnce() {
 // returns the max TS seen per source (for advancing cursors after a good post).
 func (s *Syncer) build() (Payload, map[string]int64) {
 	var p Payload
+	p.Encrypted = s.e2e // batch-level marker: true iff we're encrypting sensitive fields
 	max := map[string]int64{}
 
 	if rows, err := reports.ParseReportsLog(s.paths.reports); err == nil {

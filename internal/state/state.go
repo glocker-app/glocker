@@ -355,6 +355,10 @@ type SyncSummary struct {
 	Last       map[string]int   // counts in the most recent batch
 	Total      map[string]int   // cumulative counts pushed this session
 	Cursors    map[string]int64 // per-source high-water TS (ms) after the last push
+	// LastError is the most recent push failure (e.g. a 422 rejection), "" when the
+	// last push succeeded. LastErrorAt is when it occurred. Cleared on next success.
+	LastError   string
+	LastErrorAt time.Time
 }
 
 var (
@@ -381,6 +385,18 @@ func RecordSync(counts map[string]int, cursors map[string]int64) {
 	for k, v := range cursors {
 		syncSummary.Cursors[k] = v
 	}
+	syncSummary.LastError = "" // a successful push clears any prior failure
+	syncSummary.LastErrorAt = time.Time{}
+}
+
+// RecordSyncError records the most recent failed push (e.g. the server rejecting
+// plaintext with a 422) so `glocker -status` can surface it. Cleared by the next
+// successful RecordSync.
+func RecordSyncError(msg string) {
+	syncMutex.Lock()
+	defer syncMutex.Unlock()
+	syncSummary.LastError = msg
+	syncSummary.LastErrorAt = time.Now()
 }
 
 // GetSyncSummary returns a copy of the current syncer status. LastSyncAt is zero
@@ -388,7 +404,7 @@ func RecordSync(counts map[string]int, cursors map[string]int64) {
 func GetSyncSummary() SyncSummary {
 	syncMutex.RLock()
 	defer syncMutex.RUnlock()
-	out := SyncSummary{LastSyncAt: syncSummary.LastSyncAt, Last: map[string]int{}, Total: map[string]int{}, Cursors: map[string]int64{}}
+	out := SyncSummary{LastSyncAt: syncSummary.LastSyncAt, Last: map[string]int{}, Total: map[string]int{}, Cursors: map[string]int64{}, LastError: syncSummary.LastError, LastErrorAt: syncSummary.LastErrorAt}
 	for k, v := range syncSummary.Last {
 		out.Last[k] = v
 	}

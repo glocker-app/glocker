@@ -135,13 +135,15 @@ func main() {
 			log.Fatalf("Connect failed: %v", err)
 		}
 		fmt.Printf("\nEncryption key installed at %s (from your dashboard vault).\n\n", keyPath)
-		fmt.Println("To start encrypting synced data, set this in your config and re-install/reload:")
-		fmt.Println("    sync:")
-		fmt.Println("      e2e: true")
-		fmt.Printf("      e2e_key_file: %s\n\n", keyPath)
-		fmt.Println("Then run `make full-install` (or restart the glocker service).")
-		if !cfg.Sync.Encryption() {
-			fmt.Println("\nNote: sync.e2e is currently OFF, so records still upload as plaintext until you enable it.")
+		if cfg.Sync.Encryption() {
+			fmt.Println("sync.encrypt is on and the key is in place. Restart glocker to start encrypting:")
+			fmt.Println("    sudo systemctl restart glocker")
+		} else {
+			fmt.Println("⚠  WARNING: sync.encrypt is OFF, so this key sits UNUSED and records still")
+			fmt.Println("   upload as PLAINTEXT. To actually encrypt, set it in your agent config:")
+			fmt.Println("       sync:")
+			fmt.Println("         encrypt: true")
+			fmt.Println("   then re-install (make full-install) or restart the glocker service.")
 		}
 		return
 	}
