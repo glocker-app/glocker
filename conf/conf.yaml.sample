@@ -106,11 +106,11 @@ unblocking:
   max_per_day: 0                               # cap on unblocks per calendar day (0 = unlimited)
 
 # Install/uninstall accountability. `glocker -uninstall` must cite one of these
-# reasons. "maintenance" is special-cased to skip the mindful gate (for rebuilds).
+# reasons. All reasons are gated equally by the mindful gate below — upgrades no
+# longer uninstall (glocker -install swaps in place), so there is no bypass.
 lifecycle:
   log_file: "/var/log/glocker-lifecycle.log"
   reasons: ["maintenance", "work", "entertainment"]
-  maintenance_grace_minutes: 30   # a "maintenance" uninstall not reversed within this many minutes is emailed at reinstall (0 = off)
 
 # Mindful uninstall gate. When enabled, `glocker -uninstall` must first pass a
 # metronome-paced typing challenge: a random sentence is revealed one character
@@ -124,7 +124,6 @@ mindful_uninstall:
   grace_ms: 1200                        # pause before the first character
   lines: 1                              # base sentences chained into one challenge
   recency_hours: 24                     # look back this far for a prior uninstall
-  recency_exempt_reasons: ["maintenance"]  # reasons that don't count as a repeat
   recent_lines: 3                       # longer challenge on a repeat within the window (0 = no escalation)
 
 # Heartbeat watchdog (glockdoc): a root cron job pings the glocker socket every

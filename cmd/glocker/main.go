@@ -193,20 +193,20 @@ func main() {
 		// Mindful gate: a metronome-paced typing challenge that must be passed
 		// before the uninstall reaches the daemon. Fails closed — if the gate is
 		// enabled but cannot run (no tty, terminal error), the uninstall is
-		// refused rather than silently bypassed. The "maintenance" reason is
-		// hardcoded exempt so dev rebuilds aren't gated.
-		gateExempt := strings.EqualFold(*uninstallReason, config.MaintenanceReason)
-		if uninstallCfg.MindfulUninstall.Enabled && !gateExempt {
+		// refused rather than silently bypassed. Every uninstall is gated;
+		// upgrades no longer uninstall (glocker -install swaps in place), so there
+		// is no "maintenance" bypass to abuse.
+		if uninstallCfg.MindfulUninstall.Enabled {
 			mc := uninstallCfg.MindfulUninstall
 
-			// Recency escalation: if the ledger shows a recent non-exempt
-			// uninstall, treat this as a repeat and raise the challenge. The
-			// current uninstall isn't logged until the daemon processes it after
-			// the gate, so this only ever sees prior teardowns.
+			// Recency escalation: if the ledger shows a recent uninstall, treat
+			// this as a repeat and raise the challenge. The current uninstall
+			// isn't logged until the daemon processes it after the gate, so this
+			// only ever sees prior teardowns.
 			lines := mc.Lines
 			if mc.RecencyHours > 0 && mc.RecentLines > 0 {
 				since := time.Now().Add(-time.Duration(mc.RecencyHours) * time.Hour)
-				recent, rerr := reports.RecentUninstalls(uninstallCfg.Lifecycle.LogFile, since, mc.RecencyExemptReasons)
+				recent, rerr := reports.RecentUninstalls(uninstallCfg.Lifecycle.LogFile, since)
 				if rerr != nil {
 					log.Printf("Warning: couldn't read uninstall history (using base friction): %v", rerr)
 				} else if len(recent) > 0 {

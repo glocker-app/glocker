@@ -15,13 +15,11 @@ build-all: ## Build all binaries
 	go build -o glockdoc ./cmd/glockdoc
 
 
-install: build-all ## Rebuild and reinstall
-	sudo ./glocker -uninstall "maintenance" -note "upgrade via Make" || true
+install: build-all ## Rebuild and reinstall (in-place; stops+swaps+restarts the daemon)
 	sudo ./glocker -install
 
 
 full-install: build-all update-blocklists ## Rebuild, update blocklists, and reinstall
-	sudo ./glocker -uninstall "maintenance" -note "upgrade via Make" || true
 	sudo ./glocker -install
 
 

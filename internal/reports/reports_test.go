@@ -188,7 +188,7 @@ func TestRecentUninstalls(t *testing.T) {
 	entries := []LifecycleEntry{
 		mk(50*time.Hour, "uninstall", "work"),         // too old
 		mk(30*time.Hour, "install", ""),               // wrong type
-		mk(10*time.Hour, "uninstall", "maintenance"),  // exempt
+		mk(10*time.Hour, "uninstall", "maintenance"),  // counts
 		mk(5*time.Hour, "uninstall", "work"),          // counts
 		mk(1*time.Hour, "uninstall", "entertainment"), // counts, most recent
 	}
@@ -208,29 +208,20 @@ func TestRecentUninstalls(t *testing.T) {
 	}
 
 	since := now.Add(-24 * time.Hour)
-	got, err := RecentUninstalls(tmp, since, []string{"maintenance"})
+	got, err := RecentUninstalls(tmp, since)
 	if err != nil {
 		t.Fatalf("RecentUninstalls: %v", err)
 	}
-	if len(got) != 2 {
-		t.Fatalf("expected 2 recent non-exempt uninstalls, got %d", len(got))
+	// All three in-window uninstalls count now that there is no exemption.
+	if len(got) != 3 {
+		t.Fatalf("expected 3 recent uninstalls, got %d", len(got))
 	}
 	if got[len(got)-1].Reason != "entertainment" {
 		t.Errorf("expected most recent (last) reason 'entertainment', got %q", got[len(got)-1].Reason)
 	}
 
-	// Exempt matching is case-insensitive.
-	if g, _ := RecentUninstalls(tmp, since, []string{"MAINTENANCE"}); len(g) != 2 {
-		t.Errorf("case-insensitive exempt failed: got %d, want 2", len(g))
-	}
-
-	// No exemptions -> the maintenance entry also counts.
-	if g, _ := RecentUninstalls(tmp, since, nil); len(g) != 3 {
-		t.Errorf("with no exemptions expected 3, got %d", len(g))
-	}
-
 	// A missing log file is treated as no history, not an error.
-	g, err := RecentUninstalls(filepath.Join(t.TempDir(), "nope.log"), since, nil)
+	g, err := RecentUninstalls(filepath.Join(t.TempDir(), "nope.log"), since)
 	if err != nil || g != nil {
 		t.Errorf("missing file should return (nil, nil), got (%v, %v)", g, err)
 	}
