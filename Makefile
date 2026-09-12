@@ -108,8 +108,8 @@ deploy-extension: ## Publish the signed Firefox extension xpi to the site
 # Per release:
 #   make release                 # prompts for your key passphrase
 #   # then upload dist/release/* to the GitHub release
-# Point at a non-default key with MINISIGN_KEY=/path/to/key.
-MINISIGN_KEY ?=
+# Point at a different key with MINISIGN_KEY=/path/to/key.
+MINISIGN_KEY ?= $(HOME)/.minisign/glocker.key
 RELEASE_DIR := dist/release
 release: ## Build + checksum + minisign the release binaries (needs minisign + your key)
 	@command -v minisign >/dev/null || { echo "install minisign first — https://jedisct1.github.io/minisign/"; exit 1; }
@@ -119,5 +119,5 @@ release: ## Build + checksum + minisign the release binaries (needs minisign + y
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o $(RELEASE_DIR)/glockpeek ./cmd/glockpeek
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o $(RELEASE_DIR)/glockdoc  ./cmd/glockdoc
 	cd $(RELEASE_DIR) && sha256sum glocker glocklock glockpeek glockdoc > SHA256SUMS
-	minisign -Sm $(RELEASE_DIR)/SHA256SUMS $(if $(MINISIGN_KEY),-s $(MINISIGN_KEY),)
+	minisign -Sm $(RELEASE_DIR)/SHA256SUMS -s $(MINISIGN_KEY)
 	@echo "✓ signed — upload $(RELEASE_DIR)/* (binaries + SHA256SUMS + SHA256SUMS.minisig) to the GitHub release"
