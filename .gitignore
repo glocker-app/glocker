@@ -3,6 +3,7 @@
 /glocklock
 /glockpeek
 /glockdoc
+/e2ekit
 conf/conf.yaml
 # Generated blocklists (large); keep the directory in the repo via .gitkeep.
 conf/conf.d/*.yaml
@@ -20,7 +21,14 @@ README.html
 # Editor swap files
 *.swp
 *.swo
+
+# Tool caches
 __pycache__/
+.mypy_cache/
+.ropeproject/
+
+# e2ekit default encrypted-record output (prototype artifact)
+record.json
 
 # e2ekit prototype secret outputs — a real master key / vault; never commit
 master.key
