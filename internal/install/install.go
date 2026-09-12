@@ -55,6 +55,23 @@ func InstallGlocker() error {
 	}
 	envcheck.LogAdvisories(envResults, log.Printf)
 
+	// Step 1b: If a glocker daemon is already running, stop it BEFORE touching any
+	// files. Its tamper monitor (30s tick) checksums the binary/config/unit and
+	// raises the alarm the instant they change; stopping first kills that monitor
+	// so an in-place upgrade is silent. Stop→(swap)→start also guarantees the new
+	// binary actually becomes the running process (a bare `systemctl start` on an
+	// already-active unit is a no-op). hosts/sudoers enforcement is unaffected by
+	// stopping the daemon — /etc/hosts stays immutable and sudoers isn't reverted
+	// (only -uninstall reverts those), so the only gap is a few seconds of
+	// daemon-driven monitoring during the swap.
+	if err := exec.Command("systemctl", "is-active", "--quiet", "glocker.service").Run(); err == nil {
+		log.Println("Existing glocker daemon is running — stopping it for in-place upgrade...")
+		if err := exec.Command("systemctl", "stop", "glocker.service").Run(); err != nil {
+			return fmt.Errorf("failed to stop running daemon before upgrade: %w", err)
+		}
+		log.Println("✓ Stopped running daemon")
+	}
+
 	// Step 2: Get current executable path
 	exe, err := os.Executable()
 	if err != nil {
@@ -75,7 +92,10 @@ func InstallGlocker() error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	// Copy the config file
+	// Copy the config file. Clear any prior immutable flag first — on a reinstall
+	// the existing config is `chattr +i`, and CopyFile (os.Create) would fail with
+	// EPERM otherwise.
+	_ = exec.Command("chattr", "-i", config.GlockerConfigFile).Run()
 	if err := utils.CopyFile("conf/conf.yaml", config.GlockerConfigFile); err != nil {
 		return fmt.Errorf("failed to copy config file: %w", err)
 	}
@@ -203,6 +223,9 @@ func InstallGlocker() error {
 	// Step 6: Install systemd service
 	servicePath := "/etc/systemd/system/glocker.service"
 	log.Println("Installing systemd service...")
+	// Lift the immutable flag first (set at the end of a prior install) so the
+	// copy doesn't fail with EPERM on a reinstall.
+	_ = exec.Command("chattr", "-i", servicePath).Run()
 	if err := utils.CopyFile(SystemdServiceFile, servicePath); err != nil {
 		return fmt.Errorf("failed to create service file: %w", err)
 	}
@@ -217,8 +240,10 @@ func InstallGlocker() error {
 		return fmt.Errorf("failed to enable service: %w", err)
 	}
 
-	// Start service
-	if err := exec.Command("systemctl", "start", "glocker.service").Run(); err != nil {
+	// Start (or restart) the service. `restart` rather than `start` so the new
+	// binary is guaranteed to run even if the unit is somehow still active here —
+	// a bare `start` on an active unit is a silent no-op.
+	if err := exec.Command("systemctl", "restart", "glocker.service").Run(); err != nil {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 
