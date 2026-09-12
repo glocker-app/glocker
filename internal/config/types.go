@@ -26,7 +26,7 @@ const (
 	SudoersBackup              = "/etc/sudoers.glocker.backup"
 	SudoersMarker              = "# GLOCKER-MANAGED"
 	SystemdFile                = "./extras/glocker.service"
-	GlockerSock                = "/tmp/glocker.sock"
+	GlockerSock                = "/var/glocker/glocker.sock" // root-owned 0700 dir gates access
 	EmailCooldownMinutes       = 15 // Minimum time between emails for the same event type
 
 	// MaintenanceReason is the one uninstall reason hardcoded (not config) as

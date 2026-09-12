@@ -343,7 +343,7 @@ systemd launches glocker
          v
   ┌──────────────────────────────────────┐
   │  Start Unix socket server            │
-  │  (/tmp/glocker.sock)                 │
+  │  (/var/glocker/glocker.sock)                 │
   └──────────────────────────────────────┘
          |
          v
@@ -374,7 +374,7 @@ User runs: glocker -status
          |
          v
   ┌──────────────────────────────────────┐
-  │  Connect to /tmp/glocker.sock        │
+  │  Connect to /var/glocker/glocker.sock        │
   └──────────────────────────────────────┘
          |
          v
@@ -562,7 +562,7 @@ func RecordViolation(cfg *config.Config, violationType, domain, url string) {
 ### Runtime Paths
 
 - `/etc/glocker/config.yaml` - Main configuration
-- `/tmp/glocker.sock` - Unix socket for IPC
+- `/var/glocker/glocker.sock` - Unix socket for IPC
 - `/var/log/glocker-reports.log` - Content monitoring / violation logs
 - `/var/log/glocker-unblocks.log` - Unblock request logs
 - `/var/log/glocker-lifecycle.log` - Install/uninstall events (reason + note); read by glockpeek to mark `UNMANAGED` periods

@@ -68,7 +68,7 @@ glocker -uninstall
 
 ### IPC / Socket Communication (`internal/ipc/`)
 - **`server.go`** - Unix socket server for daemon communication
-  - `SetupCommunication()` - Creates socket at `/tmp/glocker.sock`
+  - `SetupCommunication()` - Creates socket at `/var/glocker/glocker.sock`
   - `HandleConnection()` - Processes socket commands (lines 33-146)
   - Socket command handlers:
     - `status` - Live status query (lines 75-77)
@@ -211,7 +211,7 @@ The Firefox extension lives in `extensions/firefox/`. After making changes:
 - Single Go binary that handles all blocking logic
 - Runs as systemd service with setuid root permissions
 - Config loaded from `/etc/glocker/config.yaml` (sample in `conf/conf.yaml`)
-- Uses Unix socket `/tmp/glocker.sock` for runtime commands
+- Uses Unix socket `/var/glocker/glocker.sock` for runtime commands
 
 **Enforcement Mechanisms** (configured independently via YAML)
 1. **Hosts file blocking** - Modifies `/etc/hosts` with immutable flag
@@ -300,7 +300,7 @@ type ForbiddenProgram struct {
    - Applies time window logic
 
 **Socket Commands** (internal/ipc/server.go:33-146):
-- Client sends command via Unix socket at `/tmp/glocker.sock`
+- Client sends command via Unix socket at `/var/glocker/glocker.sock`
 - Format: `"action:payload\n"` (e.g., `"block:example.com\n"`)
 - Server processes command and returns response
 - Commands: `status`, `reload`, `unblock`, `block`, `block-app`, `panic`, `lock`, `add-keyword`, `uninstall`
@@ -310,7 +310,7 @@ type ForbiddenProgram struct {
 
 **Production paths:**
 - `/etc/glocker/config.yaml` - Main configuration
-- `/tmp/glocker.sock` - Unix socket for IPC
+- `/var/glocker/glocker.sock` - Unix socket for IPC
 - `/var/log/glocker-reports.log` - Content monitoring logs
 - `/var/log/glocker-unblocks.log` - Unblock request logs
 - `/etc/hosts` - Modified with GLOCKER markers and immutable flag

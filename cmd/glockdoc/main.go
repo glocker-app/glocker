@@ -10,7 +10,7 @@
 // installer bakes into the cron line.
 //
 //	glockdoc                                   # defaults
-//	glockdoc -socket /tmp/glocker.sock -log /var/log/glocker-heartbeat.jsonl -timeout 3s
+//	glockdoc -socket /var/glocker/glocker.sock -log /var/log/glocker-heartbeat.jsonl -timeout 3s
 //
 // Exit 0 = sample recorded (alive or not); 1 = could not record.
 package main

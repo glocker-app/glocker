@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -18,10 +19,28 @@ import (
 	"glocker/internal/web"
 )
 
-const SocketPath = "/tmp/glocker.sock"
+// SocketPath is the Unix domain socket the daemon listens on. It lives in a
+// dedicated root-owned 0700 directory (see config.GlockerSock) so the directory
+// itself gates access — a non-root user can't even traverse into it, unlike the
+// old world-writable /tmp location.
+const SocketPath = config.GlockerSock
 
 // SetupCommunication creates and starts listening on the Unix domain socket.
 func SetupCommunication(cfg *config.Config) error {
+	// Ensure the parent directory exists and is root-only (0700). This is the
+	// primary access control: only root can traverse into it to reach the socket.
+	dir := filepath.Dir(SocketPath)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("failed to create socket directory %s: %w", dir, err)
+	}
+	if err := os.Chown(dir, 0, 0); err != nil {
+		log.Printf("Warning: couldn't chown socket directory to root: %v", err)
+	}
+	// MkdirAll won't tighten an existing dir's mode, so enforce 0700 explicitly.
+	if err := os.Chmod(dir, 0700); err != nil {
+		log.Printf("Warning: couldn't set socket directory permissions: %v", err)
+	}
+
 	// Remove existing socket
 	os.Remove(SocketPath)
 

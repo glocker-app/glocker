@@ -99,7 +99,7 @@ rm -f /usr/local/bin/glocker /usr/local/bin/glocklock \
 rm -f /etc/systemd/system/glocker.service /etc/systemd/system/glockpeek.service
 rm -f /etc/cron.d/glocker-doc          # the glockdoc heartbeat cron
 rm -f /etc/sudoers.glocker.backup
-rm -f /tmp/glocker.sock
+rm -f /var/glocker/glocker.sock
 rm -rf /etc/glocker
 systemctl daemon-reload
 ```

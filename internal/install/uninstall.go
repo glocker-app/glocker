@@ -87,12 +87,15 @@ func RestoreSystemChanges(cfg *config.Config) error {
 		log.Println("✓ Config directory removed")
 	}
 
-	// Remove socket file
-	socketPath := "/tmp/glocker.sock"
-	if err := os.Remove(socketPath); err != nil {
+	// Remove socket file and its dedicated directory
+	if err := os.Remove(config.GlockerSock); err != nil {
 		log.Printf("   Warning: couldn't remove socket file: %v", err)
 	} else {
 		log.Println("✓ Socket file removed")
+	}
+	if socketDir := filepath.Dir(config.GlockerSock); socketDir != "/" && socketDir != "." {
+		// Best-effort: only succeeds if empty, which it should be after the socket is gone.
+		_ = os.Remove(socketDir)
 	}
 
 	// Make service file mutable (daemon can't delete it while running)

@@ -318,7 +318,7 @@ planned hardening step before self-hosting ships to others).
 Glocker is a **Go application** that runs as a systemd service with setuid root privileges:
 
 - **Daemon:** Runs enforcement loop every 60s, manages protections
-- **CLI:** Communicates with daemon via Unix socket (`/tmp/glocker.sock`)
+- **CLI:** Communicates with daemon via Unix socket (`/var/glocker/glocker.sock`)
 - **Browser Extension:** Firefox extension in [`extensions/firefox/`](extensions/firefox/)
 - **Config:** YAML at `/etc/glocker/config.yaml` ([sample](conf/conf.yaml.sample)), with generated blocklists in `conf.d/` pulled in via `!include`
 

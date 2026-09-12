@@ -75,7 +75,7 @@ sudo ./glocker -install
 sudo glocker -uninstall "testing new features"
 ```
 
-All commands communicate with the running daemon via Unix socket (`/tmp/glocker.sock`). The `-daemon` flag is used internally by systemd and shouldn't be invoked manually.
+All commands communicate with the running daemon via Unix socket (`/var/glocker/glocker.sock`). The `-daemon` flag is used internally by systemd and shouldn't be invoked manually.
 
 ## Utility Tools
 
@@ -241,7 +241,7 @@ After making changes:
 - **Binary:** `/usr/local/bin/glocker` (setuid root)
 - **Config:** `/etc/glocker/config.yaml`
 - **Service:** `/etc/systemd/system/glocker.service`
-- **Socket:** `/tmp/glocker.sock`
+- **Socket:** `/var/glocker/glocker.sock`
 - **Logs:**
   - `/var/log/glocker-reports.log` (content monitoring)
   - `/var/log/glocker-unblocks.log` (unblock requests)
@@ -272,7 +272,7 @@ tail -f /var/log/glocker-unblocks.log
 
 ```bash
 # Check if socket exists
-ls -l /tmp/glocker.sock
+ls -l /var/glocker/glocker.sock
 
 # Check if daemon is running
 ps aux | grep glocker
