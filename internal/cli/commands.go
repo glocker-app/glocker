@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"sort"
 	"strings"
 	"time"
 
@@ -112,19 +113,30 @@ func GetStatusResponse(cfg *config.Config) string {
 		if recentViolations > 0 {
 			const maxShown = 5
 			response.WriteString("  Recent details:\n")
-			shown := 0
-			for i := len(violations) - 1; i >= 0 && shown < maxShown; i-- {
-				v := violations[i]
-				if !v.Timestamp.After(cutoff) {
-					continue
+
+			// Collect the in-window violations and sort newest-first. We can't
+			// rely on slice order: RecordViolation stamps time.Now() *before*
+			// taking the append lock, and violations arrive from independent
+			// goroutines (the forbidden-program killer, the /report web handler,
+			// content reports), so under a burst they can land out of timestamp
+			// order. Sort explicitly so the top 5 are genuinely the most recent.
+			recent := make([]state.Violation, 0, recentViolations)
+			for _, v := range violations {
+				if v.Timestamp.After(cutoff) {
+					recent = append(recent, v)
 				}
+			}
+			sort.Slice(recent, func(i, j int) bool {
+				return recent[i].Timestamp.After(recent[j].Timestamp)
+			})
+			for i := 0; i < len(recent) && i < maxShown; i++ {
+				v := recent[i]
 				target := v.Host
 				if target == "" {
 					target = v.URL
 				}
 				response.WriteString(fmt.Sprintf("    - [%s] %s: %s\n",
 					v.Timestamp.Format("15:04:05"), v.Type, target))
-				shown++
 			}
 			if recentViolations > maxShown {
 				response.WriteString(fmt.Sprintf("    ... and %d more\n", recentViolations-maxShown))

@@ -632,6 +632,10 @@ func TestGetStatusResponse_TruncatesViolationDetails(t *testing.T) {
 		},
 	}
 
+	// Add newest-first (site0 = 1 min ago, site6 = 7 min ago). This deliberately
+	// scrambles insertion order vs. timestamp order — the way concurrent
+	// RecordViolation callers can — so the test fails if the display trusts slice
+	// order instead of sorting by time.
 	for i := range 7 {
 		state.AddViolation(state.Violation{
 			Timestamp: time.Now().Add(-time.Duration(i+1) * time.Minute),
@@ -643,5 +647,17 @@ func TestGetStatusResponse_TruncatesViolationDetails(t *testing.T) {
 	resp := GetStatusResponse(cfg)
 	if !strings.Contains(resp, "... and 2 more") {
 		t.Errorf("expected truncation line for 7 violations (cap 5):\n%s", resp)
+	}
+	// The 5 most recent (site0..site4) must be shown; the 2 oldest (site5, site6)
+	// must be the ones truncated.
+	for i := 0; i < 5; i++ {
+		if !strings.Contains(resp, fmt.Sprintf("site%d.com", i)) {
+			t.Errorf("expected recent violation site%d.com to be shown:\n%s", i, resp)
+		}
+	}
+	for _, old := range []string{"site5.com", "site6.com"} {
+		if strings.Contains(resp, old) {
+			t.Errorf("oldest violation %s should have been truncated, not shown:\n%s", old, resp)
+		}
 	}
 }
