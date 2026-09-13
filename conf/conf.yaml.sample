@@ -164,8 +164,6 @@ violation_tracking:
   max_violations: 5
   time_window_minutes: 60
   command: "sudo -u yourusername DISPLAY=:0 /usr/local/bin/glocklock"
-  reset_daily: true
-  reset_time: "00:00"
   lock_duration: 5m
   background: "/path/to/background.jpg"   # optional lock-screen background (X11 backend)
 
@@ -187,7 +185,6 @@ heartbeat:
 usage_monitor:
   enabled: true
   log_file: "/var/log/glocker-usage.jsonl"
-  rules_file: "/var/lib/glocker/usage-rules.json"
   interval_seconds: 60
   display: ":0"
   xauthority: "/run/user/1000/gdm/Xauthority"   # adjust the UID/path for your login manager

@@ -87,9 +87,8 @@ type WebTrackingConfig struct {
 
 // Defaults for the usage monitor, applied when the corresponding field is unset.
 const (
-	DefaultUsageLogFile   = "/var/log/glocker-usage.jsonl"
-	DefaultUsageRulesFile = "/var/lib/glocker/usage-rules.json" // mutable state -> /var, not /etc
-	DefaultUsageInterval  = 60                                  // seconds
+	DefaultUsageLogFile  = "/var/log/glocker-usage.jsonl"
+	DefaultUsageInterval = 60 // seconds
 )
 
 // UsageMonitorConfig controls the arbtt-style desktop usage tracker: it samples
@@ -99,9 +98,6 @@ type UsageMonitorConfig struct {
 	Enabled bool `yaml:"enabled"`
 	// LogFile is the JSONL sample log (default DefaultUsageLogFile).
 	LogFile string `yaml:"log_file"`
-	// RulesFile is where the dashboard stores categorization rules + colours
-	// (default DefaultUsageRulesFile).
-	RulesFile string `yaml:"rules_file"`
 	// IntervalSeconds between samples (default DefaultUsageInterval).
 	IntervalSeconds int `yaml:"interval_seconds"`
 	// Display is the X display to sample, e.g. ":0"; empty uses $DISPLAY. The
@@ -137,8 +133,6 @@ type ViolationTrackingConfig struct {
 	MaxViolations     int    `yaml:"max_violations"`
 	TimeWindowMinutes int    `yaml:"time_window_minutes"`
 	Command           string `yaml:"command"`
-	ResetDaily        bool   `yaml:"reset_daily"`
-	ResetTime         string `yaml:"reset_time"`
 	LockDuration      string `yaml:"lock_duration"` // Duration for screen lock (e.g., "1m", "5m")
 	Background        string `yaml:"background"`    // Path to PNG/JPG background image (X11 backend only)
 }
