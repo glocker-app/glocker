@@ -12,9 +12,6 @@
 # glocker agent and the glockpeek dashboard.
 # ============================================================================
 
-# Development mode — bypasses some delays for faster testing. Leave false.
-dev: false
-
 # Log verbosity: debug | info | warn | error
 log_level: "info"
 
