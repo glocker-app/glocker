@@ -56,6 +56,7 @@ func main() {
 	adminEmail := ""
 	captcha := false
 	requireEncryption := false
+	var billingOpts stats.BillingOptions
 
 	if gp, err := config.LoadGlockpeekConfig(); err != nil {
 		log.Printf("glockpeek: could not load %s (%v); using defaults", config.GlockpeekConfigFile, err)
@@ -78,6 +79,21 @@ func main() {
 		adminEmail = gp.AdminEmail
 		captcha = gp.Captcha
 		requireEncryption = gp.RequireEncryption
+		if gp.Billing.Enabled {
+			successURL := gp.Billing.SuccessURL
+			if successURL == "" {
+				successURL = gp.AppURL // default post-checkout redirect: the dashboard
+			}
+			billingOpts = stats.BillingOptions{
+				Enabled:         true,
+				APIToken:        gp.Billing.APIToken,
+				WebhookSecret:   gp.Billing.WebhookSecret,
+				ProductID:       gp.Billing.ProductID,
+				APIBase:         gp.Billing.ResolvedAPIBase(),
+				PaidDeviceLimit: gp.Billing.ResolvedPaidLimit(),
+				SuccessURL:      successURL,
+			}
+		}
 	}
 	if *listen != "" {
 		addr = *listen
@@ -127,6 +143,7 @@ func main() {
 		AdminEmail:        adminEmail,
 		Captcha:           captcha,
 		RequireEncryption: requireEncryption,
+		Billing:           billingOpts,
 	}
 	desc := "hosted: login required"
 	if !hosted {

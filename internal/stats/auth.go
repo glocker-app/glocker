@@ -219,5 +219,13 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 // frontend can hide the sign-out control in single-user mode).
 func handleMe(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r)
-	writeJSON(w, map[string]any{"id": u.ID, "email": u.Email, "auth": authEnabled, "admin": isAdmin(u), "e2e": db.HasVault(u.ID), "encrypted": db.AccountEncrypted(u.ID)})
+	writeJSON(w, map[string]any{
+		"id": u.ID, "email": u.Email, "auth": authEnabled, "admin": isAdmin(u),
+		"e2e": db.HasVault(u.ID), "encrypted": db.AccountEncrypted(u.ID),
+		// Billing/plan info so the dashboard can show the tier + gate the upgrade CTA.
+		"billing":       billingEnabled,
+		"subStatus":     u.SubStatus,
+		"deviceLimit":   store.EffectiveDeviceLimit(u),
+		"subCurrentEnd": u.SubCurrentEnd,
+	})
 }

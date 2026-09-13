@@ -11,6 +11,7 @@ require (
 	github.com/jezek/xgb v1.2.0
 	github.com/mailgun/mailgun-go/v4 v4.23.0
 	github.com/neurlang/wayland v0.2.1
+	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1
 	github.com/tuxx/wayland-ext-session-lock-go v0.0.0-20250328013740-430eff7f7869
 	golang.org/x/term v0.45.0
 	golang.org/x/time v0.15.0

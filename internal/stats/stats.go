@@ -55,6 +55,9 @@ type Options struct {
 	// RequireEncryption rejects ingest batches not marked encrypted — a backstop
 	// against an agent silently recording cleartext.
 	RequireEncryption bool
+	// Billing configures the hosted paid tier (Merchant-of-Record). Disabled by
+	// default; when off, the /api/billing endpoints are not mounted.
+	Billing BillingOptions
 }
 
 // requireEncryption, when true, makes /api/ingest refuse plaintext batches.
@@ -75,6 +78,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	appURL = o.AppURL
 	adminEmail = strings.TrimSpace(o.AdminEmail)
 	requireEncryption = o.RequireEncryption
+	initBilling(o.Billing)
 	initCaptcha(o.Captcha)
 	sub, err := fs.Sub(assetsFS, "assets")
 	if err != nil {
@@ -118,6 +122,14 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 
 	// Admin-gated: account management (only the configured admin account).
 	mux.HandleFunc("/api/admin/users", requireAdmin(handleAdminUsers))
+
+	// Session-gated: start a checkout for the paid tier. Only when billing is on.
+	if billingEnabled {
+		mux.HandleFunc("/api/billing/checkout", requireUser(handleBillingCheckout))
+		// Public but signature-verified: the Merchant-of-Record posts subscription
+		// events here. Not session-gated (the caller is Polar, not a browser).
+		mux.HandleFunc("/api/billing/webhook", handleBillingWebhook)
+	}
 
 	// Token-gated: the syncer's ingest endpoint.
 	mux.HandleFunc("/api/ingest", requireToken(handleIngest))

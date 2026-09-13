@@ -1,0 +1,121 @@
+package stats
+
+import (
+	"encoding/base64"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	standardwebhooks "github.com/standard-webhooks/standard-webhooks/libraries/go"
+	"glocker/internal/store"
+)
+
+// billingMux registers the routes with billing enabled and returns the mux, the
+// store, and a signer that produces validly-signed webhook requests.
+func billingMux(t *testing.T) (*http.ServeMux, *store.DB, *standardwebhooks.Webhook) {
+	t.Helper()
+	secret := "whsec_" + base64.StdEncoding.EncodeToString([]byte("billing-test-signing-key"))
+	sdb, err := store.Open(store.Options{Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "test.db")})
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = sdb.Close() })
+	mux := http.NewServeMux()
+	Register(mux, sdb, Options{
+		Auth: true,
+		Billing: BillingOptions{
+			Enabled:         true,
+			WebhookSecret:   secret,
+			ProductID:       "prod_test",
+			PaidDeviceLimit: -1, // unlimited
+		},
+	})
+	wh, err := standardwebhooks.NewWebhook(secret)
+	if err != nil {
+		t.Fatalf("new webhook: %v", err)
+	}
+	return mux, sdb, wh
+}
+
+// signedWebhook builds a POST /api/billing/webhook request signed with wh.
+func signedWebhook(t *testing.T, wh *standardwebhooks.Webhook, payload string) *http.Request {
+	t.Helper()
+	msgID := "msg_test_1"
+	ts := time.Now()
+	sig, err := wh.Sign(msgID, ts, []byte(payload))
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/api/billing/webhook", strings.NewReader(payload))
+	r.Header.Set(standardwebhooks.HeaderWebhookID, msgID)
+	r.Header.Set(standardwebhooks.HeaderWebhookTimestamp, strconv.FormatInt(ts.Unix(), 10))
+	r.Header.Set(standardwebhooks.HeaderWebhookSignature, sig)
+	return r
+}
+
+func subPayload(evtType string, userID uint) string {
+	return fmt.Sprintf(`{"type":%q,"data":{"id":"sub_abc","status":"active","current_period_end":"2027-01-01T00:00:00Z","customer":{"external_id":%q}}}`,
+		evtType, strconv.FormatUint(uint64(userID), 10))
+}
+
+func TestBillingWebhook_GrantAndRevoke(t *testing.T) {
+	mux, sdb, wh := billingMux(t)
+	u, err := sdb.CreateUser("payer@x.com", "longenough1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A valid subscription.active grants the unlimited paid cap.
+	rec := do(mux, signedWebhook(t, wh, subPayload("subscription.active", u.ID)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("active webhook: code %d (%s)", rec.Code, rec.Body.String())
+	}
+	got, _ := sdb.UserByEmail("payer@x.com")
+	if store.EffectiveDeviceLimit(got) != -1 || got.SubStatus != store.SubStatusActive {
+		t.Errorf("after active: limit=%d status=%q, want -1/active", store.EffectiveDeviceLimit(got), got.SubStatus)
+	}
+
+	// subscription.revoked drops the cap back to the free tier.
+	rec = do(mux, signedWebhook(t, wh, subPayload("subscription.revoked", u.ID)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("revoked webhook: code %d", rec.Code)
+	}
+	got, _ = sdb.UserByEmail("payer@x.com")
+	if store.EffectiveDeviceLimit(got) != store.DefaultFreeDevices || got.SubStatus != store.SubStatusExpired {
+		t.Errorf("after revoke: limit=%d status=%q, want %d/expired", store.EffectiveDeviceLimit(got), got.SubStatus, store.DefaultFreeDevices)
+	}
+}
+
+func TestBillingWebhook_RejectsBadSignature(t *testing.T) {
+	mux, sdb, wh := billingMux(t)
+	u, err := sdb.CreateUser("payer2@x.com", "longenough1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := signedWebhook(t, wh, subPayload("subscription.active", u.ID))
+	// Tamper with the signature — must be rejected, and no access granted.
+	req.Header.Set(standardwebhooks.HeaderWebhookSignature, "v1,YWFhYWFhYWFhYWFhYWFhYQ==")
+	rec := do(mux, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("tampered signature: code %d, want 401", rec.Code)
+	}
+	got, _ := sdb.UserByEmail("payer2@x.com")
+	if store.EffectiveDeviceLimit(got) != store.DefaultFreeDevices || got.SubStatus != "" {
+		t.Errorf("tampered event must not grant access: limit=%d status=%q", store.EffectiveDeviceLimit(got), got.SubStatus)
+	}
+}
+
+func TestBillingWebhook_UnknownUserAcked(t *testing.T) {
+	mux, _, wh := billingMux(t)
+	// external_customer_id points at a non-existent account: ack (200) so Polar
+	// stops retrying, but obviously nothing to grant.
+	rec := do(mux, signedWebhook(t, wh, subPayload("subscription.active", 99999)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("unknown user: code %d, want 200 (ack)", rec.Code)
+	}
+}
