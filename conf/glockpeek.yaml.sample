@@ -51,3 +51,13 @@ glockpeek:
   #   api_key: ""
   #   from: "noreply@mg.example.com"
   #   region: "us"                          # "us" or "eu" (match your Mailgun domain)
+  #
+  # billing:                                # paid tier via a Merchant-of-Record (Polar)
+  #   enabled: true                         #   the MoR holds all payer PII + handles tax;
+  #   provider: "polar"                     #   glockpeek only learns "subscription active?"
+  #   api_token: ""                         #   Polar organization access token (server-side)
+  #   webhook_secret: ""                    #   Standard Webhooks secret (whsec_...) from Polar
+  #   product_id: ""                        #   the Polar subscription product id
+  #   api_base: "https://api.polar.sh"      #   use https://sandbox-api.polar.sh to test
+  #   paid_device_limit: -1                 #   devices granted while active (0/unset = unlimited)
+  #   success_url: ""                       #   post-checkout redirect (empty = app_url)

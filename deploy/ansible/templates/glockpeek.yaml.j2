@@ -32,3 +32,16 @@ glockpeek:
     api_key: "{{ mail_api_key | default('') }}"
     from: "{{ mail_from | default('') }}"
     region: "{{ mail_region | default('us') }}"
+
+  # Paid tier via a Merchant-of-Record (Polar). The MoR holds all payer PII and
+  # handles global tax; glockpeek only learns "is this account active?" via a
+  # signed webhook. SERVER-SIDE SECRETS — never on an agent.
+  billing:
+    enabled: {{ (billing_enabled | default(false)) | string | lower }}
+    provider: "polar"
+    api_token: "{{ billing_api_token | default('') }}"
+    webhook_secret: "{{ billing_webhook_secret | default('') }}"
+    product_id: "{{ billing_product_id | default('') }}"
+    api_base: "{{ billing_api_base | default('https://api.polar.sh') }}"
+    paid_device_limit: {{ billing_paid_device_limit | default(-1) }}
+    success_url: "{{ billing_success_url | default('') }}"

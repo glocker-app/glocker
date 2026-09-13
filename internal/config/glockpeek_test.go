@@ -64,6 +64,12 @@ func TestLoadGlockpeekConfig(t *testing.T) {
     dsn: "host=x dbname=y"
   mail:
     enabled: true
+  billing:
+    enabled: true
+    provider: "polar"
+    api_token: "polar_at_x"
+    webhook_secret: "whsec_x"
+    product_id: "prod_x"
 `
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
@@ -76,5 +82,12 @@ func TestLoadGlockpeekConfig(t *testing.T) {
 		gp.AppURL != "https://my.glockerapp.com" || gp.AdminEmail != "a@b.com" || !gp.Captcha ||
 		gp.Database.Driver != "postgres" || !gp.Mail.Enabled {
 		t.Errorf("glockpeek config not fully parsed: %+v", gp)
+	}
+	if !gp.Billing.Enabled || gp.Billing.Provider != "polar" || gp.Billing.ProductID != "prod_x" {
+		t.Errorf("billing stanza not parsed: %+v", gp.Billing)
+	}
+	// Unset API base + paid limit resolve to production + unlimited.
+	if gp.Billing.ResolvedAPIBase() != DefaultPolarAPIBase || gp.Billing.ResolvedPaidLimit() != -1 {
+		t.Errorf("billing defaults wrong: base=%q limit=%d", gp.Billing.ResolvedAPIBase(), gp.Billing.ResolvedPaidLimit())
 	}
 }

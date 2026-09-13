@@ -68,6 +68,63 @@ type GlockpeekConfig struct {
 	// Mail is outbound transactional email (account verification), used in hosted
 	// mode.
 	Mail MailConfig `yaml:"mail"`
+	// Billing wires the hosted paid tier to a Merchant-of-Record. Disabled by
+	// default; only a hosted instance selling subscriptions configures it.
+	Billing BillingConfig `yaml:"billing"`
+}
+
+// BillingConfig wires the hosted paid tier to a Merchant-of-Record (Polar). The
+// MoR is the legal seller of record: it holds all payer PII (name/email/card)
+// and handles global sales tax, while glockpeek only ever learns "is this
+// account's subscription active?" via a signed webhook — so payment identity
+// stays severed from usage data. Every field comes from the Polar dashboard.
+type BillingConfig struct {
+	// Enabled turns on the /api/billing endpoints. Off by default.
+	Enabled bool `yaml:"enabled"`
+	// Provider selects the Merchant-of-Record. Only "polar" is implemented.
+	Provider string `yaml:"provider"`
+	// APIToken authenticates server-to-Polar calls (creating checkout sessions).
+	APIToken string `yaml:"api_token"`
+	// WebhookSecret verifies incoming webhooks. Standard Webhooks format
+	// (base64, typically "whsec_..."); create a fresh secret so it uses the
+	// Standard Webhooks scheme rather than legacy Polar HMAC.
+	WebhookSecret string `yaml:"webhook_secret"`
+	// ProductID is the Polar subscription product customers check out against.
+	ProductID string `yaml:"product_id"`
+	// APIBase overrides the Polar API base URL. Empty = production
+	// (https://api.polar.sh); set the sandbox (https://sandbox-api.polar.sh) for
+	// testing.
+	APIBase string `yaml:"api_base"`
+	// PaidDeviceLimit is the device (API-token) cap granted while a subscription
+	// is active. 0 (unset) resolves to unlimited — a paid tier capped at zero
+	// devices would be nonsensical; set a positive number for a finite cap.
+	PaidDeviceLimit int `yaml:"paid_device_limit"`
+	// SuccessURL is where Polar redirects after a completed checkout. Empty falls
+	// back to AppURL (the dashboard).
+	SuccessURL string `yaml:"success_url"`
+}
+
+// DefaultPolarAPIBase is the production Polar API root used when
+// BillingConfig.APIBase is empty.
+const DefaultPolarAPIBase = "https://api.polar.sh"
+
+// ResolvedAPIBase returns the configured Polar API base, defaulting to
+// production when unset.
+func (b BillingConfig) ResolvedAPIBase() string {
+	if b.APIBase == "" {
+		return DefaultPolarAPIBase
+	}
+	return b.APIBase
+}
+
+// ResolvedPaidLimit returns the device cap to grant an active subscriber. An
+// unset (0) value means unlimited (-1), matching store.EffectiveDeviceLimit's
+// "negative = no limit" convention.
+func (b BillingConfig) ResolvedPaidLimit() int {
+	if b.PaidDeviceLimit == 0 {
+		return -1
+	}
+	return b.PaidDeviceLimit
 }
 
 // glockpeekFile is the on-disk wrapper: a single top-level `glockpeek:` stanza.
