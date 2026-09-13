@@ -38,6 +38,16 @@ type User struct {
 	// value means unlimited. Raised for paid accounts.
 	DeviceLimit int       `json:"deviceLimit"`
 	CreatedAt   time.Time `json:"createdAt"`
+
+	// Subscription state for the hosted paid tier. The Merchant-of-Record
+	// (Polar) is the source of truth: these fields are written only by the
+	// billing webhook and exist for display + idempotency. DeviceLimit above is
+	// the actual enforcement lever the webhook raises/lowers. We deliberately
+	// store no payer name/email/card here — that PII lives with the MoR, keeping
+	// payment identity severed from usage data.
+	SubStatus     string    `json:"subStatus"`      // "" free, "active", "canceled" (access until period end), "expired"
+	SubID         string    `gorm:"index" json:"-"` // opaque provider subscription id; indexed for webhook lookups
+	SubCurrentEnd time.Time `json:"subCurrentEnd"`  // current period end / access-until
 }
 
 // VerificationToken is a single-use, expiring token emailed to a new account so

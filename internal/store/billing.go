@@ -1,0 +1,39 @@
+package store
+
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
+
+// Subscription status values written by the billing webhook. The Merchant-of-
+// Record (Polar) is the source of truth; we map its events onto these.
+const (
+	SubStatusActive   = "active"   // paying; access granted
+	SubStatusCanceled = "canceled" // cancellation scheduled — access remains until SubCurrentEnd
+	SubStatusExpired  = "expired"  // access revoked: cancellation took effect, or payment lapsed
+)
+
+// SetSubscription records a user's subscription state from a billing webhook and
+// sets DeviceLimit — the actual enforcement lever — accordingly: deviceLimit is
+// the paid cap while access is granted, or 0 (back to the free tier) once
+// revoked. It is idempotent: the same event delivered twice yields the same row,
+// so the MoR re-delivering webhooks is safe. Returns gorm.ErrRecordNotFound if
+// userID matches no account.
+func (db *DB) SetSubscription(userID uint, status, subID string, currentEnd time.Time, deviceLimit int) error {
+	// A map (not a struct) so zero values are written too — revoking must set
+	// device_limit back to 0, which struct-based Updates would skip.
+	res := db.Model(&User{}).Where("id = ?", userID).Updates(map[string]any{
+		"sub_status":      status,
+		"sub_id":          subID,
+		"sub_current_end": currentEnd,
+		"device_limit":    deviceLimit,
+	})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
