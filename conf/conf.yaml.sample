@@ -8,39 +8,23 @@
 # blocklists are NOT stored in this file; `update_domains.py` generates them into
 # conf.d/ and they're pulled in via `!include` (see the `domains:` section).
 #
-# The installed file lives at /etc/glocker/config.yaml and is read by both the
-# glocker agent and the glockpeek dashboard.
+# The installed file lives at /etc/glocker/config.yaml and is read by the glocker
+# agent. (The glockpeek dashboard reads its own file — see the note just below.)
 # ============================================================================
 
-# Log verbosity: debug | info | warn | error
-log_level: "info"
-
-# ── glockpeek dashboard ──────────────────────────────────────────────────────
 # The glockpeek dashboard is a separate process with its OWN config file,
 # /etc/glocker/glockpeek.yaml (see conf/glockpeek.yaml.sample). Nothing about the
 # dashboard — mode, listen address, database, mail, captcha — lives here anymore.
 # This file is the agent's; that file is the server's. On a personal desktop you
 # may not need one at all (glockpeek defaults to local mode + sqlite).
 
-# ── Sync ─────────────────────────────────────────────────────────────────────
-# How the agent ships its local /var records to a glockpeek instance. Local-first:
-# it never blocks enforcement — it backfills at startup, then pushes new records
-# on a timer, retrying if glockpeek is down.
-sync:
-  enabled: false                          # turn on to sync to a glockpeek instance
-  glockpeek_url: "http://127.0.0.1:4317"  # local glockpeek; point at a remote host to sync off-box
-  token: ""                               # ingest bearer token (only for a hosted glockpeek)
-  interval_seconds: 300                   # incremental sync cadence
-  encrypt: false                          # REQUIRED when enabled is true — choose explicitly:
-                                          #   true  = encrypt sensitive fields before upload so a hosted
-                                          #           glockpeek only ever stores ciphertext (needs the master
-                                          #           key; install it with `glocker -connect`).
-                                          #   false = plaintext; only sensible for a local/loopback glockpeek.
-  # encrypt_key_file: "/etc/glocker/e2e.key"   # optional; master key path (base64 of 32 bytes). Read only
-                                          #   when encrypt is true. Defaults to /etc/glocker/e2e.key if unset.
+# ── General ───────────────────────────────────────────────────────────────────
+# Log verbosity: debug | info | warn | error
+log_level: "info"
 
-# ── Blocking mechanisms ──────────────────────────────────────────────────────
-
+# ── Blocking: domains ─────────────────────────────────────────────────────────
+# These are the domain-blocking mechanics. The (large) block LIST itself is at
+# the BOTTOM of this file, in the `domains:` stanza.
 # Block domains by routing them to 127.0.0.1 in /etc/hosts (made immutable).
 enable_hosts: true
 hosts_path: "/etc/hosts"                  # leave as-is unless you know why not
@@ -54,126 +38,9 @@ kill_on_block:
   - chrome
   - brave
 
+# ── Blocking: programs ────────────────────────────────────────────────────────
 # Kill named programs during their windows (see forbidden_programs below).
 enable_forbidden_programs: true
-
-# Re-apply protections (immutable flags, hosts, sudoers) if they're tampered with.
-enable_self_healing: false
-
-# How often the main enforcement loop runs (seconds).
-enforce_interval_seconds: 60
-
-# Run a command when a blocked site is accessed (reported by the web server /
-# extension) — e.g. an audible or visual nudge. Empty command = none.
-web_tracking:
-  enabled: true
-  command: 'notify-send "glocker" "A blocked site was accessed"'
-
-# Watch critical files (the binary, /etc/hosts, the service) for tampering and
-# run alarm_command if they change.
-tamper_detection:
-  enabled: true
-  check_interval_seconds: 30
-  alarm_command: 'notify-send -u critical "glocker" "Tampering detected"'
-
-# Log content-violation reports POSTed by the browser extension.
-content_monitoring:
-  enabled: true
-  log_file: "/var/log/glocker-reports.log"
-
-# Keywords the Firefox extension watches for. url_keywords match the address;
-# content_keywords match page text; whitelist pages are never scanned or
-# reported. Replace these placeholders with your own terms and trusted sites.
-extension_keywords:
-  url_keywords: ["keyword-in-url", "another-keyword"]
-  content_keywords: ["a phrase to flag", "another phrase"]
-  whitelist:
-    - "mail.google.com"
-    - "calendar.google.com"
-    - "github.com"
-    - "stackoverflow.com"
-    - "en.wikipedia.org"
-    # add any sites that should never be scanned or blocked
-
-# Temporary unblocking: `glocker -unblock "domain:reason"`.
-unblocking:
-  reasons: ["work", "research", "emergency"]  # a valid reason is required on -unblock
-  log_file: "/var/log/glocker-unblocks.log"
-  temp_unblock_time: 20                        # minutes a domain stays unblocked
-  max_per_day: 0                               # cap on unblocks per calendar day (0 = unlimited)
-
-# Install/uninstall accountability. `glocker -uninstall` must cite one of these
-# reasons. All reasons are gated equally by the mindful gate below — upgrades no
-# longer uninstall (glocker -install swaps in place), so there is no bypass.
-lifecycle:
-  log_file: "/var/log/glocker-lifecycle.log"
-  reasons: ["maintenance", "work", "entertainment"]
-
-# Mindful uninstall gate. When enabled, `glocker -uninstall` must first pass a
-# metronome-paced typing challenge: a random sentence is revealed one character
-# per second and you type each as it appears; a wrong key, falling behind, or the
-# terminal losing focus resets it. This breaks the reflex to bail out. Runs
-# client-side in your terminal; if enabled with no tty, the uninstall is refused.
-mindful_uninstall:
-  enabled: true
-  interval_ms: 1000                     # per-character reveal cadence
-  deadline_ms: 2000                     # grace after a char appears before a miss resets
-  grace_ms: 1200                        # pause before the first character
-  lines: 1                              # base sentences chained into one challenge
-  recency_hours: 24                     # look back this far for a prior uninstall
-  recent_lines: 3                       # longer challenge on a repeat within the window (0 = no escalation)
-
-# Heartbeat watchdog (glockdoc): a root cron job pings the glocker socket every
-# interval_minutes and appends a liveness sample to log_file. The cron + binary
-# intentionally SURVIVE uninstall so the run of "alive:false" samples records how
-# long glocker stayed removed. Remove /etc/cron.d/glocker-doc by hand to stop it
-# after a permanent uninstall.
-heartbeat:
-  enabled: true
-  interval_minutes: 30
-  log_file: "/var/log/glocker-heartbeat.jsonl"
-  timeout_seconds: 3
-
-# Usage monitor: samples the focused window + idle time to a JSONL log the
-# dashboard reads. Runs as root, so it needs the logged-in session's display and
-# X authority to see your windows (or WAYLAND_DISPLAY + XDG_RUNTIME_DIR on
-# Wayland). Adjust `display`/`xauthority` for your session (echo $DISPLAY).
-usage_monitor:
-  enabled: true
-  log_file: "/var/log/glocker-usage.jsonl"
-  rules_file: "/var/lib/glocker/usage-rules.json"
-  interval_seconds: 60
-  display: ":0"
-  xauthority: "/run/user/1000/gdm/Xauthority"   # adjust the UID/path for your login manager
-
-# Sudoers control — the REAL enforcement. During allow_windows sudo is permitted;
-# outside them the blocked line applies. Set `user` to your login name. Keep the
-# blocked line limited to sudo you genuinely need; do NOT leave yourself able to
-# edit /etc/hosts, /etc/sudoers, or remove glocker.
-sudoers:
-  enabled: true
-  user: "yourusername"
-  allowed_sudoers_line: "yourusername ALL=(ALL) NOPASSWD:ALL"
-  blocked_sudoers_line: "yourusername ALL=(ALL) NOPASSWD: /usr/sbin/pm-suspend, /usr/bin/journalctl"
-  allow_windows:
-    - start: "10:00"
-      end: "23:30"
-      days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-    - start: "11:00"
-      end: "15:00"
-      days: ["Sat", "Sun"]
-
-# Accountability notifications (violation/unblock/extension alerts and the daily
-# report) are handled by glockpeek, not the agent — configured per-account there.
-# The agent itself sends no email and needs no Mailgun key. See the `sync` stanza
-# for pointing the agent at a hosted glockpeek.
-
-# Desktop notification command. {urgency} {icon} {title} {message} are filled in.
-notification_command: "notify-send -u {urgency} -i {icon} '{title}' '{message}'"
-
-# Panic mode (`glocker -panic N`): emergency offline enforcement. pm-suspend
-# suspends until you wake it; use rtcwake to auto-wake after the duration.
-panic_command: "pm-suspend"
 
 # Programs killed on sight during their windows (matched on process name). Use
 # kill_windows (killed DURING the window) or allow_windows (killed OUTSIDE it);
@@ -202,6 +69,92 @@ forbidden_programs:
     - name: "brave"
     - name: "some-game"
 
+
+# ── Blocking: web content (browser extension) ─────────────────────────────────
+# Run a command when a blocked site is accessed (reported by the web server /
+# extension) — e.g. an audible or visual nudge. Empty command = none.
+web_tracking:
+  enabled: true
+  command: 'notify-send "glocker" "A blocked site was accessed"'
+
+# Log content-violation reports POSTed by the browser extension.
+content_monitoring:
+  enabled: true
+  log_file: "/var/log/glocker-reports.log"
+
+# Keywords the Firefox extension watches for. url_keywords match the address;
+# content_keywords match page text; whitelist pages are never scanned or
+# reported. Replace these placeholders with your own terms and trusted sites.
+extension_keywords:
+  url_keywords: ["keyword-in-url", "another-keyword"]
+  content_keywords: ["a phrase to flag", "another phrase"]
+  whitelist:
+    - "mail.google.com"
+    - "calendar.google.com"
+    - "github.com"
+    - "stackoverflow.com"
+    - "en.wikipedia.org"
+    # add any sites that should never be scanned or blocked
+
+# ── Blocking: privileges (sudo) ───────────────────────────────────────────────
+# Sudoers control — the REAL enforcement. During allow_windows sudo is permitted;
+# outside them the blocked line applies. Set `user` to your login name. Keep the
+# blocked line limited to sudo you genuinely need; do NOT leave yourself able to
+# edit /etc/hosts, /etc/sudoers, or remove glocker.
+sudoers:
+  enabled: true
+  user: "yourusername"
+  allowed_sudoers_line: "yourusername ALL=(ALL) NOPASSWD:ALL"
+  blocked_sudoers_line: "yourusername ALL=(ALL) NOPASSWD: /usr/sbin/pm-suspend, /usr/bin/journalctl"
+  allow_windows:
+    - start: "10:00"
+      end: "23:30"
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    - start: "11:00"
+      end: "15:00"
+      days: ["Sat", "Sun"]
+
+# ── Enforcement engine & tamper-resistance ────────────────────────────────────
+# How often the main enforcement loop runs (seconds).
+enforce_interval_seconds: 60
+
+# Re-apply protections (immutable flags, hosts, sudoers) if they're tampered with.
+enable_self_healing: false
+
+# Watch critical files (the binary, /etc/hosts, the service) for tampering and
+# run alarm_command if they change.
+tamper_detection:
+  enabled: true
+  check_interval_seconds: 30
+  alarm_command: 'notify-send -u critical "glocker" "Tampering detected"'
+
+# Mindful uninstall gate. When enabled, `glocker -uninstall` must first pass a
+# metronome-paced typing challenge: a random sentence is revealed one character
+# per second and you type each as it appears; a wrong key, falling behind, or the
+# terminal losing focus resets it. This breaks the reflex to bail out. Runs
+# client-side in your terminal; if enabled with no tty, the uninstall is refused.
+mindful_uninstall:
+  enabled: true
+  interval_ms: 1000                     # per-character reveal cadence
+  deadline_ms: 2000                     # grace after a char appears before a miss resets
+  grace_ms: 1200                        # pause before the first character
+  lines: 1                              # base sentences chained into one challenge
+  recency_hours: 24                     # look back this far for a prior uninstall
+  recent_lines: 3                       # longer challenge on a repeat within the window (0 = no escalation)
+
+# ── Escape valves ─────────────────────────────────────────────────────────────
+# Temporary unblocking: `glocker -unblock "domain:reason"`.
+unblocking:
+  reasons: ["work", "research", "emergency"]  # a valid reason is required on -unblock
+  log_file: "/var/log/glocker-unblocks.log"
+  temp_unblock_time: 20                        # minutes a domain stays unblocked
+  max_per_day: 0                               # cap on unblocks per calendar day (0 = unlimited)
+
+# Panic mode (`glocker -panic N`): emergency offline enforcement. pm-suspend
+# suspends until you wake it; use rtcwake to auto-wake after the duration.
+panic_command: "pm-suspend"
+
+# ── Accountability & telemetry ────────────────────────────────────────────────
 # Violation tracking: after max_violations blocked-access attempts within the
 # window, run command (typically a screen lock). glocklock locks for a fixed
 # duration then auto-unlocks. A GUI command needs `sudo -u <you> DISPLAY=:0`
@@ -216,7 +169,62 @@ violation_tracking:
   lock_duration: 5m
   background: "/path/to/background.jpg"   # optional lock-screen background (X11 backend)
 
-# ── Domains ──────────────────────────────────────────────────────────────────
+# Heartbeat watchdog (glockdoc): a root cron job pings the glocker socket every
+# interval_minutes and appends a liveness sample to log_file. The cron + binary
+# intentionally SURVIVE uninstall so the run of "alive:false" samples records how
+# long glocker stayed removed. Remove /etc/cron.d/glocker-doc by hand to stop it
+# after a permanent uninstall.
+heartbeat:
+  enabled: true
+  interval_minutes: 30
+  log_file: "/var/log/glocker-heartbeat.jsonl"
+  timeout_seconds: 3
+
+# Usage monitor: samples the focused window + idle time to a JSONL log the
+# dashboard reads. Runs as root, so it needs the logged-in session's display and
+# X authority to see your windows (or WAYLAND_DISPLAY + XDG_RUNTIME_DIR on
+# Wayland). Adjust `display`/`xauthority` for your session (echo $DISPLAY).
+usage_monitor:
+  enabled: true
+  log_file: "/var/log/glocker-usage.jsonl"
+  rules_file: "/var/lib/glocker/usage-rules.json"
+  interval_seconds: 60
+  display: ":0"
+  xauthority: "/run/user/1000/gdm/Xauthority"   # adjust the UID/path for your login manager
+
+# How the agent ships its local /var records to a glockpeek instance. Local-first:
+# it never blocks enforcement — it backfills at startup, then pushes new records
+# on a timer, retrying if glockpeek is down.
+sync:
+  enabled: false                          # turn on to sync to a glockpeek instance
+  glockpeek_url: "http://127.0.0.1:4317"  # local glockpeek; point at a remote host to sync off-box
+  token: ""                               # ingest bearer token (only for a hosted glockpeek)
+  interval_seconds: 300                   # incremental sync cadence
+  encrypt: false                          # REQUIRED when enabled is true — choose explicitly:
+                                          #   true  = encrypt sensitive fields before upload so a hosted
+                                          #           glockpeek only ever stores ciphertext (needs the master
+                                          #           key; install it with `glocker -connect`).
+                                          #   false = plaintext; only sensible for a local/loopback glockpeek.
+  # encrypt_key_file: "/etc/glocker/e2e.key"   # optional; master key path (base64 of 32 bytes). Read only
+                                          #   when encrypt is true. Defaults to /etc/glocker/e2e.key if unset.
+
+# Install/uninstall accountability. `glocker -uninstall` must cite one of these
+# reasons. All reasons are gated equally by the mindful gate below — upgrades no
+# longer uninstall (glocker -install swaps in place), so there is no bypass.
+lifecycle:
+  log_file: "/var/log/glocker-lifecycle.log"
+  reasons: ["maintenance", "work", "entertainment"]
+
+# ── Notifications ─────────────────────────────────────────────────────────────
+# Accountability notifications (violation/unblock/extension alerts and the daily
+# report) are handled by glockpeek, not the agent — configured per-account there.
+# The agent itself sends no email and needs no Mailgun key. See the `sync` stanza
+# for pointing the agent at a hosted glockpeek.
+
+# Desktop notification command. {urgency} {icon} {title} {message} are filled in.
+notification_command: "notify-send -u {urgency} -i {icon} '{title}' '{message}'"
+
+# ── Domains (blocklist) ───────────────────────────────────────────────────────
 domains:
   # Generated blocklists live in conf.d/ (kept out of this file for size).
   # Populate them with `make full-install` or `python3 update_domains.py all`,
