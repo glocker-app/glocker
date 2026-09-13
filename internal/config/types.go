@@ -249,7 +249,6 @@ type Config struct {
 	UsageMonitor        UsageMonitorConfig      `yaml:"usage_monitor"`
 	NotificationCommand string                  `yaml:"notification_command"`
 	PanicCommand        string                  `yaml:"panic_command"`
-	Dev                 bool                    `yaml:"dev"`
 	LogLevel            string                  `yaml:"log_level"`
 	// Sync configures how the agent ships its local /var records to a glockpeek
 	// instance. Local-first: recording and enforcement never depend on it, so a
