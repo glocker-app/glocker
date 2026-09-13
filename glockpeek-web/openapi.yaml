@@ -137,6 +137,79 @@ paths:
                     type: object
                     additionalProperties:
                       type: string
+  /api/billing/checkout:
+    post:
+      summary: Start a checkout for the paid tier (Merchant-of-Record, Polar)
+      description: >
+        Creates a Polar checkout session for the authenticated account and
+        returns the hosted checkout URL to redirect the browser to. The account's
+        numeric id is attached as external_customer_id (never the email), so the
+        webhook can map the resulting subscription back without glockpeek holding
+        payer PII. Only mounted when billing is enabled; session-gated.
+      operationId: startBillingCheckout
+      responses:
+        "200":
+          description: Checkout session created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    format: uri
+                    description: Hosted Polar checkout URL to redirect the customer to.
+        "401":
+          description: Not authenticated
+        "502":
+          description: Upstream (Polar) error creating the checkout
+  /api/billing/webhook:
+    post:
+      summary: Merchant-of-Record subscription webhook (Polar)
+      description: >
+        Receives Polar subscription lifecycle events. The request is verified
+        against the Standard Webhooks HMAC signature before anything is trusted;
+        the event is then mapped onto the account's device limit —
+        active/uncanceled grant the paid cap, revoked drops back to free, canceled
+        keeps access until the period end. Not session-gated (the caller is Polar,
+        authenticated by the signature, not a browser). Idempotent.
+      operationId: billingWebhook
+      parameters:
+        - in: header
+          name: webhook-id
+          required: true
+          schema: { type: string }
+        - in: header
+          name: webhook-timestamp
+          required: true
+          schema: { type: string }
+        - in: header
+          name: webhook-signature
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: A Polar webhook event; only subscription.* types are acted on.
+              properties:
+                type:
+                  type: string
+                  example: subscription.active
+                data:
+                  type: object
+      responses:
+        "200":
+          description: Event applied, or safely ignored/acked (unknown account or unhandled type)
+        "401":
+          description: Signature verification failed
+        "502":
+          description: Transient processing error; Polar should retry
+        "503":
+          description: Billing webhook not configured (no valid signing secret)
+
 components:
   schemas:
     Error:
