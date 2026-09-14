@@ -1,7 +1,6 @@
 package monitoring
 
 import (
-	"fmt"
 	"log"
 	"log/slog"
 	"os/exec"
@@ -9,7 +8,6 @@ import (
 	"time"
 
 	"glocker/internal/config"
-	"glocker/internal/notify"
 	"glocker/internal/state"
 )
 
@@ -49,11 +47,6 @@ func checkViolationThreshold(cfg *config.Config) {
 	if recentCount >= cfg.ViolationTracking.MaxViolations {
 		log.Printf("VIOLATION THRESHOLD EXCEEDED: %d/%d violations in last %d minutes",
 			recentCount, cfg.ViolationTracking.MaxViolations, cfg.ViolationTracking.TimeWindowMinutes)
-
-		// Send desktop notification
-		notify.SendNotification(cfg, "Glocker Alert",
-			fmt.Sprintf("Violation threshold exceeded: %d/%d", recentCount, cfg.ViolationTracking.MaxViolations),
-			"critical", "dialog-warning")
 
 		// Execute the configured command
 		if cfg.ViolationTracking.Command != "" {

@@ -27,7 +27,7 @@ const (
 	SudoersMarker              = "# GLOCKER-MANAGED"
 	SystemdFile                = "./extras/glocker.service"
 	GlockerSock                = "/var/glocker/glocker.sock" // root-owned 0700 dir gates access
-	EmailCooldownMinutes       = 15 // Minimum time between emails for the same event type
+	EmailCooldownMinutes       = 15                          // Minimum time between emails for the same event type
 )
 
 // TimeWindow represents a time-based blocking window with specific days.
@@ -226,24 +226,22 @@ type Config struct {
 	// substring) to terminate whenever a domain is blocked. Browsers cache DNS
 	// internally, so a freshly blocked domain stays reachable until they restart;
 	// killing them on block forces a fresh resolution against the updated hosts file.
-	KillOnBlock         []string                `yaml:"kill_on_block,omitempty"`
-	SelfHeal            bool                    `yaml:"enable_self_healing"`
-	EnforceInterval     int                     `yaml:"enforce_interval_seconds"`
-	Sudoers             SudoersConfig           `yaml:"sudoers"`
-	TamperDetection     TamperConfig            `yaml:"tamper_detection"`
-	WebTracking         WebTrackingConfig       `yaml:"web_tracking"`
-	ContentMonitoring   ContentMonitoringConfig `yaml:"content_monitoring"`
-	ForbiddenPrograms   ForbiddenProgramsConfig `yaml:"forbidden_programs"`
-	ExtensionKeywords   ExtensionKeywordsConfig `yaml:"extension_keywords"`
-	ViolationTracking   ViolationTrackingConfig `yaml:"violation_tracking"`
-	Unblocking          UnblockingConfig        `yaml:"unblocking"`
-	Lifecycle           LifecycleConfig         `yaml:"lifecycle"`
-	MindfulUninstall    MindfulUninstallConfig  `yaml:"mindful_uninstall"`
-	Heartbeat           HeartbeatConfig         `yaml:"heartbeat"`
-	UsageMonitor        UsageMonitorConfig      `yaml:"usage_monitor"`
-	NotificationCommand string                  `yaml:"notification_command"`
-	PanicCommand        string                  `yaml:"panic_command"`
-	LogLevel            string                  `yaml:"log_level"`
+	KillOnBlock       []string                `yaml:"kill_on_block,omitempty"`
+	SelfHeal          bool                    `yaml:"enable_self_healing"`
+	Sudoers           SudoersConfig           `yaml:"sudoers"`
+	TamperDetection   TamperConfig            `yaml:"tamper_detection"`
+	WebTracking       WebTrackingConfig       `yaml:"web_tracking"`
+	ContentMonitoring ContentMonitoringConfig `yaml:"content_monitoring"`
+	ForbiddenPrograms ForbiddenProgramsConfig `yaml:"forbidden_programs"`
+	ExtensionKeywords ExtensionKeywordsConfig `yaml:"extension_keywords"`
+	ViolationTracking ViolationTrackingConfig `yaml:"violation_tracking"`
+	Unblocking        UnblockingConfig        `yaml:"unblocking"`
+	Lifecycle         LifecycleConfig         `yaml:"lifecycle"`
+	MindfulUninstall  MindfulUninstallConfig  `yaml:"mindful_uninstall"`
+	Heartbeat         HeartbeatConfig         `yaml:"heartbeat"`
+	UsageMonitor      UsageMonitorConfig      `yaml:"usage_monitor"`
+	PanicCommand      string                  `yaml:"panic_command"`
+	LogLevel          string                  `yaml:"log_level"`
 	// Sync configures how the agent ships its local /var records to a glockpeek
 	// instance. Local-first: recording and enforcement never depend on it, so a
 	// glockpeek that's down or unreachable only delays the dashboard, nothing else.

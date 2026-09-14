@@ -16,7 +16,6 @@ import (
 
 	"glocker/internal/config"
 	"glocker/internal/monitoring"
-	"glocker/internal/notify"
 	"glocker/internal/state"
 	"glocker/internal/utils"
 )
@@ -72,11 +71,6 @@ func HandleWebTrackingRequest(cfg *config.Config, w http.ResponseWriter, r *http
 		if cfg.WebTracking.Command != "" {
 			go executeWebTrackingCommand(cfg, host, r)
 		}
-
-		// Send desktop notification
-		notify.SendNotification(cfg, "Glocker Alert",
-			fmt.Sprintf("Blocked access to %s", host),
-			"normal", "dialog-information")
 
 		// Redirect to localhost blocked page to avoid double violation
 		blockedURL := fmt.Sprintf("http://127.0.0.1/blocked?domain=%s&matched=%s&url=%s", host, matchedDomain, r.URL.String())

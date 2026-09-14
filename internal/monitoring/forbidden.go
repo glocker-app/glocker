@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"glocker/internal/config"
-	"glocker/internal/notify"
 	"glocker/internal/state"
 	"glocker/internal/utils"
 )
@@ -193,17 +192,10 @@ func killMatchingProcesses(cfg *config.Config, programName string) {
 	// Record violation only once per program name (not per subprocess). The
 	// matched count is known before any kill is attempted, mirroring the
 	// original behavior of recording on detection rather than success.
-	killedProcesses, matched := terminateMatching(programName)
+	_, matched := terminateMatching(programName)
 	if matched > 0 && cfg.ViolationTracking.Enabled {
 		RecordViolation(cfg, "forbidden_program", programName, fmt.Sprintf("Killed %d process(es)", matched))
 	}
-
-	// Send desktop notification once for all killed processes
-	if len(killedProcesses) > 0 {
-		message := fmt.Sprintf("Terminated forbidden program: %s (%d process(es))", programName, len(killedProcesses))
-		notify.SendNotification(cfg, "Glocker Alert", message, "normal", "dialog-warning")
-	}
-
 }
 
 // KillForbiddenNow immediately kills any processes matching the given program
@@ -245,7 +237,5 @@ func KillOnBlock(cfg *config.Config) {
 	if len(allKilled) > 0 {
 		log.Printf("KILLED ON BLOCK: terminated %d process(es) to flush DNS caches: %s",
 			len(allKilled), strings.Join(allKilled, ", "))
-		message := fmt.Sprintf("Closed %d process(es) so newly blocked domains take effect", len(allKilled))
-		notify.SendNotification(cfg, "Glocker", message, "normal", "dialog-information")
 	}
 }

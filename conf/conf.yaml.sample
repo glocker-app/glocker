@@ -115,9 +115,6 @@ sudoers:
       days: ["Sat", "Sun"]
 
 # ── Enforcement engine & tamper-resistance ────────────────────────────────────
-# How often the main enforcement loop runs (seconds).
-enforce_interval_seconds: 60
-
 # Re-apply protections (immutable flags, hosts, sudoers) if they're tampered with.
 enable_self_healing: false
 
@@ -211,15 +208,6 @@ sync:
 lifecycle:
   log_file: "/var/log/glocker-lifecycle.log"
   reasons: ["maintenance", "work", "entertainment"]
-
-# ── Notifications ─────────────────────────────────────────────────────────────
-# Accountability notifications (violation/unblock/extension alerts and the daily
-# report) are handled by glockpeek, not the agent — configured per-account there.
-# The agent itself sends no email and needs no Mailgun key. See the `sync` stanza
-# for pointing the agent at a hosted glockpeek.
-
-# Desktop notification command. {urgency} {icon} {title} {message} are filled in.
-notification_command: "notify-send -u {urgency} -i {icon} '{title}' '{message}'"
 
 # ── Domains (blocklist) ───────────────────────────────────────────────────────
 domains:

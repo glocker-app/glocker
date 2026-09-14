@@ -685,8 +685,13 @@ func main() {
 	log.Println("Performing initial enforcement...")
 	enforcement.InitialEnforcement(cfg)
 
-	// Main enforcement loop - only check for changes
-	ticker := time.NewTicker(time.Duration(cfg.EnforceInterval) * time.Second)
+	// Main enforcement loop - only check for changes. The cadence is a fixed
+	// internal detail (the loop just detects time-window transitions, temp-unblock
+	// expiry, and hosts tampering), not a user knob, so it's a constant rather
+	// than config — which also removes the NewTicker(0) panic when the key was
+	// omitted.
+	const enforceInterval = 60 * time.Second
+	ticker := time.NewTicker(enforceInterval)
 	defer ticker.Stop()
 
 	// Setup signal handling

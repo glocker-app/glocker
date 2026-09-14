@@ -223,8 +223,6 @@ func GetInfoResponse(cfg *config.Config) string {
 	response.WriteString("║            CONFIGURATION INFO                  ║\n")
 	response.WriteString("╚════════════════════════════════════════════════╝\n\n")
 
-	response.WriteString(fmt.Sprintf("Enforcement Interval: %d seconds\n", cfg.EnforceInterval))
-
 	// Get domain counts from enforcement state
 	_, blockedCount, _ := enforcement.GetEnforcementState()
 	timeWindowDomains := enforcement.GetTimeWindowDomains()

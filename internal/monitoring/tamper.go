@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"glocker/internal/config"
-	"glocker/internal/notify"
 	"glocker/internal/state"
 )
 
@@ -63,11 +62,6 @@ func MonitorTampering(cfg *config.Config, checksums []state.FileChecksum, filesT
 		if tampered {
 			log.Println("Tamper check failed")
 			log.Println(tamperReasons)
-
-			// Send desktop notification
-			notify.SendNotification(cfg, "Glocker Security Alert",
-				"System tampering detected!",
-				"critical", "dialog-error")
 
 			RaiseAlarm(cfg, tamperReasons)
 			// Update baseline checksums after alarm

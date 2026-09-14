@@ -122,8 +122,7 @@ func TestValidateConfig_ValidConfig(t *testing.T) {
 				},
 			},
 		},
-		HostsPath:       "/etc/hosts",
-		EnforceInterval: 60,
+		HostsPath: "/etc/hosts",
 	}
 
 	err := ValidateConfig(cfg)

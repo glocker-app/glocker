@@ -84,10 +84,10 @@ func TestRecordViolation(t *testing.T) {
 
 	cfg := &config.Config{
 		ViolationTracking: config.ViolationTrackingConfig{
-			Enabled:             true,
-			MaxViolations:       5,
-			TimeWindowMinutes:   60,
-			Command:             "",
+			Enabled:           true,
+			MaxViolations:     5,
+			TimeWindowMinutes: 60,
+			Command:           "",
 		},
 	}
 
@@ -117,8 +117,8 @@ func TestCountRecentViolations(t *testing.T) {
 
 	cfg := &config.Config{
 		ViolationTracking: config.ViolationTrackingConfig{
-			Enabled:             true,
-			TimeWindowMinutes:   60,
+			Enabled:           true,
+			TimeWindowMinutes: 60,
 		},
 	}
 
@@ -295,4 +295,3 @@ func TestKillOnBlock_EmptyListNoop(t *testing.T) {
 	KillOnBlock(&config.Config{})
 	KillOnBlock(&config.Config{KillOnBlock: []string{"", "   "}})
 }
-
