@@ -327,6 +327,7 @@ async function bootDashboard(me) {
       if (r.ok) me = await r.json();
     } catch { /* keep partial me */ }
   }
+  state.me = me; // stash identity (billing flag, subStatus, deviceLimit) for the UI
   // Hosted is end-to-end-encrypted only: an account with no key vault must set a
   // passphrase before it can reach the dashboard. Both the fresh-load and the
   // post-login paths funnel through here. (Temporary bounce to the standalone
@@ -2620,8 +2621,39 @@ function deviceConfig(token) {
 
 function showDeviceUpsell(show) {
   const el = document.getElementById("device-upsell");
-  el.textContent = "You've reached your device limit. More devices are a paid feature — reply to your welcome email to upgrade.";
   el.hidden = !show;
+  if (!show) return;
+  el.textContent = "";
+  // When billing is configured, offer a real one-click upgrade (hosted checkout
+  // via the Merchant-of-Record). Otherwise fall back to the manual note.
+  if (state.me && state.me.billing) {
+    el.append(document.createTextNode("You've reached your device limit. Upgrade for more devices. "));
+    const btn = document.createElement("button");
+    btn.className = "btn-primary";
+    btn.type = "button";
+    btn.textContent = "Upgrade";
+    btn.onclick = () => startCheckout(btn);
+    el.append(btn);
+  } else {
+    el.textContent = "You've reached your device limit. More devices are a paid feature — reply to your welcome email to upgrade.";
+  }
+}
+
+// startCheckout asks the server for a hosted checkout URL and redirects there.
+// Payment happens entirely on the Merchant-of-Record's page — no card details
+// ever touch glockpeek.
+async function startCheckout(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Starting…"; }
+  try {
+    const res = await fetch("api/billing/checkout", { method: "POST" });
+    if (!res.ok) throw new Error(`server returned ${res.status}`);
+    const { url } = await res.json();
+    if (!url) throw new Error("no checkout url");
+    location.href = url;
+  } catch (err) {
+    if (btn) { btn.disabled = false; btn.textContent = "Upgrade"; }
+    alert("Could not start checkout. Please try again in a moment.");
+  }
 }
 
 async function renderDevices() {
@@ -2641,6 +2673,13 @@ async function renderDevices() {
 
   const limitText = data.limit < 0 ? "∞" : data.limit;
   usageEl.textContent = `${data.used} of ${limitText} device${data.limit === 1 ? "" : "s"} used.`;
+  // Surface the current plan alongside usage.
+  const sub = state.me && state.me.subStatus;
+  if (sub === "active") {
+    usageEl.textContent += "  ·  Pro plan (active)";
+  } else if (sub === "canceled") {
+    usageEl.textContent += "  ·  Pro plan (cancels at period end)";
+  }
 
   listEl.textContent = "";
   if (!data.tokens.length) {
