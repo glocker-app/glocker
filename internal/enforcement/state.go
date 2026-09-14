@@ -121,11 +121,6 @@ func InitialEnforcement(cfg *config.Config) {
 		enforcementState.mu.Unlock()
 	}
 
-	// Self-heal check
-	if cfg.SelfHeal {
-		SelfHeal(cfg)
-	}
-
 	// Build time window state BEFORE acquiring lock to avoid deadlock
 	// (buildTimeWindowState also acquires RLock on the same mutex)
 	timeWindowState := buildTimeWindowState(now)
@@ -252,11 +247,6 @@ func EnforcementCheck(cfg *config.Config) {
 		if err := UpdateSudoers(cfg, now, false, false); err != nil {
 			log.Printf("ERROR updating sudoers: %v", err)
 		}
-	}
-
-	// Self-heal check (lightweight - just re-applies immutable flags)
-	if cfg.SelfHeal {
-		SelfHeal(cfg)
 	}
 
 	// Build time window state BEFORE acquiring lock to avoid deadlock

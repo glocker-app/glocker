@@ -3,9 +3,6 @@ package enforcement
 import (
 	"log"
 	"log/slog"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"time"
 
 	"glocker/internal/config"
@@ -22,12 +19,6 @@ func RunOnce(cfg *config.Config, dryRun bool) {
 
 	blockedDomains := GetDomainsToBlock(cfg, now)
 	slog.Debug("Domains to block determined", "count", len(blockedDomains))
-
-	// Self-healing: verify our own integrity
-	if cfg.SelfHeal && !dryRun {
-		slog.Debug("Running self-healing checks")
-		SelfHeal(cfg)
-	}
 
 	if cfg.Domains.Enabled {
 		slog.Debug("Updating hosts file", "enabled", true)
@@ -58,23 +49,3 @@ func RunOnce(cfg *config.Config, dryRun bool) {
 	slog.Debug("Enforcement run completed")
 }
 
-// SelfHeal performs integrity checks and re-applies protections to the glocker binary.
-// It verifies the binary exists, re-applies immutable flag, and checks the running location.
-func SelfHeal(cfg *config.Config) {
-	// Check if our binary still exists
-	if _, err := os.Stat(config.InstallPath); os.IsNotExist(err) {
-		log.Fatal("CRITICAL: glocker binary was deleted! Self-healing failed.")
-	}
-
-	// Re-apply immutable flag on our binary
-	exec.Command("chattr", "+i", config.InstallPath).Run()
-
-	// Verify we're still running as the expected process
-	exe, err := os.Executable()
-	if err == nil {
-		exePath, _ := filepath.EvalSymlinks(exe)
-		if exePath != config.InstallPath {
-			log.Printf("Warning: running from unexpected location: %s (expected %s)", exePath, config.InstallPath)
-		}
-	}
-}

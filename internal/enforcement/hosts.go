@@ -193,7 +193,6 @@ func UpdateHosts(cfg *config.Config, domains []string, dryRun bool) error {
 	// Update checksum after legitimate change
 	// Note: updateChecksum is in monitoring package, will be integrated later
 	slog.Debug("Updating checksum for hosts file")
-	// TODO: Call monitoring.UpdateChecksum(hostsPath) once monitoring package is implemented
 	slog.Debug("Hosts file update completed successfully")
 
 	return nil

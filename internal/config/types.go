@@ -72,13 +72,6 @@ type MailConfig struct {
 	Region  string `yaml:"region"` // "us" (default) or "eu"
 }
 
-// TamperConfig controls file integrity monitoring and tamper detection.
-type TamperConfig struct {
-	Enabled       bool   `yaml:"enabled"`
-	CheckInterval int    `yaml:"check_interval_seconds"`
-	AlarmCommand  string `yaml:"alarm_command"`
-}
-
 // DomainsConfig groups everything about domain blocking: the on/off switch, the
 // hosts file, the browsers to close on a block, the nudge run when a blocked
 // domain is loaded, the temporary-unblock rules, and the block list itself.
@@ -250,9 +243,7 @@ type Config struct {
 	Content  ContentConfig  `yaml:"content"`
 	Sudoers  SudoersConfig  `yaml:"sudoers"`
 
-	// Tamper-resistance & uninstall.
-	SelfHeal         bool                   `yaml:"enable_self_healing"`
-	TamperDetection  TamperConfig           `yaml:"tamper_detection"`
+	// Uninstall friction & accountability.
 	MindfulUninstall MindfulUninstallConfig `yaml:"mindful_uninstall"`
 	Lifecycle        LifecycleConfig        `yaml:"lifecycle"`
 

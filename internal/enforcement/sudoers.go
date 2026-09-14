@@ -99,7 +99,6 @@ func UpdateSudoers(cfg *config.Config, now time.Time, dryRun bool, forceBlock bo
 	os.Chmod(config.SudoersPath, 0440)
 
 	// Update checksum after legitimate change
-	// TODO: Call monitoring.UpdateChecksum(config.SudoersPath) once monitoring package is implemented
 
 	return nil
 }

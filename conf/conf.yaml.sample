@@ -175,17 +175,7 @@ sudoers:
       end: "15:00"
       days: ["Sat", "Sun"]
 
-# ── Tamper-resistance & uninstall ─────────────────────────────────────────────
-# Re-apply protections (immutable flags, hosts, sudoers) if they're tampered with.
-enable_self_healing: false
-
-# Watch critical files (the binary, /etc/hosts, the service) for tampering and
-# run alarm_command if they change.
-tamper_detection:
-  enabled: true
-  check_interval_seconds: 30
-  alarm_command: 'notify-send -u critical "glocker" "Tampering detected"'
-
+# ── Uninstall ─────────────────────────────────────────────────────────────────
 # Mindful uninstall gate. When enabled, `glocker -uninstall` must first pass a
 # metronome-paced typing challenge: a random sentence is revealed one character
 # per second and you type each as it appears; a wrong key, falling behind, or the

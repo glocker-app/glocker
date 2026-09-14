@@ -1,23 +1,9 @@
 package state
 
 import (
-	"fmt"
 	"sync"
 	"time"
-
-	"glocker/internal/config"
 )
-
-// FileChecksum represents a file's checksum for tamper detection.
-type FileChecksum struct {
-	Path     string
-	Checksum string
-	Exists   bool
-}
-
-func (f FileChecksum) String() string {
-	return fmt.Sprintf("Path : %s, Checksum : %s, Exists : %v", f.Path, f.Checksum, f.Exists)
-}
 
 // TempUnblock represents a temporarily unblocked domain with expiration time.
 type TempUnblock struct {
@@ -85,12 +71,6 @@ var (
 	lastEmailTimes = make(map[string]time.Time)
 	emailMutex     sync.RWMutex
 
-	// Tamper detection
-	globalChecksums      []FileChecksum
-	globalFilesToMonitor []string
-	globalConfig         *config.Config
-	checksumMutex        sync.RWMutex
-
 	// Temporary unblocks
 	tempUnblocks      []TempUnblock
 	tempUnblocksMutex sync.RWMutex
@@ -156,74 +136,6 @@ func SetLastEmailTime(eventType string, t time.Time) {
 	emailMutex.Lock()
 	defer emailMutex.Unlock()
 	lastEmailTimes[eventType] = t
-}
-
-// Tamper detection functions
-
-// GetGlobalChecksums returns a copy of the global checksums.
-func GetGlobalChecksums() []FileChecksum {
-	checksumMutex.RLock()
-	defer checksumMutex.RUnlock()
-	// Return a copy to prevent external modification
-	result := make([]FileChecksum, len(globalChecksums))
-	copy(result, globalChecksums)
-	return result
-}
-
-// SetGlobalChecksums sets the global checksums.
-func SetGlobalChecksums(checksums []FileChecksum) {
-	checksumMutex.Lock()
-	defer checksumMutex.Unlock()
-	globalChecksums = checksums
-}
-
-// UpdateChecksum updates a specific file's checksum in the global list.
-func UpdateChecksum(filePath string, checksum string, exists bool) {
-	checksumMutex.Lock()
-	defer checksumMutex.Unlock()
-	for i, c := range globalChecksums {
-		if c.Path == filePath {
-			globalChecksums[i].Checksum = checksum
-			globalChecksums[i].Exists = exists
-			return
-		}
-	}
-	// If not found, add it
-	globalChecksums = append(globalChecksums, FileChecksum{
-		Path:     filePath,
-		Checksum: checksum,
-		Exists:   exists,
-	})
-}
-
-// GetGlobalFilesToMonitor returns the list of files being monitored.
-func GetGlobalFilesToMonitor() []string {
-	checksumMutex.RLock()
-	defer checksumMutex.RUnlock()
-	result := make([]string, len(globalFilesToMonitor))
-	copy(result, globalFilesToMonitor)
-	return result
-}
-
-// SetGlobalFilesToMonitor sets the list of files to monitor.
-func SetGlobalFilesToMonitor(files []string) {
-	checksumMutex.Lock()
-	defer checksumMutex.Unlock()
-	globalFilesToMonitor = files
-}
-
-// GetGlobalConfig returns the global config pointer.
-func GetGlobalConfig() *config.Config {
-	checksumMutex.RLock()
-	defer checksumMutex.RUnlock()
-	return globalConfig
-}
-
-// SetGlobalConfig sets the global config pointer.
-func SetGlobalConfig(cfg *config.Config) {
-	checksumMutex.Lock()
-	defer checksumMutex.Unlock()
-	globalConfig = cfg
 }
 
 // Temporary unblock functions

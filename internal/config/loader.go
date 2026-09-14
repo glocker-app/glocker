@@ -80,6 +80,8 @@ var retiredTopLevelKeys = map[string]string{
 	"panic_command":             "panic.command",
 	"enforce_interval_seconds":  "removed — the enforcement cadence is a fixed 60s",
 	"notification_command":      "removed — the agent no longer sends desktop notifications",
+	"enable_self_healing":       "removed — redundant with the immutable-flag + sudo-deny controls",
+	"tamper_detection":          "removed — the heartbeat gap on glockpeek is the real tamper signal",
 }
 
 // checkRetiredKeys errors if the top-level config mapping still carries any key

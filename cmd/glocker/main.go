@@ -646,12 +646,6 @@ func main() {
 	}
 
 	// Start monitoring goroutines
-	if cfg.TamperDetection.Enabled {
-		go func() {
-			log.Println("Tamper detection enabled")
-		}()
-	}
-
 	if cfg.Programs.Enabled {
 		go monitoring.MonitorForbiddenPrograms(cfg)
 	}
