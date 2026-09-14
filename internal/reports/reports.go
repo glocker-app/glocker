@@ -8,14 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
-)
 
-// Default log file paths
-const (
-	DefaultUnblocksLogPath   = "/var/log/glocker-unblocks.log"
-	DefaultReportsLogPath    = "/var/log/glocker-reports.log"
-	DefaultLifecycleLogPath  = "/var/log/glocker-lifecycle.log"
-	DefaultHeartbeatLogPath  = "/var/log/glocker-heartbeat.jsonl"
+	"glocker/internal/config"
 )
 
 // UnblockEntry represents a single unblock log entry.
@@ -36,17 +30,17 @@ const (
 
 // ReportEntry represents a single content/URL report entry.
 type ReportEntry struct {
-	Timestamp  time.Time
-	Type       ReportType
-	Keyword    string
-	URL        string
-	Domain     string
+	Timestamp time.Time
+	Type      ReportType
+	Keyword   string
+	URL       string
+	Domain    string
 }
 
 // ParseUnblocksLog reads and parses the unblocks log file.
 func ParseUnblocksLog(path string) ([]UnblockEntry, error) {
 	if path == "" {
-		path = DefaultUnblocksLogPath
+		path = config.DefaultUnblocksLogFile
 	}
 
 	file, err := os.Open(path)
@@ -85,7 +79,7 @@ var reportLineRegex = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2
 // ParseReportsLog reads and parses the reports log file.
 func ParseReportsLog(path string) ([]ReportEntry, error) {
 	if path == "" {
-		path = DefaultReportsLogPath
+		path = config.DefaultReportsLogFile
 	}
 
 	file, err := os.Open(path)
@@ -223,7 +217,7 @@ type LifecycleEntry struct {
 // ParseLifecycleLog reads and parses the lifecycle log file.
 func ParseLifecycleLog(path string) ([]LifecycleEntry, error) {
 	if path == "" {
-		path = DefaultLifecycleLogPath
+		path = config.DefaultLifecycleLogFile
 	}
 
 	file, err := os.Open(path)
@@ -312,7 +306,7 @@ type DowntimePeriod struct {
 // sample per line). Malformed lines are skipped.
 func ParseHeartbeatLog(path string) ([]HeartbeatSample, error) {
 	if path == "" {
-		path = DefaultHeartbeatLogPath
+		path = config.DefaultHeartbeatLogFile
 	}
 
 	file, err := os.Open(path)

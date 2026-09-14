@@ -186,10 +186,10 @@ type logPaths struct{ reports, unblocks, lifecycle, heartbeat, usage string }
 // New and PendingCounts so both read exactly the same files.
 func resolveLogPaths(cfg *config.Config) logPaths {
 	return logPaths{
-		reports:   reports.DefaultReportsLogPath,
-		unblocks:  reports.DefaultUnblocksLogPath,
-		lifecycle: orDefault(cfg.Lifecycle.LogFile, reports.DefaultLifecycleLogPath),
-		heartbeat: reports.DefaultHeartbeatLogPath,
+		reports:   config.DefaultReportsLogFile,
+		unblocks:  config.DefaultUnblocksLogFile,
+		lifecycle: orDefault(cfg.Lifecycle.LogFile, config.DefaultLifecycleLogFile),
+		heartbeat: config.DefaultHeartbeatLogFile,
 		usage:     orDefault(cfg.UsageMonitor.LogFile, config.DefaultUsageLogFile),
 	}
 }

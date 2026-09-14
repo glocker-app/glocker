@@ -17,7 +17,7 @@ import (
 func LogContentReport(cfg *config.Config, report *state.ContentReport) error {
 	logFile := cfg.Content.Monitoring.LogFile
 	if logFile == "" {
-		logFile = "/var/log/glocker-reports.log"
+		logFile = config.DefaultReportsLogFile
 	}
 
 	// Create log entry
@@ -156,14 +156,11 @@ func IsValidUnblockReason(cfg *config.Config, reason string) bool {
 	return false
 }
 
-// DefaultLifecycleLogFile is the default path for install/uninstall logs.
-const DefaultLifecycleLogFile = "/var/log/glocker-lifecycle.log"
-
 // logLifecycleEntry logs an install or uninstall event.
 func logLifecycleEntry(cfg *config.Config, entryType, reason, note string) error {
 	logFile := cfg.Lifecycle.LogFile
 	if logFile == "" {
-		logFile = DefaultLifecycleLogFile
+		logFile = config.DefaultLifecycleLogFile
 	}
 
 	entry := state.LifecycleLogEntry{
@@ -214,7 +211,7 @@ func LogInstallEntry() error {
 		return fmt.Errorf("failed to marshal install entry: %w", err)
 	}
 
-	file, err := os.OpenFile(DefaultLifecycleLogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, err := os.OpenFile(config.DefaultLifecycleLogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open lifecycle log file: %w", err)
 	}
@@ -225,6 +222,6 @@ func LogInstallEntry() error {
 		return fmt.Errorf("failed to write to lifecycle log file: %w", err)
 	}
 
-	slog.Debug("Logged install entry", "log_file", DefaultLifecycleLogFile)
+	slog.Debug("Logged install entry", "log_file", config.DefaultLifecycleLogFile)
 	return nil
 }

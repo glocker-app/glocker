@@ -226,7 +226,7 @@ After making changes:
 1. Navigate to `about:debugging#/runtime/this-firefox`
 2. Load temporary extension from `extensions/firefox/manifest.json`
 3. Check browser console for extension logs
-4. Monitor `/var/log/glocker-reports.log` for content monitoring events
+4. Monitor `/var/log/glocker/reports.log` for content monitoring events
 
 ## System Requirements
 
@@ -243,8 +243,8 @@ After making changes:
 - **Service:** `/etc/systemd/system/glocker.service`
 - **Socket:** `/var/glocker/glocker.sock`
 - **Logs:**
-  - `/var/log/glocker-reports.log` (content monitoring)
-  - `/var/log/glocker-unblocks.log` (unblock requests)
+  - `/var/log/glocker/reports.log` (content monitoring)
+  - `/var/log/glocker/unblocks.log` (unblock requests)
 - **systemd logs:** `journalctl -u glocker.service`
 
 ## Troubleshooting
@@ -262,10 +262,10 @@ systemctl status glocker.service
 journalctl -u glocker.service -f
 
 # View violation logs
-tail -f /var/log/glocker-reports.log
+tail -f /var/log/glocker/reports.log
 
 # View unblock logs
-tail -f /var/log/glocker-unblocks.log
+tail -f /var/log/glocker/unblocks.log
 ```
 
 ### Socket Communication Issues

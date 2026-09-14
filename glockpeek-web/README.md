@@ -53,9 +53,9 @@ Reads the three glocker logs (same defaults as `internal/reports`):
 
 | Log | Default path | Override env var |
 |-----|--------------|------------------|
-| Violations | `/var/log/glocker-reports.log` | `GLOCKER_REPORTS_LOG` |
-| Unblocks | `/var/log/glocker-unblocks.log` | `GLOCKER_UNBLOCKS_LOG` |
-| Lifecycle | `/var/log/glocker-lifecycle.log` | `GLOCKER_LIFECYCLE_LOG` |
+| Violations | `/var/log/glocker/reports.log` | `GLOCKER_REPORTS_LOG` |
+| Unblocks | `/var/log/glocker/unblocks.log` | `GLOCKER_UNBLOCKS_LOG` |
+| Lifecycle | `/var/log/glocker/lifecycle.log` | `GLOCKER_LIFECYCLE_LOG` |
 
 Unmanaged periods are computed from the lifecycle log (uninstall→install pairs),
 ignoring spans under 2 minutes — matching `cmd/glockpeek/main.go`.

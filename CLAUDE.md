@@ -202,7 +202,7 @@ The Firefox extension lives in `extensions/firefox/`. After making changes:
 1. Navigate to `about:debugging#/runtime/this-firefox`
 2. Load temporary extension from `extensions/firefox/manifest.json`
 3. Check browser console for extension logs
-4. Monitor `/var/log/glocker-reports.log` for content monitoring events
+4. Monitor `/var/log/glocker/reports.log` for content monitoring events
 
 ## Architecture
 
@@ -312,8 +312,8 @@ type ForbiddenProgram struct {
 **Production paths:**
 - `/etc/glocker/config.yaml` - Main configuration
 - `/var/glocker/glocker.sock` - Unix socket for IPC
-- `/var/log/glocker-reports.log` - Content monitoring logs
-- `/var/log/glocker-unblocks.log` - Unblock request logs
+- `/var/log/glocker/reports.log` - Content monitoring logs
+- `/var/log/glocker/unblocks.log` - Unblock request logs
 - `/etc/hosts` - Modified with GLOCKER markers and immutable flag
 - `/etc/sudoers` - Modified during blocking periods
 - `/usr/local/bin/glocker` - Installed binary (setuid root)

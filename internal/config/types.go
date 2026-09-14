@@ -100,11 +100,21 @@ type PanicConfig struct {
 	Command string `yaml:"command"`
 }
 
-// Defaults for the usage monitor, applied when the corresponding field is unset.
+// LogDir holds all of glocker's runtime log files (mutable state → /var).
+const LogDir = "/var/log/glocker"
+
+// Default log-file paths, used when the matching config field is unset. Defined
+// once here; reports / web / syncer / install all reference these.
 const (
-	DefaultUsageLogFile  = "/var/log/glocker-usage.jsonl"
-	DefaultUsageInterval = 60 // seconds
+	DefaultUnblocksLogFile  = LogDir + "/unblocks.log"
+	DefaultReportsLogFile   = LogDir + "/reports.log"
+	DefaultLifecycleLogFile = LogDir + "/lifecycle.log"
+	DefaultUsageLogFile     = LogDir + "/usage.jsonl"
+	DefaultHeartbeatLogFile = LogDir + "/heartbeat.jsonl"
 )
+
+// DefaultUsageInterval is the usage-monitor sampling cadence (seconds).
+const DefaultUsageInterval = 60
 
 // UsageMonitorConfig controls the arbtt-style desktop usage tracker: it samples
 // the focused window (class + title) and idle time to a JSONL log, which the
@@ -191,10 +201,6 @@ type MindfulUninstallConfig struct {
 	RecencyHours int `yaml:"recency_hours"` // lookback window; 0 disables escalation
 	RecentLines  int `yaml:"recent_lines"`  // sentences to chain on a repeat (0 = no escalation)
 }
-
-// DefaultHeartbeatLogFile is where the glockdoc watchdog records liveness
-// samples. Mutable runtime state, so it lives under /var, not /etc.
-const DefaultHeartbeatLogFile = "/var/log/glocker-heartbeat.jsonl"
 
 // HeartbeatConfig controls the glockdoc liveness watchdog. It is consumed at
 // install time to write the root cron job (internal/install). The glockdoc

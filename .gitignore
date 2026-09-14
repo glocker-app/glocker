@@ -37,3 +37,9 @@ vault.json
 
 # Local DB dumps (make db-backup) — contain password hashes + the wrapped key vault
 deploy/backups/
+
+# Emacs lock files
+.#*
+# Local habits.md exports
+docs/habits.odt
+docs/habits.pdf

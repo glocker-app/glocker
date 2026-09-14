@@ -4,13 +4,13 @@ import { readFile } from "node:fs/promises";
 
 // Default log paths match internal/reports/reports.go.
 export const DEFAULT_PATHS = {
-  reports: process.env.GLOCKER_REPORTS_LOG || "/var/log/glocker-reports.log",
-  unblocks: process.env.GLOCKER_UNBLOCKS_LOG || "/var/log/glocker-unblocks.log",
-  lifecycle: process.env.GLOCKER_LIFECYCLE_LOG || "/var/log/glocker-lifecycle.log",
+  reports: process.env.GLOCKER_REPORTS_LOG || "/var/log/glocker/reports.log",
+  unblocks: process.env.GLOCKER_UNBLOCKS_LOG || "/var/log/glocker/unblocks.log",
+  lifecycle: process.env.GLOCKER_LIFECYCLE_LOG || "/var/log/glocker/lifecycle.log",
   // Written by internal/usage (the usage monitor); one JSON sample per line.
-  usage: process.env.GLOCKER_USAGE_LOG || "/var/log/glocker-usage.jsonl",
+  usage: process.env.GLOCKER_USAGE_LOG || "/var/log/glocker/usage.jsonl",
   // Written by the glockdoc watchdog; one liveness sample per line.
-  heartbeat: process.env.GLOCKER_HEARTBEAT_LOG || "/var/log/glocker-heartbeat.jsonl",
+  heartbeat: process.env.GLOCKER_HEARTBEAT_LOG || "/var/log/glocker/heartbeat.jsonl",
 };
 
 // Periods shorter than this are treated as upgrades, not real exposure.

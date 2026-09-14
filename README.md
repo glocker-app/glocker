@@ -162,7 +162,7 @@ kill_on_block:
 
 # Lifecycle accountability: -uninstall must cite one of these reasons
 lifecycle:
-  log_file: "/var/log/glocker-lifecycle.log"
+  log_file: "/var/log/glocker/lifecycle.log"
   reasons: ["maintenance", "hardware", "testing"]
 
 # Lock screen after 5 violations in 60 minutes

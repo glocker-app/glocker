@@ -563,9 +563,9 @@ func RecordViolation(cfg *config.Config, violationType, domain, url string) {
 
 - `/etc/glocker/config.yaml` - Main configuration
 - `/var/glocker/glocker.sock` - Unix socket for IPC
-- `/var/log/glocker-reports.log` - Content monitoring / violation logs
-- `/var/log/glocker-unblocks.log` - Unblock request logs
-- `/var/log/glocker-lifecycle.log` - Install/uninstall events (reason + note); read by glockpeek to mark `UNMANAGED` periods
+- `/var/log/glocker/reports.log` - Content monitoring / violation logs
+- `/var/log/glocker/unblocks.log` - Unblock request logs
+- `/var/log/glocker/lifecycle.log` - Install/uninstall events (reason + note); read by glockpeek to mark `UNMANAGED` periods
 - `/usr/local/bin/glocker` - Installed binary (setuid root)
 - `/etc/systemd/system/glocker.service` - Systemd service file
 

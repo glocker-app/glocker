@@ -107,7 +107,7 @@ systemctl daemon-reload
 Optional leftovers (just logs and browser bits, harmless to keep):
 
 ```bash
-rm -f /var/log/glocker-*.log /var/log/glocker-*.jsonl
+rm -rf /var/log/glocker/ /var/log/glocker-*.log /var/log/glocker-*.jsonl
 # Firefox: remove the glocker extension from your profile
 # GNOME:   rm -rf ~/.local/share/gnome-shell/extensions/glocker-usage@glocker.app
 ```

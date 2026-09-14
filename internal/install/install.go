@@ -55,15 +55,17 @@ func InstallGlocker() error {
 	}
 	envcheck.LogAdvisories(envResults, log.Printf)
 
-	// Step 1b: If a glocker daemon is already running, stop it BEFORE touching any
-	// files. Its tamper monitor (30s tick) checksums the binary/config/unit and
-	// raises the alarm the instant they change; stopping first kills that monitor
-	// so an in-place upgrade is silent. Stop→(swap)→start also guarantees the new
-	// binary actually becomes the running process (a bare `systemctl start` on an
-	// already-active unit is a no-op). hosts/sudoers enforcement is unaffected by
-	// stopping the daemon — /etc/hosts stays immutable and sudoers isn't reverted
-	// (only -uninstall reverts those), so the only gap is a few seconds of
-	// daemon-driven monitoring during the swap.
+	// Ensure the log directory exists (and migrate any logs from the old flat
+	// /var/log/glocker-* names into it).
+	setupLogDir()
+
+	// Step 1b: If a glocker daemon is already running, stop it BEFORE swapping
+	// files. Stop→(swap)→start guarantees the new binary actually becomes the
+	// running process (a bare `systemctl start` on an already-active unit is a
+	// no-op). hosts/sudoers enforcement is unaffected — /etc/hosts stays immutable
+	// and sudoers isn't reverted (only -uninstall reverts those), so the only gap
+	// is a few seconds of daemon-driven monitoring (forbidden-program killing)
+	// during the swap.
 	if err := exec.Command("systemctl", "is-active", "--quiet", "glocker.service").Run(); err == nil {
 		log.Println("Existing glocker daemon is running — stopping it for in-place upgrade...")
 		if err := exec.Command("systemctl", "stop", "glocker.service").Run(); err != nil {
@@ -321,6 +323,37 @@ func installConfD() {
 	}
 	if installed > 0 {
 		log.Printf("✓ Installed %d conf.d blocklist file(s) to %s", installed, config.GlockerConfDDir)
+	}
+}
+
+// setupLogDir creates the log directory (root-owned) and, one time, moves any
+// logs from the old flat /var/log/glocker-* names into it. Best-effort: a failure
+// only means the daemon recreates the files on first write.
+func setupLogDir() {
+	if err := os.MkdirAll(config.LogDir, 0o755); err != nil {
+		log.Printf("Warning: couldn't create log dir %s: %v", config.LogDir, err)
+		return
+	}
+	_ = os.Chown(config.LogDir, 0, 0)
+	moves := map[string]string{
+		"/var/log/glocker-unblocks.log":    config.DefaultUnblocksLogFile,
+		"/var/log/glocker-reports.log":     config.DefaultReportsLogFile,
+		"/var/log/glocker-lifecycle.log":   config.DefaultLifecycleLogFile,
+		"/var/log/glocker-usage.jsonl":     config.DefaultUsageLogFile,
+		"/var/log/glocker-heartbeat.jsonl": config.DefaultHeartbeatLogFile,
+	}
+	for old, dst := range moves {
+		if _, err := os.Stat(old); err != nil {
+			continue // nothing to move
+		}
+		if _, err := os.Stat(dst); err == nil {
+			continue // destination already exists; leave the old file in place
+		}
+		if err := os.Rename(old, dst); err != nil {
+			log.Printf("Warning: couldn't move %s -> %s: %v", old, dst, err)
+		} else {
+			log.Printf("Moved %s -> %s", old, dst)
+		}
 	}
 }
 
