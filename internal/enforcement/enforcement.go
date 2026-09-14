@@ -29,7 +29,7 @@ func RunOnce(cfg *config.Config, dryRun bool) {
 		SelfHeal(cfg)
 	}
 
-	if cfg.EnableHosts {
+	if cfg.Domains.Enabled {
 		slog.Debug("Updating hosts file", "enabled", true)
 		if err := UpdateHosts(cfg, blockedDomains, dryRun); err != nil {
 			log.Printf("ERROR updating hosts: %v", err)
@@ -47,7 +47,7 @@ func RunOnce(cfg *config.Config, dryRun bool) {
 		slog.Debug("Sudoers management disabled")
 	}
 
-	if cfg.EnableForbiddenPrograms && cfg.ForbiddenPrograms.Enabled {
+	if cfg.Programs.Enabled {
 		slog.Debug("Forbidden programs monitoring", "enabled", true)
 		// Note: Forbidden programs are monitored in a separate goroutine
 		// This is just for status reporting

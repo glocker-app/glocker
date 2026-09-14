@@ -652,7 +652,7 @@ func main() {
 		}()
 	}
 
-	if cfg.ForbiddenPrograms.Enabled {
+	if cfg.Programs.Enabled {
 		go monitoring.MonitorForbiddenPrograms(cfg)
 	}
 
@@ -660,13 +660,14 @@ func main() {
 		go monitoring.MonitorViolations(cfg)
 	}
 
-	if cfg.PanicCommand != "" {
+	if cfg.Panic.Command != "" {
 		go monitoring.MonitorPanicMode(cfg)
 	}
 
-	// Start web tracking server (also hosts the /stats dashboard, so start it
-	// when the usage monitor is on even if web/content tracking is off).
-	if cfg.WebTracking.Enabled || cfg.ContentMonitoring.Enabled || cfg.UsageMonitor.Enabled {
+	// Start the web server that serves the /blocked page for hosts-blocked domains
+	// and the browser-extension endpoints (/report, /keywords, /sse). Needed
+	// whenever domain blocking or content monitoring is on.
+	if cfg.Domains.Enabled || cfg.Content.Monitoring.Enabled {
 		go web.StartWebTrackingServer(cfg)
 	}
 

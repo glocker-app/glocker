@@ -88,7 +88,7 @@ func CaptureChecksum(cfg *config.Config, path string) state.FileChecksum {
 		checksum.Exists = true
 
 		// For hosts file, only checksum the GLOCKER section
-		if path == cfg.HostsPath {
+		if path == cfg.Domains.HostsPath {
 			if data, err := os.ReadFile(path); err == nil {
 				glockerSection := ExtractGlockerSection(string(data))
 				hash := sha256.Sum256([]byte(glockerSection))

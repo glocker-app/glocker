@@ -47,9 +47,9 @@ func TestSyncConfigKeyFileAndEncryption(t *testing.T) {
 
 func TestValidateConfig_EmptyDomainName(t *testing.T) {
 	cfg := &Config{
-		Domains: []Domain{
+		Domains: DomainsConfig{List: []Domain{
 			{Name: ""}, // Invalid: empty domain name
-		},
+		}},
 	}
 
 	err := ValidateConfig(cfg)
@@ -63,7 +63,7 @@ func TestValidateConfig_EmptyDomainName(t *testing.T) {
 
 func TestValidateConfig_InvalidTimeFormat(t *testing.T) {
 	cfg := &Config{
-		Domains: []Domain{
+		Domains: DomainsConfig{List: []Domain{
 			{
 				Name: "example.com",
 				BlockWindows: []TimeWindow{
@@ -74,7 +74,7 @@ func TestValidateConfig_InvalidTimeFormat(t *testing.T) {
 					},
 				},
 			},
-		},
+		}},
 	}
 
 	err := ValidateConfig(cfg)
@@ -85,7 +85,7 @@ func TestValidateConfig_InvalidTimeFormat(t *testing.T) {
 
 func TestValidateConfig_EmptyDays(t *testing.T) {
 	cfg := &Config{
-		Domains: []Domain{
+		Domains: DomainsConfig{List: []Domain{
 			{
 				Name: "example.com",
 				BlockWindows: []TimeWindow{
@@ -96,7 +96,7 @@ func TestValidateConfig_EmptyDays(t *testing.T) {
 					},
 				},
 			},
-		},
+		}},
 	}
 
 	err := ValidateConfig(cfg)
@@ -107,22 +107,24 @@ func TestValidateConfig_EmptyDays(t *testing.T) {
 
 func TestValidateConfig_ValidConfig(t *testing.T) {
 	cfg := &Config{
-		Domains: []Domain{
-			{
-				Name: "example.com", // No time windows = always blocked by default
-			},
-			{
-				Name: "reddit.com",
-				BlockWindows: []TimeWindow{
-					{
-						Start: "09:00",
-						End:   "17:00",
-						Days:  []string{"Mon", "Tue", "Wed", "Thu", "Fri"},
+		Domains: DomainsConfig{
+			HostsPath: "/etc/hosts",
+			List: []Domain{
+				{
+					Name: "example.com", // No time windows = always blocked by default
+				},
+				{
+					Name: "reddit.com",
+					BlockWindows: []TimeWindow{
+						{
+							Start: "09:00",
+							End:   "17:00",
+							Days:  []string{"Mon", "Tue", "Wed", "Thu", "Fri"},
+						},
 					},
 				},
 			},
 		},
-		HostsPath: "/etc/hosts",
 	}
 
 	err := ValidateConfig(cfg)
@@ -147,10 +149,9 @@ func TestValidateConfig_SudoersEnabled(t *testing.T) {
 
 func TestValidateConfig_ForbiddenPrograms(t *testing.T) {
 	cfg := &Config{
-		EnableForbiddenPrograms: true,
-		ForbiddenPrograms: ForbiddenProgramsConfig{
+		Programs: ProgramsConfig{
 			Enabled: true,
-			Programs: []ForbiddenProgram{
+			List: []ForbiddenProgram{
 				{Name: ""}, // Invalid: empty program name
 			},
 		},

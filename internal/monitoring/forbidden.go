@@ -17,12 +17,12 @@ import (
 // MonitorForbiddenPrograms continuously monitors and kills forbidden programs based on time windows.
 func MonitorForbiddenPrograms(cfg *config.Config) {
 	// Set default check interval if not specified
-	checkInterval := cfg.ForbiddenPrograms.CheckInterval
+	checkInterval := cfg.Programs.CheckInterval
 	if checkInterval == 0 {
 		checkInterval = 5 // Default: check every 5 seconds
 	}
 
-	slog.Debug("Starting forbidden programs monitoring", "check_interval_seconds", checkInterval, "programs_count", len(cfg.ForbiddenPrograms.Programs))
+	slog.Debug("Starting forbidden programs monitoring", "check_interval_seconds", checkInterval, "programs_count", len(cfg.Programs.List))
 
 	ticker := time.NewTicker(time.Duration(checkInterval) * time.Second)
 	defer ticker.Stop()
@@ -34,7 +34,7 @@ func MonitorForbiddenPrograms(cfg *config.Config) {
 
 		slog.Debug("Checking for forbidden programs", "current_day", currentDay, "current_time", currentTime)
 
-		for _, program := range cfg.ForbiddenPrograms.Programs {
+		for _, program := range cfg.Programs.List {
 			if shouldKill(program, now, currentDay, currentTime) {
 				killMatchingProcesses(cfg, program.Name)
 			}
@@ -214,18 +214,18 @@ func KillForbiddenNow(cfg *config.Config, names []string) {
 	}
 }
 
-// KillOnBlock terminates the processes listed in cfg.KillOnBlock. It is meant to
+// KillOnBlock terminates the processes listed in cfg.Domains.KillOnBlock. It is meant to
 // run right after a domain is blocked: browsers cache DNS internally, so a newly
 // blocked domain stays reachable until they restart. Unlike forbidden-program
 // kills this ignores time windows and is NOT recorded as a violation — closing a
 // browser so it re-reads /etc/hosts is expected behavior, not an infraction.
 func KillOnBlock(cfg *config.Config) {
-	if len(cfg.KillOnBlock) == 0 {
+	if len(cfg.Domains.KillOnBlock) == 0 {
 		return
 	}
 
 	var allKilled []string
-	for _, name := range cfg.KillOnBlock {
+	for _, name := range cfg.Domains.KillOnBlock {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue

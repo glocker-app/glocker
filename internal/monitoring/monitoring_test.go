@@ -27,7 +27,7 @@ func TestCaptureChecksum(t *testing.T) {
 	tmpFile.Close()
 
 	cfg := &config.Config{
-		HostsPath: "/etc/hosts", // Not the test file
+		Domains: config.DomainsConfig{HostsPath: "/etc/hosts"}, // Not the test file
 	}
 
 	// Capture checksum
@@ -276,7 +276,7 @@ func TestKillOnBlock_TerminatesMatchingProcess(t *testing.T) {
 	// Give it a moment to show up in `ps`.
 	time.Sleep(300 * time.Millisecond)
 
-	cfg := &config.Config{KillOnBlock: []string{name}}
+	cfg := &config.Config{Domains: config.DomainsConfig{KillOnBlock: []string{name}}}
 	KillOnBlock(cfg)
 
 	// KillOnBlock sends TERM then KILL after a 2s grace period; wait for exit.
@@ -293,5 +293,5 @@ func TestKillOnBlock_TerminatesMatchingProcess(t *testing.T) {
 // TestKillOnBlock_EmptyListNoop ensures an unset kill_on_block is a harmless no-op.
 func TestKillOnBlock_EmptyListNoop(t *testing.T) {
 	KillOnBlock(&config.Config{})
-	KillOnBlock(&config.Config{KillOnBlock: []string{"", "   "}})
+	KillOnBlock(&config.Config{Domains: config.DomainsConfig{KillOnBlock: []string{"", "   "}}})
 }

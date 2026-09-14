@@ -16,11 +16,11 @@ import (
 
 func TestHandleKeywordsRequest(t *testing.T) {
 	cfg := &config.Config{
-		ExtensionKeywords: config.ExtensionKeywordsConfig{
+		Content: config.ContentConfig{Keywords: config.ExtensionKeywordsConfig{
 			URLKeywords:     []string{"gambling", "gaming"},
 			ContentKeywords: []string{"adult", "explicit"},
 			Whitelist:       []string{"work.com", "news.com"},
-		},
+		}},
 	}
 
 	req := httptest.NewRequest("GET", "/keywords", nil)
@@ -74,10 +74,10 @@ func TestHandleReportRequest(t *testing.T) {
 	tmpFile.Close()
 
 	cfg := &config.Config{
-		ContentMonitoring: config.ContentMonitoringConfig{
+		Content: config.ContentConfig{Monitoring: config.ContentMonitoringConfig{
 			Enabled: true,
 			LogFile: tmpFile.Name(),
-		},
+		}},
 		ViolationTracking: config.ViolationTrackingConfig{
 			Enabled: false,
 		},
@@ -121,7 +121,7 @@ func TestHandleReportRequest_IgnoresDashboard(t *testing.T) {
 	tmpFile.Close()
 
 	cfg := &config.Config{
-		ContentMonitoring: config.ContentMonitoringConfig{Enabled: true, LogFile: tmpFile.Name()},
+		Content:           config.ContentConfig{Monitoring: config.ContentMonitoringConfig{Enabled: true, LogFile: tmpFile.Name()}},
 		ViolationTracking: config.ViolationTrackingConfig{Enabled: false},
 	}
 
@@ -151,9 +151,9 @@ func TestHandleReportRequest_IgnoresDashboard(t *testing.T) {
 
 func TestHandleReportRequest_Disabled(t *testing.T) {
 	cfg := &config.Config{
-		ContentMonitoring: config.ContentMonitoringConfig{
+		Content: config.ContentConfig{Monitoring: config.ContentMonitoringConfig{
 			Enabled: false,
-		},
+		}},
 	}
 
 	req := httptest.NewRequest("POST", "/report", nil)
@@ -208,11 +208,11 @@ func TestHandleBlockedPageRequest_DefaultValues(t *testing.T) {
 
 func TestGetBlockingReason_PermanentByDefault(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{
 				Name: "example.com", // No time windows = permanent by default
 			},
-		},
+		}},
 	}
 
 	reason := GetBlockingReason(cfg, "example.com", time.Now())
@@ -227,12 +227,12 @@ func TestGetBlockingReason_PermanentByDefault(t *testing.T) {
 
 func TestGetBlockingReason_Unblockable(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{
 				Name:        "example.com",
 				Unblockable: true, // Can be temporarily unblocked
 			},
-		},
+		}},
 	}
 
 	reason := GetBlockingReason(cfg, "example.com", time.Now())
@@ -250,7 +250,7 @@ func TestGetBlockingReason_TimeWindow(t *testing.T) {
 	currentDay := now.Weekday().String()[:3]
 
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{
 				Name: "example.com",
 				BlockWindows: []config.TimeWindow{
@@ -261,7 +261,7 @@ func TestGetBlockingReason_TimeWindow(t *testing.T) {
 					},
 				},
 			},
-		},
+		}},
 	}
 
 	reason := GetBlockingReason(cfg, "example.com", now)
@@ -284,9 +284,9 @@ func TestLogContentReport(t *testing.T) {
 	tmpFile.Close()
 
 	cfg := &config.Config{
-		ContentMonitoring: config.ContentMonitoringConfig{
+		Content: config.ContentConfig{Monitoring: config.ContentMonitoringConfig{
 			LogFile: tmpFile.Name(),
-		},
+		}},
 	}
 
 	report := &state.ContentReport{
@@ -324,9 +324,9 @@ func TestLogUnblockEntry(t *testing.T) {
 	tmpFile.Close()
 
 	cfg := &config.Config{
-		Unblocking: config.UnblockingConfig{
+		Domains: config.DomainsConfig{Unblocking: config.UnblockingConfig{
 			LogFile: tmpFile.Name(),
-		},
+		}},
 	}
 
 	unblockTime := time.Now()
@@ -364,9 +364,9 @@ func TestParseUnblockLog(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 
 	cfg := &config.Config{
-		Unblocking: config.UnblockingConfig{
+		Domains: config.DomainsConfig{Unblocking: config.UnblockingConfig{
 			LogFile: tmpFile.Name(),
-		},
+		}},
 	}
 
 	// Write test entries
@@ -416,9 +416,9 @@ func TestParseUnblockLog(t *testing.T) {
 
 func TestParseUnblockLog_NonExistent(t *testing.T) {
 	cfg := &config.Config{
-		Unblocking: config.UnblockingConfig{
+		Domains: config.DomainsConfig{Unblocking: config.UnblockingConfig{
 			LogFile: "/nonexistent/file.log",
-		},
+		}},
 	}
 
 	stats, err := ParseUnblockLog(cfg)
@@ -433,9 +433,9 @@ func TestParseUnblockLog_NonExistent(t *testing.T) {
 
 func TestIsValidUnblockReason_NoConfig(t *testing.T) {
 	cfg := &config.Config{
-		Unblocking: config.UnblockingConfig{
+		Domains: config.DomainsConfig{Unblocking: config.UnblockingConfig{
 			Reasons: []string{},
-		},
+		}},
 	}
 
 	// Should allow any reason when none configured
@@ -446,9 +446,9 @@ func TestIsValidUnblockReason_NoConfig(t *testing.T) {
 
 func TestIsValidUnblockReason_WithConfig(t *testing.T) {
 	cfg := &config.Config{
-		Unblocking: config.UnblockingConfig{
+		Domains: config.DomainsConfig{Unblocking: config.UnblockingConfig{
 			Reasons: []string{"work", "research", "emergency"},
-		},
+		}},
 	}
 
 	if !IsValidUnblockReason(cfg, "work") {
@@ -486,12 +486,12 @@ func TestEffectiveWhitelist_HardcodesDashboard(t *testing.T) {
 	if wl := effectiveWhitelist(cfg); len(wl) == 0 || wl[0] != hostedDashboardDomain {
 		t.Fatalf("effectiveWhitelist should always include %q, got %v", hostedDashboardDomain, wl)
 	}
-	cfg.ExtensionKeywords.Whitelist = []string{"example.com"}
+	cfg.Content.Keywords.Whitelist = []string{"example.com"}
 	wl := effectiveWhitelist(cfg)
 	if len(wl) != 2 || wl[0] != hostedDashboardDomain || wl[1] != "example.com" {
 		t.Errorf("effectiveWhitelist = %v, want [%s example.com]", wl, hostedDashboardDomain)
 	}
-	if len(cfg.ExtensionKeywords.Whitelist) != 1 {
-		t.Errorf("config whitelist was mutated: %v", cfg.ExtensionKeywords.Whitelist)
+	if len(cfg.Content.Keywords.Whitelist) != 1 {
+		t.Errorf("config whitelist was mutated: %v", cfg.Content.Keywords.Whitelist)
 	}
 }

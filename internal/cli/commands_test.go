@@ -15,9 +15,9 @@ import (
 
 func TestGetStatusResponse(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "example.com"}, // No time windows = always blocked by default
-		},
+		}},
 	}
 
 	response := GetStatusResponse(cfg)
@@ -33,14 +33,14 @@ func TestGetStatusResponse(t *testing.T) {
 
 func TestGetStatusResponse_WithExtensionKeywords(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "example.com"}, // No time windows = always blocked by default
-		},
-		ExtensionKeywords: config.ExtensionKeywordsConfig{
+		}},
+		Content: config.ContentConfig{Keywords: config.ExtensionKeywordsConfig{
 			URLKeywords:     []string{"gambling", "casino", "poker"},
 			ContentKeywords: []string{"bet", "jackpot"},
 			Whitelist:       []string{"example.com", "safe.com"},
-		},
+		}},
 	}
 
 	response := GetInfoResponse(cfg)
@@ -77,12 +77,12 @@ func TestGetStatusResponse_WithManyKeywords(t *testing.T) {
 	manyKeywords := []string{"k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "k9", "k10", "k11", "k12"}
 
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "example.com"}, // No time windows = always blocked by default
-		},
-		ExtensionKeywords: config.ExtensionKeywordsConfig{
+		}},
+		Content: config.ContentConfig{Keywords: config.ExtensionKeywordsConfig{
 			URLKeywords: manyKeywords,
-		},
+		}},
 	}
 
 	response := GetInfoResponse(cfg)
@@ -101,7 +101,7 @@ func TestGetStatusResponse_WithManyKeywords(t *testing.T) {
 }
 
 func TestProcessPanicRequest(t *testing.T) {
-	cfg := &config.Config{}
+	cfg := &config.Config{Panic: config.PanicConfig{Enabled: true}}
 
 	// Clear panic state
 	state.SetPanicUntil(time.Time{})
@@ -127,19 +127,18 @@ func TestProcessPanicRequest(t *testing.T) {
 
 func TestProcessUnblockRequest_RejectsPermanentDomains(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "permanent.com"},                      // Permanent by default
 			{Name: "unblockable.com", Unblockable: true}, // Can be unblocked
-		},
-		Unblocking: config.UnblockingConfig{
+		}, Unblocking: config.UnblockingConfig{
 			TempUnblockTime: 30,
 			Reasons:         []string{"work", "research"},
-		},
+		}},
 	}
 
 	// Initialize enforcement state cache with test config
 	// This simulates what happens during daemon startup
-	enforcement.InitializeTestCache(cfg.Domains)
+	enforcement.InitializeTestCache(cfg.Domains.List)
 
 	// Clear temp unblocks
 	state.SetTempUnblocks([]state.TempUnblock{})
@@ -172,18 +171,17 @@ func TestProcessUnblockRequest_RejectsPermanentDomains(t *testing.T) {
 
 func TestProcessUnblockRequest_AllPermanentDomainsError(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "permanent1.com"}, // Permanent by default
 			{Name: "permanent2.com"}, // Permanent by default
-		},
-		Unblocking: config.UnblockingConfig{
+		}, Unblocking: config.UnblockingConfig{
 			TempUnblockTime: 30,
 			Reasons:         []string{"work", "research"},
-		},
+		}},
 	}
 
 	// Initialize enforcement state cache with test config
-	enforcement.InitializeTestCache(cfg.Domains)
+	enforcement.InitializeTestCache(cfg.Domains.List)
 
 	// Clear temp unblocks
 	state.SetTempUnblocks([]state.TempUnblock{})
@@ -209,14 +207,13 @@ func TestProcessUnblockRequest_AllPermanentDomainsError(t *testing.T) {
 func TestProcessUnblockRequest_EnforcesDailyCap(t *testing.T) {
 	logFile := filepath.Join(t.TempDir(), "unblocks.log")
 	cfg := &config.Config{
-		Domains: []config.Domain{{Name: "example.com", Unblockable: true}},
-		Unblocking: config.UnblockingConfig{
+		Domains: config.DomainsConfig{List: []config.Domain{{Name: "example.com", Unblockable: true}}, Unblocking: config.UnblockingConfig{
 			TempUnblockTime: 30,
 			LogFile:         logFile,
 			MaxPerDay:       2,
-		},
+		}},
 	}
-	enforcement.InitializeTestCache(cfg.Domains)
+	enforcement.InitializeTestCache(cfg.Domains.List)
 	state.SetTempUnblocks([]state.TempUnblock{})
 
 	// First two unblocks are within the cap.
@@ -248,18 +245,17 @@ func TestProcessUnblockRequest_EnforcesDailyCap(t *testing.T) {
 func TestProcessUnblockRequest_CapAppliesWithinSingleRequest(t *testing.T) {
 	logFile := filepath.Join(t.TempDir(), "unblocks.log")
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "a.com", Unblockable: true},
 			{Name: "b.com", Unblockable: true},
 			{Name: "c.com", Unblockable: true},
-		},
-		Unblocking: config.UnblockingConfig{
+		}, Unblocking: config.UnblockingConfig{
 			TempUnblockTime: 30,
 			LogFile:         logFile,
 			MaxPerDay:       2,
-		},
+		}},
 	}
-	enforcement.InitializeTestCache(cfg.Domains)
+	enforcement.InitializeTestCache(cfg.Domains.List)
 	state.SetTempUnblocks([]state.TempUnblock{})
 
 	// A single request for three domains: two granted, the third capped. A partial
@@ -275,14 +271,13 @@ func TestProcessUnblockRequest_CapAppliesWithinSingleRequest(t *testing.T) {
 func TestProcessUnblockRequest_ZeroCapIsUnlimited(t *testing.T) {
 	logFile := filepath.Join(t.TempDir(), "unblocks.log")
 	cfg := &config.Config{
-		Domains: []config.Domain{{Name: "example.com", Unblockable: true}},
-		Unblocking: config.UnblockingConfig{
+		Domains: config.DomainsConfig{List: []config.Domain{{Name: "example.com", Unblockable: true}}, Unblocking: config.UnblockingConfig{
 			TempUnblockTime: 30,
 			LogFile:         logFile,
 			MaxPerDay:       0, // unlimited
-		},
+		}},
 	}
-	enforcement.InitializeTestCache(cfg.Domains)
+	enforcement.InitializeTestCache(cfg.Domains.List)
 	state.SetTempUnblocks([]state.TempUnblock{})
 
 	for i := 1; i <= 5; i++ {
@@ -295,14 +290,13 @@ func TestProcessUnblockRequest_ZeroCapIsUnlimited(t *testing.T) {
 func TestGetStatusResponse_UnblocksLeft(t *testing.T) {
 	logFile := filepath.Join(t.TempDir(), "unblocks.log")
 	cfg := &config.Config{
-		Domains: []config.Domain{{Name: "example.com", Unblockable: true}},
-		Unblocking: config.UnblockingConfig{
+		Domains: config.DomainsConfig{List: []config.Domain{{Name: "example.com", Unblockable: true}}, Unblocking: config.UnblockingConfig{
 			TempUnblockTime: 30,
 			LogFile:         logFile,
 			MaxPerDay:       3,
-		},
+		}},
 	}
-	enforcement.InitializeTestCache(cfg.Domains)
+	enforcement.InitializeTestCache(cfg.Domains.List)
 	state.SetTempUnblocks([]state.TempUnblock{})
 
 	// Two unblocks today → status should read 2/3 used, 1 left.
@@ -320,14 +314,13 @@ func TestGetStatusResponse_UnblocksLeft(t *testing.T) {
 
 func TestGetStatusResponse_NoDailyCap(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{{Name: "example.com"}},
-		Unblocking: config.UnblockingConfig{
+		Domains: config.DomainsConfig{List: []config.Domain{{Name: "example.com"}}, Unblocking: config.UnblockingConfig{
 			// Empty (nonexistent) log so the count is a clean zero; cap 0 = unlimited.
 			LogFile:   filepath.Join(t.TempDir(), "unblocks.log"),
 			MaxPerDay: 0,
-		},
+		}},
 	}
-	enforcement.InitializeTestCache(cfg.Domains)
+	enforcement.InitializeTestCache(cfg.Domains.List)
 	state.SetTempUnblocks([]state.TempUnblock{})
 
 	out := GetStatusResponse(cfg)
@@ -338,17 +331,16 @@ func TestGetStatusResponse_NoDailyCap(t *testing.T) {
 
 func TestProcessUnblockRequest_ValidatesReasons(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "example.com", Unblockable: true}, // Must be unblockable to test reason validation
-		},
-		Unblocking: config.UnblockingConfig{
+		}, Unblocking: config.UnblockingConfig{
 			TempUnblockTime: 30,
 			Reasons:         []string{"work", "research", "emergency"},
-		},
+		}},
 	}
 
 	// Initialize enforcement state cache with test config
-	enforcement.InitializeTestCache(cfg.Domains)
+	enforcement.InitializeTestCache(cfg.Domains.List)
 
 	tests := []struct {
 		name        string
@@ -396,17 +388,16 @@ func TestProcessUnblockRequest_ValidatesReasons(t *testing.T) {
 
 func TestProcessUnblockRequest_NoReasonValidationWhenListEmpty(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "example.com", Unblockable: true}, // Must be unblockable
-		},
-		Unblocking: config.UnblockingConfig{
+		}, Unblocking: config.UnblockingConfig{
 			TempUnblockTime: 30,
 			Reasons:         []string{}, // Empty list - any reason should be accepted
-		},
+		}},
 	}
 
 	// Initialize enforcement state cache with test config
-	enforcement.InitializeTestCache(cfg.Domains)
+	enforcement.InitializeTestCache(cfg.Domains.List)
 
 	// Clear temp unblocks
 	state.SetTempUnblocks([]state.TempUnblock{})
@@ -438,9 +429,9 @@ func extendTestConfig(t *testing.T) *config.Config {
 	})
 
 	return &config.Config{
-		ForbiddenPrograms: config.ForbiddenProgramsConfig{
+		Programs: config.ProgramsConfig{
 			Enabled: true,
-			Programs: []config.ForbiddenProgram{
+			List: []config.ForbiddenProgram{
 				{Name: "firefox-esr", Extendible: true},
 				{Name: "chromium"}, // not extendible
 			},

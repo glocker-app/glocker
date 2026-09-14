@@ -69,7 +69,7 @@ func InitialEnforcement(cfg *config.Config) {
 	var timeWindowDomains []config.Domain
 	unblockableDomains := make(map[string]bool)
 	configDomainNames := make(map[string]bool)
-	for _, domain := range cfg.Domains {
+	for _, domain := range cfg.Domains.List {
 		configDomainNames[domain.Name] = true
 		if len(domain.BlockWindows) > 0 {
 			timeWindowDomains = append(timeWindowDomains, domain)
@@ -95,12 +95,12 @@ func InitialEnforcement(cfg *config.Config) {
 	log.Printf("Initial enforcement: %d domains to block", len(blockedDomains))
 
 	// Build and write hosts file
-	if cfg.EnableHosts {
+	if cfg.Domains.Enabled {
 		if err := UpdateHosts(cfg, blockedDomains, false); err != nil {
 			log.Printf("ERROR updating hosts: %v", err)
 		} else {
 			// Store the expected hash of the hosts file
-			if hash, err := computeFileChecksum(cfg.HostsPath); err == nil {
+			if hash, err := computeFileChecksum(cfg.Domains.HostsPath); err == nil {
 				enforcementState.mu.Lock()
 				enforcementState.expectedHostsHash = hash
 				enforcementState.lastBlockedCount = len(blockedDomains)
@@ -141,8 +141,8 @@ func InitialEnforcement(cfg *config.Config) {
 	// Clear the large domain list from config to free memory
 	// We've cached time-window domains and have the hosts file checksum
 	// If we need to rebuild, we'll reload config from disk
-	domainCount := len(cfg.Domains)
-	cfg.Domains = nil
+	domainCount := len(cfg.Domains.List)
+	cfg.Domains.List = nil
 	log.Printf("Cleared %d domains from memory (kept %d time-window domains cached)", domainCount, len(timeWindowDomains))
 
 	log.Println("Initial enforcement completed")
@@ -198,8 +198,8 @@ func EnforcementCheck(cfg *config.Config) {
 	}
 
 	// 3. Check if hosts file was tampered with
-	if !hostsNeedsUpdate && cfg.EnableHosts && expectedHostsHash != "" {
-		currentHash, err := computeFileChecksum(cfg.HostsPath)
+	if !hostsNeedsUpdate && cfg.Domains.Enabled && expectedHostsHash != "" {
+		currentHash, err := computeFileChecksum(cfg.Domains.HostsPath)
 		if err != nil {
 			log.Printf("Warning: couldn't compute hosts checksum: %v", err)
 		} else if currentHash != expectedHostsHash {
@@ -229,12 +229,12 @@ func EnforcementCheck(cfg *config.Config) {
 			mergeRuntimeDomains(freshCfg) // re-apply in-memory `-block` additions
 			blockedDomains := GetDomainsToBlock(freshCfg, now)
 
-			if freshCfg.EnableHosts {
+			if freshCfg.Domains.Enabled {
 				if err := UpdateHosts(freshCfg, blockedDomains, false); err != nil {
 					log.Printf("ERROR updating hosts: %v", err)
 				} else {
 					// Update stored hash
-					if hash, err := computeFileChecksum(freshCfg.HostsPath); err == nil {
+					if hash, err := computeFileChecksum(freshCfg.Domains.HostsPath); err == nil {
 						enforcementState.mu.Lock()
 						enforcementState.expectedHostsHash = hash
 						enforcementState.lastBlockedCount = len(blockedDomains)
@@ -275,11 +275,11 @@ func EnforcementCheck(cfg *config.Config) {
 }
 
 // ForceEnforcement forces a full enforcement cycle, typically called after config reload or unblock.
-// It reloads the config from disk since cfg.Domains was cleared after initial enforcement.
+// It reloads the config from disk since cfg.Domains.List was cleared after initial enforcement.
 func ForceEnforcement(cfg *config.Config) {
 	log.Println("Forcing full enforcement cycle...")
 
-	// Reload config from disk to get full domain list (cfg.Domains was cleared)
+	// Reload config from disk to get full domain list (cfg.Domains.List was cleared)
 	freshCfg, err := config.LoadConfig()
 	if err != nil {
 		log.Printf("ERROR: Failed to reload config for force enforcement: %v", err)
@@ -288,7 +288,7 @@ func ForceEnforcement(cfg *config.Config) {
 
 	// Re-apply runtime-only additions that were never written to disk.
 	mergeRuntimeDomains(freshCfg)
-	freshCfg.ExtensionKeywords = cfg.ExtensionKeywords // may have been modified via -add-keyword
+	freshCfg.Content.Keywords = cfg.Content.Keywords // may have been modified via -add-keyword
 
 	InitialEnforcement(freshCfg)
 }
@@ -321,12 +321,12 @@ func AddRuntimeDomains(domains []config.Domain) {
 	}
 }
 
-// mergeRuntimeDomains appends the in-memory runtime domains onto cfg.Domains so
+// mergeRuntimeDomains appends the in-memory runtime domains onto cfg.Domains.List so
 // they take effect alongside the on-disk ones.
 func mergeRuntimeDomains(cfg *config.Config) {
 	runtimeExtra.mu.Lock()
 	defer runtimeExtra.mu.Unlock()
-	cfg.Domains = append(cfg.Domains, runtimeExtra.domains...)
+	cfg.Domains.List = append(cfg.Domains.List, runtimeExtra.domains...)
 }
 
 // buildTimeWindowState creates a map of domain -> isBlockedByTimeWindow for current time.

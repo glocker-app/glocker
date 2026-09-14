@@ -86,10 +86,10 @@ func TestIncludeScalarIntoListErrors(t *testing.T) {
 }
 
 func TestIncludeWrongTypeForValueErrors(t *testing.T) {
-	// `domains: !include x` where x is a mapping -> decode of a mapping into
+	// `domains.list: !include x` where x is a mapping -> decode of a mapping into
 	// []Domain must error (loud), not silently give empty domains.
 	dir := t.TempDir()
-	writeCfg(t, filepath.Join(dir, "config.yaml"), "domains: !include conf.d/map.yaml\n")
+	writeCfg(t, filepath.Join(dir, "config.yaml"), "domains:\n  list: !include conf.d/map.yaml\n")
 	writeCfg(t, filepath.Join(dir, "conf.d/map.yaml"), "not: a list\n")
 	cfg, err := LoadFile(filepath.Join(dir, "config.yaml"))
 	mustErrNilCfg(t, cfg, err, "mapping as list-valued key")
@@ -135,7 +135,7 @@ func TestIncludeDepthLimitErrors(t *testing.T) {
 func TestIncludeMixedLiteralAndIncludeOrder(t *testing.T) {
 	dir := t.TempDir()
 	writeCfg(t, filepath.Join(dir, "config.yaml"),
-		"domains:\n  - name: first.com\n  - !include conf.d/mid.yaml\n  - name: last.com\n")
+		"domains:\n  list:\n    - name: first.com\n    - !include conf.d/mid.yaml\n    - name: last.com\n")
 	writeCfg(t, filepath.Join(dir, "conf.d/mid.yaml"), "- name: mid1.com\n- name: mid2.com\n")
 	cfg, err := LoadFile(filepath.Join(dir, "config.yaml"))
 	if err != nil {
@@ -169,7 +169,7 @@ func TestIncludeEmptyValueYieldsEmptyList(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Domains) != 0 {
+	if len(cfg.Domains.List) != 0 {
 		t.Fatalf("expected empty domains, got %v", domainNames(cfg))
 	}
 }
@@ -178,7 +178,7 @@ func TestIncludeAbsolutePath(t *testing.T) {
 	dir := t.TempDir()
 	abs := filepath.Join(dir, "external.yaml")
 	writeCfg(t, abs, "- name: abs.com\n")
-	writeCfg(t, filepath.Join(dir, "config.yaml"), "domains: !include "+abs+"\n")
+	writeCfg(t, filepath.Join(dir, "config.yaml"), "domains:\n  list: !include "+abs+"\n")
 	cfg, err := LoadFile(filepath.Join(dir, "config.yaml"))
 	if err != nil {
 		t.Fatal(err)
@@ -201,15 +201,15 @@ func TestIncludeLargeListNoQuadratic(t *testing.T) {
 	// Split across two includes to exercise the flatten path too.
 	writeCfg(t, filepath.Join(dir, "conf.d/one.yaml"), "- name: one.com\n")
 	writeCfg(t, filepath.Join(dir, "config.yaml"),
-		"domains:\n  - !include conf.d/one.yaml\n  - !include conf.d/big.yaml\n")
+		"domains:\n  list:\n    - !include conf.d/one.yaml\n    - !include conf.d/big.yaml\n")
 	cfg, err := LoadFile(filepath.Join(dir, "config.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Domains) != n+1 {
-		t.Fatalf("domain count = %d, want %d", len(cfg.Domains), n+1)
+	if len(cfg.Domains.List) != n+1 {
+		t.Fatalf("domain count = %d, want %d", len(cfg.Domains.List), n+1)
 	}
-	if cfg.Domains[0].Name != "one.com" || cfg.Domains[1].Name != "d0.example" || cfg.Domains[n].Name != fmt.Sprintf("d%d.example", n-1) {
+	if cfg.Domains.List[0].Name != "one.com" || cfg.Domains.List[1].Name != "d0.example" || cfg.Domains.List[n].Name != fmt.Sprintf("d%d.example", n-1) {
 		t.Fatalf("unexpected ordering at boundaries")
 	}
 }

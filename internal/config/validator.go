@@ -18,7 +18,7 @@ var (
 // Returns an error if any configuration field is invalid or missing required values.
 func ValidateConfig(config *Config) error {
 	// Validate domains
-	for _, domain := range config.Domains {
+	for _, domain := range config.Domains.List {
 		if domain.Name == "" {
 			return ErrEmptyDomainName
 		}
@@ -54,8 +54,8 @@ func ValidateConfig(config *Config) error {
 	}
 
 	// Validate forbidden programs config
-	if config.EnableForbiddenPrograms && config.ForbiddenPrograms.Enabled {
-		for _, program := range config.ForbiddenPrograms.Programs {
+	if config.Programs.Enabled {
+		for _, program := range config.Programs.List {
 			if program.Name == "" {
 				return ErrEmptyProgramName
 			}

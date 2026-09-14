@@ -63,9 +63,9 @@ func GetStatusResponse(cfg *config.Config) string {
 	// Daily unblock budget (unblocking.max_per_day). Counted off the unblock log,
 	// so it resets at local midnight and survives a restart.
 	usedToday := countUnblocksToday(cfg)
-	if cfg.Unblocking.MaxPerDay > 0 {
-		left := max(0, cfg.Unblocking.MaxPerDay-usedToday)
-		response.WriteString(fmt.Sprintf("Unblocks Today: %d/%d used (%d left)\n", usedToday, cfg.Unblocking.MaxPerDay, left))
+	if cfg.Domains.Unblocking.MaxPerDay > 0 {
+		left := max(0, cfg.Domains.Unblocking.MaxPerDay-usedToday)
+		response.WriteString(fmt.Sprintf("Unblocks Today: %d/%d used (%d left)\n", usedToday, cfg.Domains.Unblocking.MaxPerDay, left))
 	} else {
 		response.WriteString(fmt.Sprintf("Unblocks Today: %d (no daily cap)\n", usedToday))
 	}
@@ -249,8 +249,8 @@ func GetInfoResponse(cfg *config.Config) string {
 	}
 
 	// Show forbidden programs with time windows
-	if cfg.EnableForbiddenPrograms && cfg.ForbiddenPrograms.Enabled && len(cfg.ForbiddenPrograms.Programs) > 0 {
-		response.WriteString(fmt.Sprintf("Forbidden Programs (%d) — killed on sight during the listed windows:\n", len(cfg.ForbiddenPrograms.Programs)))
+	if cfg.Programs.Enabled && len(cfg.Programs.List) > 0 {
+		response.WriteString(fmt.Sprintf("Forbidden Programs (%d) — killed on sight during the listed windows:\n", len(cfg.Programs.List)))
 
 		// Bucket programs by which windows they set. "always killed" requires
 		// both lists empty; an allow-only program is forbidden outside those
@@ -258,7 +258,7 @@ func GetInfoResponse(cfg *config.Config) string {
 		var alwaysBlocked []string
 		var windowed []config.ForbiddenProgram
 
-		for _, program := range cfg.ForbiddenPrograms.Programs {
+		for _, program := range cfg.Programs.List {
 			if len(program.KillWindows) == 0 && len(program.AllowWindows) == 0 {
 				alwaysBlocked = append(alwaysBlocked, program.Name)
 			} else {
@@ -289,10 +289,10 @@ func GetInfoResponse(cfg *config.Config) string {
 	}
 
 	// Show programs killed on block (browser DNS-cache flush)
-	if len(cfg.KillOnBlock) > 0 {
+	if len(cfg.Domains.KillOnBlock) > 0 {
 		response.WriteString(fmt.Sprintf("Killed On Block (%d) — terminated on `glocker -block` to flush browser DNS caches:\n",
-			len(cfg.KillOnBlock)))
-		response.WriteString(fmt.Sprintf("  %s\n\n", strings.Join(cfg.KillOnBlock, ", ")))
+			len(cfg.Domains.KillOnBlock)))
+		response.WriteString(fmt.Sprintf("  %s\n\n", strings.Join(cfg.Domains.KillOnBlock, ", ")))
 	}
 
 	// Show sudoers restrictions
@@ -303,23 +303,23 @@ func GetInfoResponse(cfg *config.Config) string {
 	}
 
 	// Show extension keywords
-	if len(cfg.ExtensionKeywords.URLKeywords) > 0 || len(cfg.ExtensionKeywords.ContentKeywords) > 0 {
+	if len(cfg.Content.Keywords.URLKeywords) > 0 || len(cfg.Content.Keywords.ContentKeywords) > 0 {
 		response.WriteString("Extension Keywords:\n")
 
-		if len(cfg.ExtensionKeywords.URLKeywords) > 0 {
+		if len(cfg.Content.Keywords.URLKeywords) > 0 {
 			response.WriteString(fmt.Sprintf("  URL Keywords (%d): %s\n",
-				len(cfg.ExtensionKeywords.URLKeywords),
-				strings.Join(cfg.ExtensionKeywords.URLKeywords, ", ")))
+				len(cfg.Content.Keywords.URLKeywords),
+				strings.Join(cfg.Content.Keywords.URLKeywords, ", ")))
 		}
 
-		if len(cfg.ExtensionKeywords.ContentKeywords) > 0 {
+		if len(cfg.Content.Keywords.ContentKeywords) > 0 {
 			response.WriteString(fmt.Sprintf("  Content Keywords (%d): %s\n",
-				len(cfg.ExtensionKeywords.ContentKeywords),
-				strings.Join(cfg.ExtensionKeywords.ContentKeywords, ", ")))
+				len(cfg.Content.Keywords.ContentKeywords),
+				strings.Join(cfg.Content.Keywords.ContentKeywords, ", ")))
 		}
 
-		if len(cfg.ExtensionKeywords.Whitelist) > 0 {
-			response.WriteString(fmt.Sprintf("  Whitelisted: %d domains\n", len(cfg.ExtensionKeywords.Whitelist)))
+		if len(cfg.Content.Keywords.Whitelist) > 0 {
+			response.WriteString(fmt.Sprintf("  Whitelisted: %d domains\n", len(cfg.Content.Keywords.Whitelist)))
 		}
 	}
 
@@ -374,9 +374,9 @@ func ProcessUnblockRequest(cfg *config.Config, hostsStr, reason string) error {
 	slog.Debug("Processing unblock request", "hosts", hostsStr, "reason", reason)
 
 	// Validate reason against configured valid reasons
-	if len(cfg.Unblocking.Reasons) > 0 {
+	if len(cfg.Domains.Unblocking.Reasons) > 0 {
 		validReason := false
-		for _, validR := range cfg.Unblocking.Reasons {
+		for _, validR := range cfg.Domains.Unblocking.Reasons {
 			if strings.EqualFold(reason, validR) {
 				validReason = true
 				break
@@ -384,16 +384,16 @@ func ProcessUnblockRequest(cfg *config.Config, hostsStr, reason string) error {
 		}
 		if !validReason {
 			errMsg := fmt.Sprintf("REJECTED: Invalid reason '%s'. Valid reasons: %s",
-				reason, strings.Join(cfg.Unblocking.Reasons, ", "))
+				reason, strings.Join(cfg.Domains.Unblocking.Reasons, ", "))
 			log.Println(errMsg)
-			return fmt.Errorf("invalid reason: %s (valid reasons: %s)", reason, strings.Join(cfg.Unblocking.Reasons, ", "))
+			return fmt.Errorf("invalid reason: %s (valid reasons: %s)", reason, strings.Join(cfg.Domains.Unblocking.Reasons, ", "))
 		}
 	}
 
 	// Enforce the per-day unblock cap. usedToday counts domain unblocks already
 	// recorded in the log during this local calendar day; the in-request counter
 	// (unblocked) is added on top so a single multi-domain request can't exceed it.
-	maxPerDay := cfg.Unblocking.MaxPerDay
+	maxPerDay := cfg.Domains.Unblocking.MaxPerDay
 	usedToday := 0
 	if maxPerDay > 0 {
 		usedToday = countUnblocksToday(cfg)
@@ -440,7 +440,7 @@ func ProcessUnblockRequest(cfg *config.Config, hostsStr, reason string) error {
 		}
 
 		// Add to temporary unblocks
-		duration := time.Duration(cfg.Unblocking.TempUnblockTime) * time.Minute
+		duration := time.Duration(cfg.Domains.Unblocking.TempUnblockTime) * time.Minute
 		if duration == 0 {
 			duration = 30 * time.Minute
 		}
@@ -491,7 +491,7 @@ func ProcessUnblockRequest(cfg *config.Config, hostsStr, reason string) error {
 // unblock log during the current local calendar day. It backs the
 // Unblocking.MaxPerDay cap; a missing or unreadable log counts as zero.
 func countUnblocksToday(cfg *config.Config) int {
-	entries, err := reports.ParseUnblocksLog(cfg.Unblocking.LogFile)
+	entries, err := reports.ParseUnblocksLog(cfg.Domains.Unblocking.LogFile)
 	if err != nil {
 		return 0
 	}
@@ -576,8 +576,8 @@ func ProcessBlockAppRequest(cfg *config.Config, programsStr string) {
 
 	// Skip names already present in the in-memory config so we don't create
 	// duplicate entries that the monitor would scan twice.
-	existing := make(map[string]bool, len(cfg.ForbiddenPrograms.Programs))
-	for _, p := range cfg.ForbiddenPrograms.Programs {
+	existing := make(map[string]bool, len(cfg.Programs.List))
+	for _, p := range cfg.Programs.List {
 		existing[p.Name] = true
 	}
 
@@ -590,14 +590,14 @@ func ProcessBlockAppRequest(cfg *config.Config, programsStr string) {
 			log.Printf("Program %s already blocked, skipping", name)
 			continue
 		}
-		cfg.ForbiddenPrograms.Programs = append(cfg.ForbiddenPrograms.Programs, config.ForbiddenProgram{Name: name})
+		cfg.Programs.List = append(cfg.Programs.List, config.ForbiddenProgram{Name: name})
 		existing[name] = true
 		log.Printf("APP BLOCKED: %s (killed on sight)", name)
 	}
 
 	// If the monitor goroutine was never started (feature disabled), the new
 	// entries won't actually be killed until the service restarts with it on.
-	if !cfg.ForbiddenPrograms.Enabled {
+	if !cfg.Programs.Enabled {
 		log.Printf("WARNING: forbidden_programs is disabled — added programs will not be killed until it is enabled and the service restarts")
 	}
 
@@ -626,9 +626,9 @@ func ProcessExtendRequest(cfg *config.Config, programName, reason string) error 
 	// substring check on `comm`, but the extension is a deliberate grant —
 	// we want the user to name the program the same way the config does.
 	var matched *config.ForbiddenProgram
-	for i, p := range cfg.ForbiddenPrograms.Programs {
+	for i, p := range cfg.Programs.List {
 		if p.Name == programName {
-			matched = &cfg.ForbiddenPrograms.Programs[i]
+			matched = &cfg.Programs.List[i]
 			break
 		}
 	}
@@ -675,6 +675,10 @@ func ProcessExtendRequest(cfg *config.Config, programName, reason string) error 
 
 // ProcessPanicRequest activates panic mode for the specified duration.
 func ProcessPanicRequest(cfg *config.Config, minutes int) {
+	if !cfg.Panic.Enabled {
+		log.Printf("Panic mode is disabled (panic.enabled=false); ignoring -panic request")
+		return
+	}
 	slog.Debug("Processing panic request", "minutes", minutes)
 
 	now := time.Now()
@@ -684,7 +688,7 @@ func ProcessPanicRequest(cfg *config.Config, minutes int) {
 	log.Printf("⚠️  PANIC MODE ACTIVATED for %d minutes (until %s)", minutes, panicUntil.Format("15:04:05"))
 
 	// Immediately suspend the system if panic command is configured
-	if cfg.PanicCommand != "" {
+	if cfg.Panic.Command != "" {
 		// The monitoring goroutine will handle suspension
 	}
 }

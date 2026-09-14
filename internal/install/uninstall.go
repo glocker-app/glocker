@@ -182,7 +182,7 @@ func PurgeWatchdog() {
 
 // cleanupHostsFile removes the glocker section from the hosts file.
 func cleanupHostsFile(cfg *config.Config) error {
-	hostsPath := cfg.HostsPath
+	hostsPath := cfg.Domains.HostsPath
 	if hostsPath == "" {
 		hostsPath = "/etc/hosts"
 	}

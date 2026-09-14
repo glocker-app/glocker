@@ -15,7 +15,7 @@ import (
 // It removes old glocker entries and adds new ones based on the provided domains list.
 // Uses chunked writing for performance with large domain lists.
 func UpdateHosts(cfg *config.Config, domains []string, dryRun bool) error {
-	hostsPath := cfg.HostsPath
+	hostsPath := cfg.Domains.HostsPath
 	slog.Debug("Starting hosts file update", "hosts_path", hostsPath, "domains_count", len(domains), "dry_run", dryRun)
 
 	// Log the domains being processed
@@ -202,7 +202,7 @@ func UpdateHosts(cfg *config.Config, domains []string, dryRun bool) error {
 // CleanupHostsFile removes all glocker entries from the hosts file.
 // This is used during uninstallation to restore the original hosts file.
 func CleanupHostsFile(cfg *config.Config) error {
-	hostsPath := cfg.HostsPath
+	hostsPath := cfg.Domains.HostsPath
 
 	// Read current hosts file
 	content, err := os.ReadFile(hostsPath)

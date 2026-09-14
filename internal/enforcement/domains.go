@@ -25,9 +25,9 @@ func GetDomainsToBlock(cfg *config.Config, now time.Time) []string {
 	timeBasedBlockCount := 0
 	tempUnblockedCount := 0
 
-	slog.Debug("Evaluating domains for blocking", "current_day", currentDay, "current_time", currentTime, "total_domains", len(cfg.Domains))
+	slog.Debug("Evaluating domains for blocking", "current_day", currentDay, "current_time", currentTime, "total_domains", len(cfg.Domains.List))
 
-	for _, domain := range cfg.Domains {
+	for _, domain := range cfg.Domains.List {
 		if domain.LogBlocking {
 			slog.Debug("Evaluating domain", "domain", domain.Name, "unblockable", domain.Unblockable, "has_block_windows", len(domain.BlockWindows) > 0)
 		}
@@ -165,7 +165,7 @@ func GetBlockingReason(cfg *config.Config, domain string, now time.Time) string 
 	currentTime := now.Format("15:04")
 
 	// Find the domain in the config
-	for _, configDomain := range cfg.Domains {
+	for _, configDomain := range cfg.Domains.List {
 		if configDomain.Name == domain {
 			// NEW BEHAVIOR: Domains without block windows are always blocked by default
 			// Domains are permanent (non-unblockable) by default

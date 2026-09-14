@@ -68,7 +68,7 @@ func HandleWebTrackingRequest(cfg *config.Config, w http.ResponseWriter, r *http
 		}
 
 		// Execute the configured command
-		if cfg.WebTracking.Command != "" {
+		if cfg.Domains.BlockedAccessCommand != "" {
 			go executeWebTrackingCommand(cfg, host, r)
 		}
 
@@ -139,7 +139,7 @@ func isHostBlocked(host string) (bool, string) {
 
 	for _, checkDomain := range domainsToCheck {
 		// Find in config
-		for _, configDomain := range freshCfg.Domains {
+		for _, configDomain := range freshCfg.Domains.List {
 			if configDomain.Name == checkDomain {
 				// Check if domain is currently blocked
 				// Domains without time windows are permanently blocked by default
@@ -186,14 +186,14 @@ func ClearDomainCache() {
 
 // executeWebTrackingCommand executes the configured command when a blocked site is accessed.
 func executeWebTrackingCommand(cfg *config.Config, host string, r *http.Request) {
-	if cfg.WebTracking.Command == "" {
+	if cfg.Domains.BlockedAccessCommand == "" {
 		return
 	}
 
-	slog.Debug("Executing web tracking command", "host", host, "command", cfg.WebTracking.Command)
+	slog.Debug("Executing web tracking command", "host", host, "command", cfg.Domains.BlockedAccessCommand)
 
 	// Split command into parts for proper execution
-	parts := strings.Fields(cfg.WebTracking.Command)
+	parts := strings.Fields(cfg.Domains.BlockedAccessCommand)
 	if len(parts) == 0 {
 		return
 	}
@@ -232,13 +232,13 @@ func HandleKeywordsRequest(cfg *config.Config, w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", "application/json")
 
 	// Combine content keywords with URL keywords
-	combinedContentKeywords := make([]string, 0, len(cfg.ExtensionKeywords.ContentKeywords)+len(cfg.ExtensionKeywords.URLKeywords))
-	combinedContentKeywords = append(combinedContentKeywords, cfg.ExtensionKeywords.ContentKeywords...)
-	combinedContentKeywords = append(combinedContentKeywords, cfg.ExtensionKeywords.URLKeywords...)
+	combinedContentKeywords := make([]string, 0, len(cfg.Content.Keywords.ContentKeywords)+len(cfg.Content.Keywords.URLKeywords))
+	combinedContentKeywords = append(combinedContentKeywords, cfg.Content.Keywords.ContentKeywords...)
+	combinedContentKeywords = append(combinedContentKeywords, cfg.Content.Keywords.URLKeywords...)
 
 	// Create response with keywords
 	response := map[string]interface{}{
-		"url_keywords":     cfg.ExtensionKeywords.URLKeywords,
+		"url_keywords":     cfg.Content.Keywords.URLKeywords,
 		"content_keywords": combinedContentKeywords,
 		"whitelist":        effectiveWhitelist(cfg),
 	}
@@ -250,7 +250,7 @@ func HandleKeywordsRequest(cfg *config.Config, w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	slog.Debug("Keywords request served", "url_keywords_count", len(cfg.ExtensionKeywords.URLKeywords), "content_keywords_count", len(combinedContentKeywords))
+	slog.Debug("Keywords request served", "url_keywords_count", len(cfg.Content.Keywords.URLKeywords), "content_keywords_count", len(combinedContentKeywords))
 }
 
 // HandleReportRequest processes content monitoring reports from browser extensions.
@@ -283,7 +283,7 @@ func isDashboardHost(h string) bool {
 // effectiveWhitelist is the configured extension whitelist plus the hardcoded
 // always-allowed hosted dashboard, sent to the extension so it never scans it.
 func effectiveWhitelist(cfg *config.Config) []string {
-	return append([]string{hostedDashboardDomain}, cfg.ExtensionKeywords.Whitelist...)
+	return append([]string{hostedDashboardDomain}, cfg.Content.Keywords.Whitelist...)
 }
 
 func HandleReportRequest(cfg *config.Config, w http.ResponseWriter, r *http.Request) {
@@ -294,7 +294,7 @@ func HandleReportRequest(cfg *config.Config, w http.ResponseWriter, r *http.Requ
 	}
 
 	// Check if content monitoring is enabled
-	if !cfg.ContentMonitoring.Enabled {
+	if !cfg.Content.Monitoring.Enabled {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		return
 	}
@@ -359,13 +359,13 @@ func HandleSSERequest(cfg *config.Config, w http.ResponseWriter, r *http.Request
 	slog.Debug("SSE client connected", "total_clients", state.GetSSEClientCount())
 
 	// Combine content keywords with URL keywords for initial send
-	combinedContentKeywords := make([]string, 0, len(cfg.ExtensionKeywords.ContentKeywords)+len(cfg.ExtensionKeywords.URLKeywords))
-	combinedContentKeywords = append(combinedContentKeywords, cfg.ExtensionKeywords.ContentKeywords...)
-	combinedContentKeywords = append(combinedContentKeywords, cfg.ExtensionKeywords.URLKeywords...)
+	combinedContentKeywords := make([]string, 0, len(cfg.Content.Keywords.ContentKeywords)+len(cfg.Content.Keywords.URLKeywords))
+	combinedContentKeywords = append(combinedContentKeywords, cfg.Content.Keywords.ContentKeywords...)
+	combinedContentKeywords = append(combinedContentKeywords, cfg.Content.Keywords.URLKeywords...)
 
 	// Send initial keywords
 	initialKeywords := map[string]interface{}{
-		"url_keywords":     cfg.ExtensionKeywords.URLKeywords,
+		"url_keywords":     cfg.Content.Keywords.URLKeywords,
 		"content_keywords": combinedContentKeywords,
 		"whitelist":        effectiveWhitelist(cfg),
 	}
@@ -402,7 +402,7 @@ func HandleSSERequest(cfg *config.Config, w http.ResponseWriter, r *http.Request
 }
 
 // GetBlockingReason returns a human-readable reason for why a domain is blocked.
-// Checks cfg.Domains if populated (tests), otherwise uses cache or loads from disk.
+// Checks cfg.Domains.List if populated (tests), otherwise uses cache or loads from disk.
 func GetBlockingReason(cfg *config.Config, domain string, now time.Time) string {
 	currentDay := now.Weekday().String()[:3]
 	currentTime := now.Format("15:04")
@@ -410,9 +410,9 @@ func GetBlockingReason(cfg *config.Config, domain string, now time.Time) string 
 	var configDomain config.Domain
 	found := false
 
-	// If cfg.Domains is populated (e.g., in tests), use it directly
-	if len(cfg.Domains) > 0 {
-		for _, d := range cfg.Domains {
+	// If cfg.Domains.List is populated (e.g., in tests), use it directly
+	if len(cfg.Domains.List) > 0 {
+		for _, d := range cfg.Domains.List {
 			if d.Name == domain {
 				configDomain = d
 				found = true
@@ -420,7 +420,7 @@ func GetBlockingReason(cfg *config.Config, domain string, now time.Time) string 
 			}
 		}
 	} else {
-		// In normal runtime, cfg.Domains is cleared for memory optimization
+		// In normal runtime, cfg.Domains.List is cleared for memory optimization
 		// Check if we have this domain cached
 		domainCache.mu.RLock()
 		cachedDomain, exists := domainCache.domains[domain]
@@ -439,7 +439,7 @@ func GetBlockingReason(cfg *config.Config, domain string, now time.Time) string 
 			}
 
 			// Find the domain in the config
-			for _, d := range freshCfg.Domains {
+			for _, d := range freshCfg.Domains.List {
 				if d.Name == domain {
 					configDomain = d
 					found = true

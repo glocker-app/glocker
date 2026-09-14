@@ -17,7 +17,7 @@ func TestUpdateHostsWritesGlockerLocalAlias(t *testing.T) {
 	if err := os.WriteFile(hostsPath, []byte("127.0.0.1 localhost\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := &config.Config{HostsPath: hostsPath}
+	cfg := &config.Config{Domains: config.DomainsConfig{HostsPath: hostsPath}}
 	if err := UpdateHosts(cfg, []string{"example.com"}, false); err != nil {
 		t.Fatalf("UpdateHosts: %v", err)
 	}
@@ -39,12 +39,12 @@ func TestUpdateHostsWritesGlockerLocalAlias(t *testing.T) {
 func TestGetDomainsToBlock_AlwaysBlock(t *testing.T) {
 	// NEW BEHAVIOR: Domains without time windows are always blocked by default
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "example.com"}, // No time windows = always blocked
 			{Name: "test.com", BlockWindows: []config.TimeWindow{
 				{Start: "09:00", End: "17:00", Days: []string{"Sun"}}, // Wrong day, won't block
 			}},
-		},
+		}},
 	}
 
 	now := time.Date(2026, 1, 6, 10, 0, 0, 0, time.UTC) // Monday 10:00
@@ -61,10 +61,10 @@ func TestGetDomainsToBlock_AlwaysBlock(t *testing.T) {
 func TestGetDomainsToBlock_TimeWindows(t *testing.T) {
 	// Test with a time window that is currently active
 	now := time.Date(2026, 1, 6, 10, 0, 0, 0, time.UTC) // Monday 10:00
-	currentDay := now.Weekday().String()[:3]             // "Mon"
+	currentDay := now.Weekday().String()[:3]            // "Mon"
 
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{
 				Name: "worksite.com",
 				BlockWindows: []config.TimeWindow{
@@ -75,7 +75,7 @@ func TestGetDomainsToBlock_TimeWindows(t *testing.T) {
 					},
 				},
 			},
-		},
+		}},
 	}
 
 	blocked := GetDomainsToBlock(cfg, now)
@@ -94,7 +94,7 @@ func TestGetDomainsToBlock_OutsideTimeWindow(t *testing.T) {
 	currentDay := now.Weekday().String()[:3]
 
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{
 				Name: "worksite.com",
 				BlockWindows: []config.TimeWindow{
@@ -105,7 +105,7 @@ func TestGetDomainsToBlock_OutsideTimeWindow(t *testing.T) {
 					},
 				},
 			},
-		},
+		}},
 	}
 
 	blocked := GetDomainsToBlock(cfg, now)
@@ -117,10 +117,10 @@ func TestGetDomainsToBlock_OutsideTimeWindow(t *testing.T) {
 
 func TestGetDomainsToBlock_WrongDay(t *testing.T) {
 	now := time.Date(2026, 1, 7, 10, 0, 0, 0, time.UTC) // Tuesday 10:00
-	currentDay := now.Weekday().String()[:3]             // "Tue"
+	currentDay := now.Weekday().String()[:3]            // "Tue"
 
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{
 				Name: "worksite.com",
 				BlockWindows: []config.TimeWindow{
@@ -131,7 +131,7 @@ func TestGetDomainsToBlock_WrongDay(t *testing.T) {
 					},
 				},
 			},
-		},
+		}},
 	}
 
 	blocked := GetDomainsToBlock(cfg, now)
@@ -178,10 +178,10 @@ func TestPermanentDomainIgnoresTempUnblock(t *testing.T) {
 	now := time.Now()
 
 	cfg := &config.Config{
-		Domains: []config.Domain{
-			{Name: "permanent.com"},                  // No time windows, permanent (default)
+		Domains: config.DomainsConfig{List: []config.Domain{
+			{Name: "permanent.com"},                      // No time windows, permanent (default)
 			{Name: "unblockable.com", Unblockable: true}, // No time windows, but unblockable
-		},
+		}},
 	}
 
 	// Add temp unblocks for both domains
@@ -243,9 +243,9 @@ func TestCleanupExpiredUnblocks(t *testing.T) {
 
 func TestGetBlockingReason_AlwaysBlock(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "example.com"}, // No time windows = always blocked (permanent by default)
-		},
+		}},
 	}
 
 	now := time.Now()
@@ -258,9 +258,9 @@ func TestGetBlockingReason_AlwaysBlock(t *testing.T) {
 
 func TestGetBlockingReason_Permanent(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "example.com"}, // No time windows, not unblockable = permanent
-		},
+		}},
 	}
 
 	now := time.Now()
@@ -274,9 +274,9 @@ func TestGetBlockingReason_Permanent(t *testing.T) {
 
 func TestGetBlockingReason_Unblockable(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "example.com", Unblockable: true}, // No time windows, but unblockable
-		},
+		}},
 	}
 
 	now := time.Now()
@@ -293,7 +293,7 @@ func TestGetBlockingReason_TimeWindow(t *testing.T) {
 	currentDay := now.Weekday().String()[:3]
 
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{
 				Name: "worksite.com",
 				BlockWindows: []config.TimeWindow{
@@ -304,7 +304,7 @@ func TestGetBlockingReason_TimeWindow(t *testing.T) {
 					},
 				},
 			},
-		},
+		}},
 	}
 
 	reason := GetBlockingReason(cfg, "worksite.com", now)
@@ -319,9 +319,9 @@ func TestGetBlockingReason_TimeWindow(t *testing.T) {
 
 func TestGetBlockingReason_Unknown(t *testing.T) {
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "example.com"}, // Some existing domain
-		},
+		}},
 	}
 
 	now := time.Now()
@@ -378,7 +378,7 @@ func TestGetDomainsToBlock_MultipleConditions(t *testing.T) {
 	currentDay := now.Weekday().String()[:3]
 
 	cfg := &config.Config{
-		Domains: []config.Domain{
+		Domains: config.DomainsConfig{List: []config.Domain{
 			{Name: "always.com"}, // No time windows = always blocked
 			{
 				Name: "timewindow.com",
@@ -398,7 +398,7 @@ func TestGetDomainsToBlock_MultipleConditions(t *testing.T) {
 					{Start: "09:00", End: "17:00", Days: []string{"Sun"}},
 				},
 			},
-		},
+		}},
 	}
 
 	blocked := GetDomainsToBlock(cfg, now)

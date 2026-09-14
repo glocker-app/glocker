@@ -15,7 +15,7 @@ import (
 
 // LogContentReport logs a content monitoring report from the browser extension.
 func LogContentReport(cfg *config.Config, report *state.ContentReport) error {
-	logFile := cfg.ContentMonitoring.LogFile
+	logFile := cfg.Content.Monitoring.LogFile
 	if logFile == "" {
 		logFile = "/var/log/glocker-reports.log"
 	}
@@ -45,7 +45,7 @@ func LogContentReport(cfg *config.Config, report *state.ContentReport) error {
 
 // LogUnblockEntry logs a temporary unblock request with details.
 func LogUnblockEntry(cfg *config.Config, domain, reason string, unblockTime, restoreTime time.Time) error {
-	if cfg.Unblocking.LogFile == "" {
+	if cfg.Domains.Unblocking.LogFile == "" {
 		return nil // No log file configured
 	}
 
@@ -63,7 +63,7 @@ func LogUnblockEntry(cfg *config.Config, domain, reason string, unblockTime, res
 	}
 
 	// Append to log file
-	file, err := os.OpenFile(cfg.Unblocking.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	file, err := os.OpenFile(cfg.Domains.Unblocking.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open unblock log file: %w", err)
 	}
@@ -75,20 +75,20 @@ func LogUnblockEntry(cfg *config.Config, domain, reason string, unblockTime, res
 		return fmt.Errorf("failed to write to unblock log file: %w", err)
 	}
 
-	slog.Debug("Logged unblock entry", "domain", domain, "reason", reason, "log_file", cfg.Unblocking.LogFile)
+	slog.Debug("Logged unblock entry", "domain", domain, "reason", reason, "log_file", cfg.Domains.Unblocking.LogFile)
 	return nil
 }
 
 // ParseUnblockLog reads and parses the unblock log file to generate statistics.
 func ParseUnblockLog(cfg *config.Config) (*state.UnblockStats, error) {
-	if cfg.Unblocking.LogFile == "" {
+	if cfg.Domains.Unblocking.LogFile == "" {
 		return &state.UnblockStats{
 			ReasonCounts: make(map[string]int),
 			DomainCounts: make(map[string]int),
 		}, nil
 	}
 
-	file, err := os.Open(cfg.Unblocking.LogFile)
+	file, err := os.Open(cfg.Domains.Unblocking.LogFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Log file doesn't exist yet, return empty stats
@@ -142,12 +142,12 @@ func ParseUnblockLog(cfg *config.Config) (*state.UnblockStats, error) {
 // IsValidUnblockReason checks if a provided reason is in the list of valid unblock reasons.
 func IsValidUnblockReason(cfg *config.Config, reason string) bool {
 	// If no reasons are configured, allow any reason
-	if len(cfg.Unblocking.Reasons) == 0 {
+	if len(cfg.Domains.Unblocking.Reasons) == 0 {
 		return true
 	}
 
 	// Check if the provided reason matches any of the configured valid reasons
-	for _, validReason := range cfg.Unblocking.Reasons {
+	for _, validReason := range cfg.Domains.Unblocking.Reasons {
 		if strings.EqualFold(reason, validReason) {
 			return true
 		}

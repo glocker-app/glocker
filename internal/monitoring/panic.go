@@ -70,8 +70,8 @@ func MonitorPanicMode(cfg *config.Config) {
 			}
 
 			// Suspend the system if needed
-			if cfg.PanicCommand != "" {
-				ExecuteSuspendCommand(cfg.PanicCommand)
+			if cfg.Panic.Command != "" {
+				ExecuteSuspendCommand(cfg.Panic.Command)
 				state.SetLastSuspendTime(now)
 			}
 		}

@@ -6,7 +6,7 @@
 # Every value here is a placeholder or a safe default — replace the example
 # usernames, addresses, keys, paths and keywords with your own. The large
 # blocklists are NOT stored in this file; `update_domains.py` generates them into
-# conf.d/ and they're pulled in via `!include` (see the `domains:` section).
+# conf.d/ and they're pulled in via `!include` (see domains.list).
 #
 # The installed file lives at /etc/glocker/config.yaml and is read by the glocker
 # agent. (The glockpeek dashboard reads its own file — see the note just below.)
@@ -23,33 +23,101 @@
 log_level: "info"
 
 # ── Blocking: domains ─────────────────────────────────────────────────────────
-# These are the domain-blocking mechanics. The (large) block LIST itself is at
-# the BOTTOM of this file, in the `domains:` stanza.
-# Block domains by routing them to 127.0.0.1 in /etc/hosts (made immutable).
-enable_hosts: true
-hosts_path: "/etc/hosts"                  # leave as-is unless you know why not
+# Everything about domain blocking: the switch, the hosts file, the browsers to
+# close on a block, the nudge when you hit a blocked site, temporary-unblock
+# rules, and the block list itself.
+domains:
+  enabled: true                 # route blocked domains to 127.0.0.1 in /etc/hosts (made immutable)
+  hosts_path: "/etc/hosts"      # leave as-is unless you know why not
 
-# Browsers killed on every `glocker -block`, so their internal DNS cache is
-# dropped and the new block takes effect at once. Case-insensitive substring
-# match on the process name; ignores time windows; not counted as a violation.
-kill_on_block:
-  - firefox
-  - chromium
-  - chrome
-  - brave
+  # Browsers killed on every `glocker -block`, so their internal DNS cache is
+  # dropped and the new block takes effect at once. Case-insensitive substring
+  # match on the process name; ignores time windows; not counted as a violation.
+  kill_on_block:
+    - firefox
+    - chromium
+    - chrome
+    - brave
+
+  # Command run when you actually load a blocked domain (an audible/visual nudge).
+  # Empty = none.
+  blocked_access_command: 'notify-send "glocker" "A blocked site was accessed"'
+
+  # Temporary unblocking: `glocker -unblock "domain:reason"`.
+  unblocking:
+    reasons: ["work", "research", "emergency"]  # a valid reason is required on -unblock
+    log_file: "/var/log/glocker-unblocks.log"
+    temp_unblock_time: 20                        # minutes a domain stays unblocked
+    max_per_day: 0                               # cap on unblocks per calendar day (0 = unlimited)
+
+  # The block list. Generated blocklists live in conf.d/ (kept out of this file
+  # for size) — populate them with `make full-install` or `python3
+  # update_domains.py all`, then they're pulled in via !include. Comment a line
+  # out to disable that source. These files must exist before install.
+  list:
+    - !include conf.d/domains-bon-appetit.yaml
+    - !include conf.d/domains-stevenblack.yaml
+    - !include conf.d/domains-hagezi.yaml
+    - !include conf.d/domains-shadowwhisperer.yaml
+
+    # ---------------------------------------------------------------------
+    # Always blocked, but can be temporarily unblocked (glocker -unblock)
+    # ---------------------------------------------------------------------
+    - {name: "reddit.com", unblockable: true}
+    - {name: "twitter.com", unblockable: true}
+    - {name: "facebook.com", unblockable: true}
+    - {name: "instagram.com", unblockable: true}
+    - {name: "tiktok.com", unblockable: true}
+
+    # ---------------------------------------------------------------------
+    # Always blocked, permanent (cannot be unblocked) — this is the DEFAULT
+    # ---------------------------------------------------------------------
+    - {name: "pornhub.com"}
+    - {name: "xvideos.com"}
+    - {name: "gambling-site.com"}
+    # Proxy/VPN sites that would bypass the filter:
+    - {name: "croxyproxy.com"}
+    - {name: "proxysite.com"}
+    - {name: "hide.me"}
+
+    # ---------------------------------------------------------------------
+    # Time-based — blocked ONLY during the listed windows
+    # ---------------------------------------------------------------------
+    - name: "youtube.com"
+      block_windows:
+        - start: "09:00"
+          end: "17:00"
+          days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+        - start: "22:00"
+          end: "23:59"
+          days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    - name: "news.ycombinator.com"
+      block_windows:
+        - start: "09:00"
+          end: "17:00"
+          days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+    # ---------------------------------------------------------------------
+    # Add your own below. Templates:
+    #   - {name: "example.com"}                     # permanent block
+    #   - {name: "example.com", unblockable: true}  # blocked, but unblockable
+    #   - name: "example.com"                       # time-based
+    #     block_windows:
+    #       - start: "09:00"
+    #         end: "17:00"
+    #         days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
+    # ---------------------------------------------------------------------
 
 # ── Blocking: programs ────────────────────────────────────────────────────────
-# Kill named programs during their windows (see forbidden_programs below).
-enable_forbidden_programs: true
-
 # Programs killed on sight during their windows (matched on process name). Use
 # kill_windows (killed DURING the window) or allow_windows (killed OUTSIDE it);
 # no windows means killed 24/7. Mark a program `extendible: true` to allow a
 # one-hour `glocker -extend <name> "reason"`, capped to once per rolling 24h.
-forbidden_programs:
+programs:
   enabled: true
   check_interval_seconds: 5
-  programs:
+  list:
     # Killed during the listed hours
     - name: "chrome"
       kill_windows:
@@ -69,32 +137,25 @@ forbidden_programs:
     - name: "brave"
     - name: "some-game"
 
-
 # ── Blocking: web content (browser extension) ─────────────────────────────────
-# Run a command when a blocked site is accessed (reported by the web server /
-# extension) — e.g. an audible or visual nudge. Empty command = none.
-web_tracking:
-  enabled: true
-  command: 'notify-send "glocker" "A blocked site was accessed"'
-
-# Log content-violation reports POSTed by the browser extension.
-content_monitoring:
-  enabled: true
-  log_file: "/var/log/glocker-reports.log"
-
-# Keywords the Firefox extension watches for. url_keywords match the address;
-# content_keywords match page text; whitelist pages are never scanned or
-# reported. Replace these placeholders with your own terms and trusted sites.
-extension_keywords:
-  url_keywords: ["keyword-in-url", "another-keyword"]
-  content_keywords: ["a phrase to flag", "another phrase"]
-  whitelist:
-    - "mail.google.com"
-    - "calendar.google.com"
-    - "github.com"
-    - "stackoverflow.com"
-    - "en.wikipedia.org"
-    # add any sites that should never be scanned or blocked
+content:
+  # Log content-violation reports POSTed by the browser extension.
+  monitoring:
+    enabled: true
+    log_file: "/var/log/glocker-reports.log"
+  # Keywords the extension watches for. url_keywords match the address;
+  # content_keywords match page text; whitelist pages are never scanned or
+  # reported. Replace these placeholders with your own terms and trusted sites.
+  keywords:
+    url_keywords: ["keyword-in-url", "another-keyword"]
+    content_keywords: ["a phrase to flag", "another phrase"]
+    whitelist:
+      - "mail.google.com"
+      - "calendar.google.com"
+      - "github.com"
+      - "stackoverflow.com"
+      - "en.wikipedia.org"
+      # add any sites that should never be scanned or blocked
 
 # ── Blocking: privileges (sudo) ───────────────────────────────────────────────
 # Sudoers control — the REAL enforcement. During allow_windows sudo is permitted;
@@ -114,7 +175,7 @@ sudoers:
       end: "15:00"
       days: ["Sat", "Sun"]
 
-# ── Enforcement engine & tamper-resistance ────────────────────────────────────
+# ── Tamper-resistance & uninstall ─────────────────────────────────────────────
 # Re-apply protections (immutable flags, hosts, sudoers) if they're tampered with.
 enable_self_healing: false
 
@@ -139,17 +200,12 @@ mindful_uninstall:
   recency_hours: 24                     # look back this far for a prior uninstall
   recent_lines: 3                       # longer challenge on a repeat within the window (0 = no escalation)
 
-# ── Escape valves ─────────────────────────────────────────────────────────────
-# Temporary unblocking: `glocker -unblock "domain:reason"`.
-unblocking:
-  reasons: ["work", "research", "emergency"]  # a valid reason is required on -unblock
-  log_file: "/var/log/glocker-unblocks.log"
-  temp_unblock_time: 20                        # minutes a domain stays unblocked
-  max_per_day: 0                               # cap on unblocks per calendar day (0 = unlimited)
-
-# Panic mode (`glocker -panic N`): emergency offline enforcement. pm-suspend
-# suspends until you wake it; use rtcwake to auto-wake after the duration.
-panic_command: "pm-suspend"
+# Install/uninstall accountability. `glocker -uninstall` must cite one of these
+# reasons. All reasons are gated equally by the mindful gate above — upgrades no
+# longer uninstall (glocker -install swaps in place), so there is no bypass.
+lifecycle:
+  log_file: "/var/log/glocker-lifecycle.log"
+  reasons: ["maintenance", "work", "entertainment"]
 
 # ── Accountability & telemetry ────────────────────────────────────────────────
 # Violation tracking: after max_violations blocked-access attempts within the
@@ -164,17 +220,6 @@ violation_tracking:
   lock_duration: 5m
   background: "/path/to/background.jpg"   # optional lock-screen background (X11 backend)
 
-# Heartbeat watchdog (glockdoc): a root cron job pings the glocker socket every
-# interval_minutes and appends a liveness sample to log_file. The cron + binary
-# intentionally SURVIVE uninstall so the run of "alive:false" samples records how
-# long glocker stayed removed. Remove /etc/cron.d/glocker-doc by hand to stop it
-# after a permanent uninstall.
-heartbeat:
-  enabled: true
-  interval_minutes: 30
-  log_file: "/var/log/glocker-heartbeat.jsonl"
-  timeout_seconds: 3
-
 # Usage monitor: samples the focused window + idle time to a JSONL log the
 # dashboard reads. Runs as root, so it needs the logged-in session's display and
 # X authority to see your windows (or WAYLAND_DISPLAY + XDG_RUNTIME_DIR on
@@ -185,6 +230,17 @@ usage_monitor:
   interval_seconds: 60
   display: ":0"
   xauthority: "/run/user/1000/gdm/Xauthority"   # adjust the UID/path for your login manager
+
+# Heartbeat watchdog (glockdoc): a root cron job pings the glocker socket every
+# interval_minutes and appends a liveness sample to log_file. The cron + binary
+# intentionally SURVIVE uninstall so the run of "alive:false" samples records how
+# long glocker stayed removed. Remove /etc/cron.d/glocker-doc by hand to stop it
+# after a permanent uninstall.
+heartbeat:
+  enabled: true
+  interval_minutes: 30
+  log_file: "/var/log/glocker-heartbeat.jsonl"
+  timeout_seconds: 3
 
 # How the agent ships its local /var records to a glockpeek instance. Local-first:
 # it never blocks enforcement — it backfills at startup, then pushes new records
@@ -202,79 +258,19 @@ sync:
   # encrypt_key_file: "/etc/glocker/e2e.key"   # optional; master key path (base64 of 32 bytes). Read only
                                           #   when encrypt is true. Defaults to /etc/glocker/e2e.key if unset.
 
-# Install/uninstall accountability. `glocker -uninstall` must cite one of these
-# reasons. All reasons are gated equally by the mindful gate below — upgrades no
-# longer uninstall (glocker -install swaps in place), so there is no bypass.
-lifecycle:
-  log_file: "/var/log/glocker-lifecycle.log"
-  reasons: ["maintenance", "work", "entertainment"]
-
-# ── Domains (blocklist) ───────────────────────────────────────────────────────
-domains:
-  # Generated blocklists live in conf.d/ (kept out of this file for size).
-  # Populate them with `make full-install` or `python3 update_domains.py all`,
-  # then they're pulled in here via !include. Comment a line out to disable that
-  # source. These files must exist before install — generate them first.
-  - !include conf.d/domains-bon-appetit.yaml
-  - !include conf.d/domains-stevenblack.yaml
-  - !include conf.d/domains-hagezi.yaml
-  - !include conf.d/domains-shadowwhisperer.yaml
-
-  # -------------------------------------------------------------------------
-  # Always blocked, but can be temporarily unblocked (glocker -unblock)
-  # -------------------------------------------------------------------------
-  - {name: "reddit.com", unblockable: true}
-  - {name: "twitter.com", unblockable: true}
-  - {name: "facebook.com", unblockable: true}
-  - {name: "instagram.com", unblockable: true}
-  - {name: "tiktok.com", unblockable: true}
-
-  # -------------------------------------------------------------------------
-  # Always blocked, permanent (cannot be unblocked) — this is the DEFAULT
-  # -------------------------------------------------------------------------
-  - {name: "pornhub.com"}
-  - {name: "xvideos.com"}
-  - {name: "gambling-site.com"}
-  # Proxy/VPN sites that would bypass the filter:
-  - {name: "croxyproxy.com"}
-  - {name: "proxysite.com"}
-  - {name: "hide.me"}
-
-  # -------------------------------------------------------------------------
-  # Time-based — blocked ONLY during the listed windows
-  # -------------------------------------------------------------------------
-  - name: "youtube.com"
-    block_windows:
-      - start: "09:00"
-        end: "17:00"
-        days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-      - start: "22:00"
-        end: "23:59"
-        days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-  - name: "news.ycombinator.com"
-    block_windows:
-      - start: "09:00"
-        end: "17:00"
-        days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-
-  # -------------------------------------------------------------------------
-  # Add your own below. Templates:
-  #   - {name: "example.com"}                     # permanent block
-  #   - {name: "example.com", unblockable: true}  # blocked, but unblockable
-  #   - name: "example.com"                       # time-based
-  #     block_windows:
-  #       - start: "09:00"
-  #         end: "17:00"
-  #         days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-  # -------------------------------------------------------------------------
+# ── Panic mode ────────────────────────────────────────────────────────────────
+# `glocker -panic N`: emergency offline enforcement. pm-suspend suspends until you
+# wake it; use rtcwake to auto-wake after the duration. Disable to refuse -panic.
+panic:
+  enabled: true
+  command: "pm-suspend"
 
 # ============================================================================
 # Blocklist generation
 # ============================================================================
-# The four !include lines above pull in curated blocklists (adult content, ads,
-# malware, proxy-bypass). Manage them with update_domains.py, which writes one
-# file per source into conf.d/ (it does NOT touch this file):
+# The !include lines under domains.list pull in curated blocklists (adult
+# content, ads, malware, proxy-bypass). Manage them with update_domains.py, which
+# writes one file per source into conf.d/ (it does NOT touch this file):
 #
 #   ./update_domains.py              # list sources and their status
 #   ./update_domains.py all          # fetch/update every source into conf.d/

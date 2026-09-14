@@ -295,8 +295,8 @@ func processAddKeywordRequest(cfg *config.Config, keywordsStr string) {
 		}
 
 		// Add to both URL and content keywords
-		cfg.ExtensionKeywords.URLKeywords = append(cfg.ExtensionKeywords.URLKeywords, keyword)
-		cfg.ExtensionKeywords.ContentKeywords = append(cfg.ExtensionKeywords.ContentKeywords, keyword)
+		cfg.Content.Keywords.URLKeywords = append(cfg.Content.Keywords.URLKeywords, keyword)
+		cfg.Content.Keywords.ContentKeywords = append(cfg.Content.Keywords.ContentKeywords, keyword)
 
 		log.Printf("KEYWORD ADDED: %s", keyword)
 	}

@@ -79,8 +79,30 @@ type TamperConfig struct {
 	AlarmCommand  string `yaml:"alarm_command"`
 }
 
-// WebTrackingConfig controls the web tracking server for browser integration.
-type WebTrackingConfig struct {
+// DomainsConfig groups everything about domain blocking: the on/off switch, the
+// hosts file, the browsers to close on a block, the nudge run when a blocked
+// domain is loaded, the temporary-unblock rules, and the block list itself.
+type DomainsConfig struct {
+	Enabled     bool     `yaml:"enabled"` // route blocked domains to 127.0.0.1 in /etc/hosts
+	HostsPath   string   `yaml:"hosts_path"`
+	KillOnBlock []string `yaml:"kill_on_block,omitempty"` // browsers killed on `glocker -block` to flush their DNS cache
+	// BlockedAccessCommand runs when you actually load a blocked domain (an
+	// audible/visual nudge). Empty = none. Was the old top-level web_tracking.command.
+	BlockedAccessCommand string           `yaml:"blocked_access_command"`
+	Unblocking           UnblockingConfig `yaml:"unblocking"`
+	List                 []Domain         `yaml:"list"`
+}
+
+// ContentConfig groups browser-extension content monitoring: logging the
+// extension's violation reports, and the keyword lists it watches for.
+type ContentConfig struct {
+	Monitoring ContentMonitoringConfig `yaml:"monitoring"`
+	Keywords   ExtensionKeywordsConfig `yaml:"keywords"`
+}
+
+// PanicConfig is panic mode (`glocker -panic N`): an emergency self-imposed
+// offline lockdown. When disabled, `glocker -panic` is refused.
+type PanicConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Command string `yaml:"command"`
 }
@@ -209,47 +231,44 @@ type ForbiddenProgram struct {
 	Extendible bool `yaml:"extendible,omitempty"`
 }
 
-// ForbiddenProgramsConfig controls process killing behavior.
-type ForbiddenProgramsConfig struct {
+// ProgramsConfig controls forbidden-program killing.
+type ProgramsConfig struct {
 	Enabled       bool               `yaml:"enabled"`
 	CheckInterval int                `yaml:"check_interval_seconds"`
-	Programs      []ForbiddenProgram `yaml:"programs"`
+	List          []ForbiddenProgram `yaml:"list"`
 }
 
-// Config is the main configuration structure for glocker.
+// Config is the main configuration structure for glocker. It groups the three
+// blocking features into their own stanzas (domains, programs, content) and
+// keeps the self-contained ones flat.
 type Config struct {
-	EnableHosts             bool     `yaml:"enable_hosts"`
-	EnableForbiddenPrograms bool     `yaml:"enable_forbidden_programs"`
-	Domains                 []Domain `yaml:"domains"`
-	HostsPath               string   `yaml:"hosts_path"`
-	// KillOnBlock lists process names (matched against `comm`, case-insensitive
-	// substring) to terminate whenever a domain is blocked. Browsers cache DNS
-	// internally, so a freshly blocked domain stays reachable until they restart;
-	// killing them on block forces a fresh resolution against the updated hosts file.
-	KillOnBlock       []string                `yaml:"kill_on_block,omitempty"`
-	SelfHeal          bool                    `yaml:"enable_self_healing"`
-	Sudoers           SudoersConfig           `yaml:"sudoers"`
-	TamperDetection   TamperConfig            `yaml:"tamper_detection"`
-	WebTracking       WebTrackingConfig       `yaml:"web_tracking"`
-	ContentMonitoring ContentMonitoringConfig `yaml:"content_monitoring"`
-	ForbiddenPrograms ForbiddenProgramsConfig `yaml:"forbidden_programs"`
-	ExtensionKeywords ExtensionKeywordsConfig `yaml:"extension_keywords"`
+	LogLevel string `yaml:"log_level"`
+
+	// Blocking mechanisms.
+	Domains  DomainsConfig  `yaml:"domains"`
+	Programs ProgramsConfig `yaml:"programs"`
+	Content  ContentConfig  `yaml:"content"`
+	Sudoers  SudoersConfig  `yaml:"sudoers"`
+
+	// Tamper-resistance & uninstall.
+	SelfHeal         bool                   `yaml:"enable_self_healing"`
+	TamperDetection  TamperConfig           `yaml:"tamper_detection"`
+	MindfulUninstall MindfulUninstallConfig `yaml:"mindful_uninstall"`
+	Lifecycle        LifecycleConfig        `yaml:"lifecycle"`
+
+	// Accountability & telemetry.
 	ViolationTracking ViolationTrackingConfig `yaml:"violation_tracking"`
-	Unblocking        UnblockingConfig        `yaml:"unblocking"`
-	Lifecycle         LifecycleConfig         `yaml:"lifecycle"`
-	MindfulUninstall  MindfulUninstallConfig  `yaml:"mindful_uninstall"`
-	Heartbeat         HeartbeatConfig         `yaml:"heartbeat"`
 	UsageMonitor      UsageMonitorConfig      `yaml:"usage_monitor"`
-	PanicCommand      string                  `yaml:"panic_command"`
-	LogLevel          string                  `yaml:"log_level"`
+	Heartbeat         HeartbeatConfig         `yaml:"heartbeat"`
 	// Sync configures how the agent ships its local /var records to a glockpeek
 	// instance. Local-first: recording and enforcement never depend on it, so a
 	// glockpeek that's down or unreachable only delays the dashboard, nothing else.
-	//
-	// glockpeek's own server settings (mode, listen, database, mail, …) are NOT
-	// here — they live in a separate file (see GlockpeekConfig / GlockpeekConfigFile)
-	// that only the glockpeek process reads.
+	// glockpeek's own server settings (mode, listen, database, mail, …) live in a
+	// separate file (see GlockpeekConfig / GlockpeekConfigFile).
 	Sync SyncConfig `yaml:"sync"`
+
+	// Panic mode.
+	Panic PanicConfig `yaml:"panic"`
 }
 
 // SyncConfig controls the glocker->glockpeek syncer. The agent keeps recording
