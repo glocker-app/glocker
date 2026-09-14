@@ -42,7 +42,7 @@ Glocker uses multiple independent monitors that work together to enforce blockin
 **How it works:**
 - Writes blocked domains below `### GLOCKER START ###`.
 - Sets file immutable using `chattr +i` (when enabled)
-- Updates every 60 seconds (configurable via `enforce_interval_seconds`)
+- Updates every 60 seconds (fixed internal cadence)
 - Handles 800,000+ domains efficiently (memory optimization clears list after initial write)
 
 **Time windows:** Can block domains only during specific times/days

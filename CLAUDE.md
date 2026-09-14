@@ -118,12 +118,13 @@ glocker -uninstall
   - `GET /sse` - Server-sent events for real-time updates
   - `GET /blocked` - Blocked page display
 
-### Notifications (`internal/notify/`)
-- **`desktop.go`** - Desktop notifications (local toasts via `notification_command`)
-  - `SendNotification()` - fills `{title}/{message}/{urgency}/{icon}` into the command
-  - The agent sends **no email** — accountability notifications are glockpeek's job
-    (`internal/mailer`, configured server-side). See `internal/report` for the
-    DB-backed daily-report builder that lives on the glockpeek side.
+### Notifications
+- The agent sends **no notifications of its own** — no desktop toasts (the
+  `internal/notify` package was removed) and no email. Accountability
+  notifications and the daily report are glockpeek's job (`internal/mailer`,
+  server-side; `internal/report` builds the DB-backed daily report). Local
+  feedback on events comes from per-feature commands instead
+  (`tamper_detection.alarm_command`, the violation-tracking lock command, etc.).
 
 ### State Management (`internal/state/`)
 - **`state.go`** - Thread-safe global state
@@ -470,7 +471,6 @@ glocker/
 │   ├── install/                # Installation and uninstallation
 │   ├── ipc/                    # Unix socket server
 │   ├── monitoring/             # Background monitoring tasks
-│   ├── notify/                 # Desktop notifications (no email)
 │   ├── state/                  # Thread-safe global state
 │   ├── utils/                  # Shared utilities
 │   └── web/                    # HTTP server for extension
@@ -484,7 +484,7 @@ glocker/
 - `cli` imports `config`, `enforcement`, `state`
 - `ipc` imports `cli`, `config`, `enforcement`, `install`
 - `enforcement` imports `config`, `state`, `utils`
-- `monitoring` imports `config`, `notify`, `state`
+- `monitoring` imports `config`, `state`
 - `web` imports `config`, `monitoring`, `state`
 
 When searching for functionality:
