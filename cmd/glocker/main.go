@@ -67,7 +67,7 @@ func main() {
 	unblockHosts := flag.String("unblock", "", "Comma-separated list of hosts to temporarily unblock (format: 'domain1,domain2:reason')")
 	extendProgram := flag.String("extend", "", "Grant a one-hour run extension for a forbidden program (format: 'program:reason'). Program must be marked extendible in the config; one grant per 24h.")
 	addKeyword := flag.String("add-keyword", "", "Comma-separated list of keywords to add to both URL and content keyword lists")
-	panicMinutes := flag.Int("panic", 0, "Enter panic mode for N minutes (suspends system and re-suspends on early wake)")
+	panicFlag := flag.Bool("panic", false, "Enter panic mode: suspend the system for panic.duration minutes, re-suspending on early wake")
 	lockFlag := flag.Bool("lock", false, "Immediately lock sudoers access (ignores time windows)")
 	securityCheckFlag := flag.Bool("security-check", false, "Report bypass/recovery routes (root login, recovery mode, extra sudoers, SSH root, autologin); read-only")
 	connectFlag := flag.Bool("connect", false, "Connect this machine to your dashboard's encryption: fetch your key vault, unlock it with your passphrase, and install the key so synced data is end-to-end encrypted")
@@ -472,15 +472,14 @@ func main() {
 		return
 	}
 
-	if *panicMinutes > 0 {
+	if *panicFlag {
 		conn, err := net.Dial("unix", ipc.SocketPath)
 		if err != nil {
 			log.Fatalf("Failed to connect to glocker service: %v", err)
 		}
 		defer conn.Close()
 
-		message := fmt.Sprintf("panic:%d\n", *panicMinutes)
-		conn.Write([]byte(message))
+		conn.Write([]byte("panic\n"))
 
 		reader := bufio.NewReader(conn)
 		response, err := reader.ReadString('\n')
@@ -654,7 +653,7 @@ func main() {
 		go monitoring.MonitorViolations(cfg)
 	}
 
-	if cfg.Panic.Command != "" {
+	if cfg.Panic.Enabled {
 		go monitoring.MonitorPanicMode(cfg)
 	}
 

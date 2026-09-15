@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -149,18 +148,8 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 			conn.Write([]byte("OK: Block-app request received\n"))
 			go cli.ProcessBlockAppRequest(cfg, programs)
 		case "panic":
-			if len(parts) != 2 {
-				conn.Write([]byte("ERROR: Invalid format. Use 'panic:minutes'\n"))
-				continue
-			}
-			minutesStr := strings.TrimSpace(parts[1])
-			minutes, err := strconv.Atoi(minutesStr)
-			if err != nil || minutes <= 0 {
-				conn.Write([]byte("ERROR: Invalid minutes value. Must be a positive integer\n"))
-				continue
-			}
-			conn.Write([]byte(fmt.Sprintf("OK: Entering panic mode for %d minutes\n", minutes)))
-			go cli.ProcessPanicRequest(cfg, minutes)
+			conn.Write([]byte("OK: Entering panic mode\n"))
+			go cli.ProcessPanicRequest(cfg)
 		case "extend":
 			if len(parts) != 2 {
 				conn.Write([]byte("ERROR: Invalid format. Use 'extend:program:reason'\n"))

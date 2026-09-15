@@ -254,6 +254,7 @@ sync:
 panic:
   enabled: true
   command: "pm-suspend"
+  duration: 30              # minutes to stay suspended
 
 # ============================================================================
 # Blocklist generation

@@ -674,21 +674,19 @@ func ProcessExtendRequest(cfg *config.Config, programName, reason string) error 
 }
 
 // ProcessPanicRequest activates panic mode for the specified duration.
-func ProcessPanicRequest(cfg *config.Config, minutes int) {
+func ProcessPanicRequest(cfg *config.Config) {
 	if !cfg.Panic.Enabled {
 		log.Printf("Panic mode is disabled (panic.enabled=false); ignoring -panic request")
 		return
 	}
-	slog.Debug("Processing panic request", "minutes", minutes)
+	minutes := cfg.Panic.Duration
+	if minutes <= 0 {
+		minutes = 30 // sensible default when panic.duration is unset
+	}
 
-	now := time.Now()
-	panicUntil := now.Add(time.Duration(minutes) * time.Minute)
+	panicUntil := time.Now().Add(time.Duration(minutes) * time.Minute)
 	state.SetPanicUntil(panicUntil)
 
 	log.Printf("⚠️  PANIC MODE ACTIVATED for %d minutes (until %s)", minutes, panicUntil.Format("15:04:05"))
-
-	// Immediately suspend the system if panic command is configured
-	if cfg.Panic.Command != "" {
-		// The monitoring goroutine will handle suspension
-	}
+	// The MonitorPanicMode goroutine handles the (re-)suspension.
 }

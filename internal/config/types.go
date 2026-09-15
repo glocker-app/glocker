@@ -93,11 +93,13 @@ type ContentConfig struct {
 	Keywords   ExtensionKeywordsConfig `yaml:"keywords"`
 }
 
-// PanicConfig is panic mode (`glocker -panic N`): an emergency self-imposed
-// offline lockdown. When disabled, `glocker -panic` is refused.
+// PanicConfig is panic mode (`glocker -panic`): an emergency self-imposed offline
+// lockdown that suspends the machine for Duration minutes, re-suspending on an
+// early wake. When disabled, `glocker -panic` is refused.
 type PanicConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	Command string `yaml:"command"`
+	Enabled  bool   `yaml:"enabled"`
+	Command  string `yaml:"command"`
+	Duration int    `yaml:"duration"` // minutes to stay suspended (0 → 30)
 }
 
 // LogDir holds all of glocker's runtime log files (mutable state → /var).

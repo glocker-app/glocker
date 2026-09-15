@@ -101,13 +101,13 @@ func TestGetStatusResponse_WithManyKeywords(t *testing.T) {
 }
 
 func TestProcessPanicRequest(t *testing.T) {
-	cfg := &config.Config{Panic: config.PanicConfig{Enabled: true}}
+	cfg := &config.Config{Panic: config.PanicConfig{Enabled: true, Duration: 5}}
 
 	// Clear panic state
 	state.SetPanicUntil(time.Time{})
 
 	// Process panic request
-	ProcessPanicRequest(cfg, 5)
+	ProcessPanicRequest(cfg)
 
 	// Check that panic mode was set
 	panicUntil := state.GetPanicUntil()
