@@ -60,16 +60,16 @@ func InstallGnomeExtension(cfg *config.Config) {
 	log.Println("  On Wayland, log out and back in to activate window tracking.")
 }
 
-// desktopUser is the user whose GNOME session to target: explicit config first,
-// then whoever ran sudo, then the sudoers-controlled user.
+// desktopUser is the user whose GNOME session to target: the configured
+// top-level `user`, else whoever ran sudo (available at install time).
 func desktopUser(cfg *config.Config) string {
-	if cfg.UsageMonitor.User != "" {
-		return cfg.UsageMonitor.User
+	if cfg.User != "" {
+		return cfg.User
 	}
 	if u := os.Getenv("SUDO_USER"); u != "" && u != "root" {
 		return u
 	}
-	return cfg.Sudoers.User
+	return ""
 }
 
 // gnomeShellMajor returns the GNOME Shell major version, or 0 if unknown.

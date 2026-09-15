@@ -90,7 +90,7 @@ func main() {
 		}
 		managedUser := ""
 		if cfg, err := config.LoadConfig(); err == nil {
-			managedUser = cfg.Sudoers.User
+			managedUser = cfg.User
 		}
 		fmt.Print(precheck.Run(precheck.Options{ManagedUser: managedUser}).String())
 		return
@@ -725,11 +725,11 @@ func startUsageMonitor(cfg *config.Config) {
 	// user's session: X11 via Display/XAuthority, Wayland via the D-Bus address —
 	// taken from DBusAddress, else derived from the desktop user's uid.
 	dbusAddr := um.DBusAddress
-	if dbusAddr == "" && um.User != "" {
-		if u, err := user.Lookup(um.User); err == nil {
+	if dbusAddr == "" && cfg.User != "" {
+		if u, err := user.Lookup(cfg.User); err == nil {
 			dbusAddr = "unix:path=/run/user/" + u.Uid + "/bus"
 		} else {
-			log.Printf("usage monitor: cannot resolve user %q for D-Bus (%v)", um.User, err)
+			log.Printf("usage monitor: cannot resolve user %q for D-Bus (%v)", cfg.User, err)
 		}
 	}
 	source, backend, err := usage.NewSource(usage.Options{

@@ -59,8 +59,8 @@ func UpdateSudoers(cfg *config.Config, now time.Time, dryRun bool, forceBlock bo
 		}
 
 		// Check if this is an unmanaged line for our user
-		if strings.HasPrefix(trimmed, cfg.Sudoers.User+" ") ||
-			strings.HasPrefix(trimmed, "# "+cfg.Sudoers.User+" ") {
+		if strings.HasPrefix(trimmed, cfg.User+" ") ||
+			strings.HasPrefix(trimmed, "# "+cfg.User+" ") {
 			// Replace with our managed version
 			newLines = append(newLines, targetLine+" "+config.SudoersMarker)
 			found = true

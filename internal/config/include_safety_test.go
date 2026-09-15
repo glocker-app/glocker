@@ -151,12 +151,12 @@ func TestIncludeMappingValueSection(t *testing.T) {
 	// A whole non-list section via include (a mapping into a struct field).
 	dir := t.TempDir()
 	writeCfg(t, filepath.Join(dir, "config.yaml"), "sudoers: !include conf.d/sudoers.yaml\n")
-	writeCfg(t, filepath.Join(dir, "conf.d/sudoers.yaml"), "enabled: true\nuser: alice\n")
+	writeCfg(t, filepath.Join(dir, "conf.d/sudoers.yaml"), "enabled: true\nallowed_sudoers_line: \"alice ALL=(ALL) ALL\"\n")
 	cfg, err := LoadFile(filepath.Join(dir, "config.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Sudoers.Enabled || cfg.Sudoers.User != "alice" {
+	if !cfg.Sudoers.Enabled || cfg.Sudoers.AllowedSudoersLine != "alice ALL=(ALL) ALL" {
 		t.Fatalf("sudoers = %+v", cfg.Sudoers)
 	}
 }

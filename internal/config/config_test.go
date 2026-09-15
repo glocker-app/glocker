@@ -135,10 +135,8 @@ func TestValidateConfig_ValidConfig(t *testing.T) {
 
 func TestValidateConfig_SudoersEnabled(t *testing.T) {
 	cfg := &Config{
-		Sudoers: SudoersConfig{
-			Enabled: true,
-			User:    "", // Invalid: empty user when enabled
-		},
+		// Invalid: sudoers enabled but the top-level user is empty.
+		Sudoers: SudoersConfig{Enabled: true},
 	}
 
 	err := ValidateConfig(cfg)

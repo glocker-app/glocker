@@ -22,6 +22,10 @@
 # Log verbosity: debug | info | warn | error
 log_level: "info"
 
+# Your login account — used by sudoers (whose sudo to restrict) and the usage
+# monitor (whose desktop session to track). Required when sudoers is enabled.
+user: "yourusername"
+
 # ── Blocking: domains ─────────────────────────────────────────────────────────
 # Everything about domain blocking: the switch, the hosts file, the browsers to
 # close on a block, the nudge when you hit a blocked site, temporary-unblock
@@ -164,7 +168,6 @@ content:
 # edit /etc/hosts, /etc/sudoers, or remove glocker.
 sudoers:
   enabled: true
-  user: "yourusername"
   allowed_sudoers_line: "yourusername ALL=(ALL) NOPASSWD:ALL"
   blocked_sudoers_line: "yourusername ALL=(ALL) NOPASSWD: /usr/sbin/pm-suspend, /usr/bin/journalctl"
   allow_windows:

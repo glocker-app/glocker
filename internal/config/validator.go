@@ -34,8 +34,8 @@ func ValidateConfig(config *Config) error {
 
 	// Validate sudoers config
 	if config.Sudoers.Enabled {
-		if config.Sudoers.User == "" {
-			return fmt.Errorf("sudoers.user cannot be empty when sudoers is enabled")
+		if config.User == "" {
+			return fmt.Errorf("the top-level `user` cannot be empty when sudoers is enabled")
 		}
 		if config.Sudoers.AllowedSudoersLine == "" {
 			return fmt.Errorf("sudoers.allowed_sudoers_line cannot be empty when sudoers is enabled")

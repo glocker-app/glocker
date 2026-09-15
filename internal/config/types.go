@@ -54,7 +54,6 @@ type Domain struct {
 // blocked while sudoers enforcement is enabled.
 type SudoersConfig struct {
 	Enabled            bool         `yaml:"enabled"`
-	User               string       `yaml:"user"`
 	AllowedSudoersLine string       `yaml:"allowed_sudoers_line"`
 	BlockedSudoersLine string       `yaml:"blocked_sudoers_line"`
 	AllowWindows       []TimeWindow `yaml:"allow_windows"`
@@ -133,11 +132,9 @@ type UsageMonitorConfig struct {
 	Display string `yaml:"display"`
 	// XAuthority is the path to the user's X authority cookie (optional).
 	XAuthority string `yaml:"xauthority"`
-	// User is the desktop user whose session to track. On Wayland the daemon
-	// (root) derives the D-Bus address from it (unix:path=/run/user/<uid>/bus).
-	User string `yaml:"user"`
 	// DBusAddress overrides the Wayland session-bus address. Empty derives it
-	// from User; if User is also empty, the environment is used.
+	// from the top-level `user` (unix:path=/run/user/<uid>/bus); if that's also
+	// empty, the environment is used.
 	DBusAddress string `yaml:"dbus_address"`
 }
 
@@ -244,6 +241,11 @@ type ProgramsConfig struct {
 // keeps the self-contained ones flat.
 type Config struct {
 	LogLevel string `yaml:"log_level"`
+	// User is the human account this machine belongs to. It's a machine-wide
+	// identity used by sudoers (whose sudo to restrict) and the usage monitor
+	// (whose desktop session to track), so it lives here rather than in either
+	// stanza. Required when sudoers is enabled.
+	User string `yaml:"user"`
 
 	// Blocking mechanisms.
 	Domains  DomainsConfig  `yaml:"domains"`

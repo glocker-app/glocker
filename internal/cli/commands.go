@@ -298,7 +298,7 @@ func GetInfoResponse(cfg *config.Config) string {
 	// Show sudoers restrictions
 	if cfg.Sudoers.Enabled && len(cfg.Sudoers.AllowWindows) > 0 {
 		response.WriteString("Sudoers Restrictions — sudo is PERMITTED during the listed windows, blocked otherwise:\n")
-		response.WriteString(fmt.Sprintf("  User: %s\n", cfg.Sudoers.User))
+		response.WriteString(fmt.Sprintf("  User: %s\n", cfg.User))
 		response.WriteString(fmt.Sprintf("  sudo allowed %s\n\n", formatTimeWindows(cfg.Sudoers.AllowWindows)))
 	}
 
