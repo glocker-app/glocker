@@ -61,7 +61,6 @@ func main() {
 	daemonFlag := flag.Bool("daemon", false, "Run as daemon (for systemd service)")
 	statusFlag := flag.Bool("status", false, "Show runtime status (violations, temp unblocks, panic mode)")
 	infoFlag := flag.Bool("info", false, "Show configuration info (domains, programs, keywords)")
-	reloadFlag := flag.Bool("reload", false, "Reload configuration from config file")
 	blockHosts := flag.String("block", "", "Comma-separated list of hosts to add to always block list")
 	blockApps := flag.String("block-app", "", "Comma-separated list of programs to add to the forbidden-programs list (killed on sight, 24/7)")
 	unblockHosts := flag.String("unblock", "", "Comma-separated list of hosts to temporarily unblock (format: 'domain1,domain2:reason')")
@@ -316,25 +315,6 @@ func main() {
 	}
 
 	// Handle socket-based commands (don't need config)
-	if *reloadFlag {
-		conn, err := net.Dial("unix", ipc.SocketPath)
-		if err != nil {
-			log.Fatalf("Failed to connect to glocker service: %v", err)
-		}
-		defer conn.Close()
-
-		conn.Write([]byte("reload\n"))
-
-		reader := bufio.NewReader(conn)
-		response, err := reader.ReadString('\n')
-		if err != nil {
-			log.Fatalf("Failed to read response: %v", err)
-		}
-
-		log.Printf("Response: %s", strings.TrimSpace(response))
-		return
-	}
-
 	if *blockHosts != "" {
 		conn, err := net.Dial("unix", ipc.SocketPath)
 		if err != nil {

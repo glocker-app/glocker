@@ -341,34 +341,6 @@ func formatTimeWindows(windows []config.TimeWindow) string {
 	return strings.Join(parts, "; ")
 }
 
-// ProcessReloadRequest reloads the configuration.
-func ProcessReloadRequest(cfg *config.Config) {
-	slog.Debug("Processing reload request")
-
-	newCfg, err := config.LoadConfig()
-	if err != nil {
-		log.Printf("ERROR: Failed to reload config: %v", err)
-		return
-	}
-
-	// Validate new config
-	if err := config.ValidateConfig(newCfg); err != nil {
-		log.Printf("ERROR: Invalid config: %v", err)
-		return
-	}
-
-	// Replace config pointer contents
-	*cfg = *newCfg
-
-	// Clear domain cache since config changed
-	web.ClearDomainCache()
-
-	// Force full enforcement with new config
-	enforcement.ForceEnforcement(cfg)
-
-	log.Println("✓ Configuration reloaded successfully")
-}
-
 // ProcessUnblockRequest processes a temporary unblock request.
 func ProcessUnblockRequest(cfg *config.Config, hostsStr, reason string) error {
 	slog.Debug("Processing unblock request", "hosts", hostsStr, "reason", reason)

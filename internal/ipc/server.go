@@ -105,9 +105,6 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 		case "info":
 			response := cli.GetInfoResponse(cfg)
 			conn.Write([]byte(response))
-		case "reload":
-			conn.Write([]byte("OK: Reload request received\n"))
-			go cli.ProcessReloadRequest(cfg)
 		case "unblock":
 			if len(parts) != 2 {
 				conn.Write([]byte("ERROR: Invalid format. Use 'unblock:domains:reason'\n"))
