@@ -770,8 +770,8 @@ canvas { max-height: 260px; }
 .untag-list { display: flex; flex-direction: column; gap: 10px; }
 .untag {
   display: grid;
-  grid-template-columns: 1fr auto auto;
-  grid-template-areas: "info time btn" "bar bar bar";
+  grid-template-columns: 1fr auto auto auto;
+  grid-template-areas: "info time btn hide" "bar bar bar bar";
   gap: 4px 12px;
   align-items: center;
 }
@@ -791,6 +791,14 @@ canvas { max-height: 260px; }
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 .untag-tag:hover { color: #07090d; background: var(--signal); border-color: var(--signal); }
+.untag-hide {
+  grid-area: hide;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-dim);
+  background: transparent; border: 1px solid var(--line-2); border-radius: 6px;
+  padding: 4px 9px; cursor: pointer; white-space: nowrap;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.untag-hide:hover { color: #07090d; background: var(--ink-dim); border-color: var(--ink-dim); }
 .untag-bar { grid-area: bar; height: 3px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .untag-bar > span { display: block; height: 100%; background: var(--ink-faint); border-radius: 3px; }
 

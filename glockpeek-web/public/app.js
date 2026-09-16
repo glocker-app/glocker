@@ -1794,6 +1794,7 @@ function renderUntagged(tu, available) {
         </div>
         <span class="untag-time">${esc(fmtDur(it.ms))}</span>
         <button class="untag-tag" type="button" data-tag-program="${esc(it.program)}" data-tag-title="${esc(it.title)}" title="Start a rule for this window">&plus; tag</button>
+        <button class="untag-hide" type="button" data-hide-program="${esc(it.program)}" data-hide-title="${esc(it.title)}" title="Hide this window from all usage stats">hide</button>
         <span class="untag-bar"><span style="width:${pct}%"></span></span>
       </div>`;
     })
@@ -1818,6 +1819,21 @@ function startRuleForWindow(program, title) {
     last.scrollIntoView({ behavior: "smooth", block: "center" });
     last.querySelector('[data-field="tag"]').focus();
   }
+  recategorize();
+}
+
+// hideWindow is the one-click shortcut for the "hide" button: add a rule tagging
+// this exact window HIDDEN_TAG and save it immediately, so the window drops out
+// of every usage total without opening the rule editor or typing "hidden".
+async function hideWindow(program, title) {
+  syncRulesFromDom();
+  state.rules.push({
+    program: program ? `^${escapeRegex(program)}$` : "",
+    title: title && title !== "—" ? escapeRegex(title) : "",
+    tag: HIDDEN_TAG,
+  });
+  renderRulesEditor();
+  await saveRulesToServer();
   recategorize();
 }
 
@@ -2170,8 +2186,11 @@ function setupRules() {
   });
   document.getElementById("rule-save").addEventListener("click", saveRulesToServer);
 
-  // "＋ tag" on an untagged row prefills a rule for that specific window.
+  // "＋ tag" prefills a rule for that window; "hide" adds a hidden-tag rule
+  // directly (no typing) so the window drops out of every usage total at once.
   document.getElementById("usage-untagged").addEventListener("click", (e) => {
+    const hideBtn = e.target.closest("[data-hide-program]");
+    if (hideBtn) { hideWindow(hideBtn.dataset.hideProgram, hideBtn.dataset.hideTitle || ""); return; }
     const btn = e.target.closest("[data-tag-program]");
     if (btn) startRuleForWindow(btn.dataset.tagProgram, btn.dataset.tagTitle || "");
   });
