@@ -101,6 +101,34 @@ func (db *DB) Migrate() error {
 	if err := db.AutoMigrate(AllModels()...); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
 	}
+	if err := db.backfillDeviceID(); err != nil {
+		return fmt.Errorf("store: device_id backfill: %w", err)
+	}
+	return nil
+}
+
+// backfillDeviceID sets device_id on rows created before the column existed.
+// AutoMigrate adds device_id as NULL (it won't force a default on an existing
+// table), but leaving pre-multi-device rows NULL is a data hazard: the live
+// agent syncs under its API token's id, its per-device high-water mark for that
+// id is 0, so it would re-backfill its whole history and DUPLICATE every
+// historical row. Backfill each account's existing rows to its single device —
+// its API token (min id if somehow several) — so the agent's cursor matches and
+// nothing re-sends. Tokenless/local accounts get 0, which is what the local
+// agent stamps. Idempotent (only touches NULLs) and portable (no ALTER; GORM's
+// uint field never writes NULL again once these are filled).
+func (db *DB) backfillDeviceID() error {
+	for _, tbl := range []string{"violations", "unblocks", "lifecycle_events", "usage_samples", "heartbeats"} {
+		// No target-table alias (SQLite rejects `UPDATE t AS x`); the correlated
+		// subquery qualifies the outer column by table name, valid on both engines.
+		// Only NULLs are touched, so this is a no-op on a fresh DB and idempotent.
+		sql := "UPDATE " + tbl + " SET device_id = " +
+			"COALESCE((SELECT MIN(k.id) FROM api_tokens k WHERE k.user_id = " + tbl + ".user_id), 0) " +
+			"WHERE device_id IS NULL"
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
