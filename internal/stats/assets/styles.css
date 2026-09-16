@@ -150,18 +150,8 @@ body {
 .nav li.nav-admin button:hover { color: var(--signal); background: rgba(240, 160, 32, 0.08); }
 .nav li.nav-admin button.active { color: #fff; background: var(--panel-2); box-shadow: inset 2px 0 0 var(--signal); }
 
-.sidebar-foot { margin-top: auto; padding: 0 8px; }
-.src { font-family: var(--mono); font-size: 10px; line-height: 1.8; color: var(--ink-faint); }
-
-/* range control */
-.range { display: flex; align-items: center; gap: 12px; }
-.range > label {
-  font-family: var(--mono);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--ink-faint);
-}
+.sidebar-foot { margin-top: auto; padding: 10px 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.src { font-family: var(--mono); font-size: 10px; line-height: 1.6; color: var(--ink-faint); }
 .range-buttons { display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
 .range-buttons button {
   font-family: var(--mono);
