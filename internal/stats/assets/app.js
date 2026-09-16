@@ -2524,7 +2524,7 @@ function renderFooter() {
   const el = document.getElementById("footer-version");
   if (!el) return;
   const v = state.me && state.me.version;
-  el.textContent = v ? `glockpeek ${v}` : "";
+  el.innerHTML = v ? `glockpeek : <i>ver : ${esc(v)}</i>` : "";
 }
 
 // ── Chart.js helpers ────────────────────────────────────
