@@ -125,7 +125,8 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	mux.HandleFunc("/api/ignored", requireUser(handleIgnored))
 	mux.HandleFunc("/api/sync", requireUser(handleSync))
 	mux.HandleFunc("/api/tokens", requireUser(handleTokens))
-	mux.HandleFunc("/api/vault", handleVault) // gates per-method internally
+	mux.HandleFunc("/api/vault", handleVault)   // gates per-method internally
+	mux.HandleFunc("/api/config", handleConfig) // gates per-method/credential internally
 
 	// Admin-gated: account management (only the configured admin account).
 	mux.HandleFunc("/api/admin/users", requireAdmin(handleAdminUsers))

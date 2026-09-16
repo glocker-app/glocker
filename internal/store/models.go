@@ -206,6 +206,24 @@ type IgnoredViolation struct {
 	Domain   string `json:"-"`
 }
 
+// DeviceConfig is the latest configuration snapshot for one device, uploaded by
+// the agent so the dashboard can render it (and, later, derive insights). It is
+// content-blind like the stats rows: Config is an opaque blob — base64(nonce||
+// ciphertext) of a small JSON subset under E2E, or that JSON in cleartext in
+// plaintext/local mode — whose shape only the agent (producer) and browser
+// (consumer) know; the server never parses it. Hash is a stable fingerprint of
+// the plaintext subset so the agent can skip re-uploading an unchanged config: on
+// connect it GETs the stored Hash and only POSTs when it differs. One row per
+// (user, device), upserted — latest snapshot only, no history.
+type DeviceConfig struct {
+	UserID    uint   `gorm:"primaryKey" json:"-"`
+	DeviceID  uint   `gorm:"primaryKey" json:"deviceId"`
+	TS        int64  `json:"ts"`
+	Encrypted bool   `json:"encrypted"`
+	Hash      string `json:"hash"`
+	Config    string `json:"config"`
+}
+
 // KeyVault holds the account's passphrase-wrapped master key for end-to-end
 // encryption (see internal/e2e / docs/e2e-design.md). The server stores it
 // opaquely — it's wrapped material (never a key), and the server can't open it.
@@ -222,6 +240,6 @@ func AllModels() []any {
 		&User{}, &Session{}, &APIToken{}, &VerificationToken{},
 		&Violation{}, &Unblock{}, &LifecycleEvent{}, &UsageSample{},
 		&Heartbeat{}, &Rule{}, &TagColor{}, &IgnoredViolation{},
-		&SyncStatus{}, &KeyVault{},
+		&SyncStatus{}, &KeyVault{}, &DeviceConfig{},
 	}
 }

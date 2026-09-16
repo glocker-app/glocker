@@ -137,6 +137,75 @@ paths:
                     type: object
                     additionalProperties:
                       type: string
+  /api/config:
+    get:
+      summary: Read device configuration snapshot(s)
+      description: >
+        Two modes, by credential. With a browser session (no query): returns
+        every device's latest config snapshot for the account, for the dashboard
+        Config tab. With an ingest bearer token and ?mine=1: returns just the
+        stored hash for that device, so the agent can skip re-uploading an
+        unchanged config. The snapshot is content-blind — `config` is an opaque
+        blob (base64 nonce||ciphertext under E2E, or cleartext JSON in plaintext
+        mode) the server never parses.
+      operationId: getDeviceConfig
+      parameters:
+        - in: query
+          name: mine
+          required: false
+          schema: { type: string, enum: ["1"] }
+          description: With an ingest token, return only this device's stored hash.
+      responses:
+        "200":
+          description: Snapshot list (session) or stored hash (token + mine=1)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    properties:
+                      configs:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            deviceId: { type: integer }
+                            name: { type: string, description: Device label (API-token name; empty for local/single-device). }
+                            ts: { type: integer, format: int64, description: Snapshot capture time (epoch ms). }
+                            encrypted: { type: boolean }
+                            config: { type: string, description: Opaque blob; decrypted client-side. }
+                  - type: object
+                    properties:
+                      hash: { type: string, description: Stored config hash for this device; empty if none. }
+        "401":
+          description: Not authenticated
+    post:
+      summary: Upload this device's configuration snapshot (agent)
+      description: >
+        The glocker agent upserts its latest config snapshot (one row per
+        user+device; latest only, no history). Ingest-token gated; the device is
+        stamped server-side from the token. When the operator sets
+        require_encryption, an unencrypted snapshot is rejected (422), matching
+        the ingest backstop.
+      operationId: putDeviceConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ts: { type: integer, format: int64, description: Snapshot capture time (epoch ms). }
+                encrypted: { type: boolean }
+                hash: { type: string, description: Stable fingerprint of the plaintext subset. }
+                config: { type: string, description: Opaque blob (base64 nonce||ciphertext under E2E, or cleartext JSON). }
+      responses:
+        "204":
+          description: Snapshot stored
+        "401":
+          description: Missing or invalid ingest token
+        "422":
+          description: require_encryption is on but the snapshot is not encrypted
   /api/billing/checkout:
     post:
       summary: Start a checkout for the paid tier (Merchant-of-Record, Polar)

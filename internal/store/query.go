@@ -254,6 +254,38 @@ func (db *DB) RecordIngest(userID uint, s SyncStatus) error {
 	}).Create(&s).Error
 }
 
+// SaveDeviceConfig upserts the latest config snapshot for one device (one row per
+// user+device). The blob and hash are opaque to the server.
+func (db *DB) SaveDeviceConfig(userID, deviceID uint, c DeviceConfig) error {
+	c.UserID = userID
+	c.DeviceID = deviceID
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"ts", "encrypted", "hash", "config"}),
+	}).Create(&c).Error
+}
+
+// DeviceConfigHash returns the stored config hash for one device, or "" when the
+// device has no snapshot yet. The agent compares it to its local hash to decide
+// whether to re-upload.
+func (db *DB) DeviceConfigHash(userID, deviceID uint) (string, error) {
+	var c DeviceConfig
+	err := db.Where("user_id = ? AND device_id = ?", userID, deviceID).
+		Select("hash").First(&c).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	return c.Hash, err
+}
+
+// DeviceConfigs returns every device's latest config snapshot for an account,
+// ordered by device id.
+func (db *DB) DeviceConfigs(userID uint) ([]DeviceConfig, error) {
+	var rows []DeviceConfig
+	err := db.Where("user_id = ?", userID).Order("device_id").Find(&rows).Error
+	return rows, err
+}
+
 // AccountEncrypted reports whether the account's most recent ingest was encrypted,
 // so the dashboard knows to decrypt records before rendering. False if the account
 // has never synced.
