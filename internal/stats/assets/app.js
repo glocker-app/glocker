@@ -436,9 +436,24 @@ async function bootDashboard(me) {
   // Sign-out + device management: only meaningful when auth is on (single-user
   // mode has no login and ingest is tokenless).
   if (me && me.auth) {
-    const logoutBtn = document.getElementById("logout-btn");
-    logoutBtn.hidden = false;
-    logoutBtn.onclick = async () => {
+    // Top-right account dropdown (email + Sign out).
+    const accountMenu = document.getElementById("account-menu");
+    const accountBtn = document.getElementById("account-btn");
+    const accountDrop = document.getElementById("account-drop");
+    const label = document.getElementById("account-label");
+    if (label && me.email) label.textContent = me.email;
+    accountMenu.hidden = false;
+    accountBtn.onclick = (e) => {
+      e.stopPropagation();
+      const open = accountDrop.hidden;
+      accountDrop.hidden = !open;
+      accountBtn.setAttribute("aria-expanded", String(open));
+    };
+    document.addEventListener("click", () => {
+      accountDrop.hidden = true;
+      accountBtn.setAttribute("aria-expanded", "false");
+    });
+    document.getElementById("logout-btn").onclick = async () => {
       try { await fetch("api/logout", { method: "POST" }); } catch { /* fall through */ }
       location.reload();
     };

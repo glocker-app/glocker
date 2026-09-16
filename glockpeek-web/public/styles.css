@@ -152,7 +152,7 @@ body {
 
 /* Refresh button: a conic-progress ring (time left to the next auto-refresh)
    around a ↻ glyph, plus the countdown. --rf (0..1) is set each tick in JS. */
-#refresh-btn { display: inline-flex; align-items: center; gap: 8px; }
+#refresh-btn { display: inline-flex; align-items: center; gap: 8px; background: none; border: none; padding: 4px 2px; cursor: pointer; color: var(--ink-dim); }
 #refresh-btn .rf-ring {
   position: relative; width: 22px; height: 22px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
@@ -166,7 +166,7 @@ body {
 }
 #refresh-btn .rf-text { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
 #refresh-btn .rf-cd { color: var(--ink-faint); margin-left: 2px; }
-#refresh-btn:hover { border-color: var(--signal); }
+#refresh-btn:hover { color: var(--ink); }
 #refresh-btn:hover .rf-ring { color: var(--ink); }
 #refresh-btn.refreshing .rf-ring { animation: rf-spin 0.8s linear infinite; }
 @keyframes rf-spin { to { transform: rotate(360deg); } }
@@ -577,18 +577,40 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
    (a plain block collapsed the gaps — notably under the usage stat tiles). */
 .subview.active { display: flex; flex-direction: column; gap: 22px; }
 
-/* Floating window readout — fixed so the selected range stays visible while
-   scrolling the detail views. */
+/* Selected-window readout — lives bottom-left in the (sticky) sidebar footer,
+   so it stays visible while scrolling. Shown only on Analytics. */
 .range-readout {
-  position: fixed; top: 16px; right: 22px; z-index: 40;
-  display: flex; align-items: center; gap: 8px;
-  font-family: var(--mono); font-size: 12.5px; color: var(--ink);
-  background: rgba(13, 19, 32, 0.92); border: 1px solid var(--line-2);
-  border-radius: 999px; padding: 7px 14px;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-dim);
 }
 .range-readout .rr-arrow { color: var(--ink-faint); }
-.range-readout .rr-days { color: var(--signal); font-size: 11px; margin-left: 2px; }
+.range-readout .rr-days { color: var(--signal); margin-left: 2px; }
+
+/* Account menu — traditional top-right dropdown (Sign out, …). */
+.account { position: relative; }
+.account-btn {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 240px;
+  font-family: var(--mono); font-size: 12px; color: var(--ink-dim);
+  background: none; border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 6px 12px; cursor: pointer;
+}
+.account-btn:hover { color: var(--ink); border-color: var(--line); }
+.account-btn #account-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.account-caret { color: var(--ink-faint); font-size: 10px; }
+.account-drop {
+  position: absolute; top: calc(100% + 6px); right: 0; min-width: 168px; z-index: 50;
+  background: #0d1320; border: 1px solid var(--line-2); border-radius: 10px;
+  padding: 6px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.account-item {
+  display: block; width: 100%; text-align: left;
+  font-family: var(--sans); font-size: 13px; color: var(--ink);
+  background: none; border: none; border-radius: 6px; padding: 8px 10px; cursor: pointer;
+}
+.account-item:hover { background: rgba(255, 255, 255, 0.06); }
+
+/* Footer separator before the version tag. */
+.foot-sep { width: 100%; border: none; border-top: 1px solid var(--line); margin: 2px 0; }
 
 /* Selected day: a bright ring on the calendar cell, mirrored by the timeline's
    selected-day band, so clicking one shows the selection in the other. */

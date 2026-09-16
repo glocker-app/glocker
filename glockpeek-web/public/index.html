@@ -34,20 +34,27 @@
       </ul>
 
       <div class="sidebar-foot">
-        <button id="refresh-btn" class="btn-ghost" type="button" title="Refresh data">&#8635; Refresh</button>
+        <div id="range-readout" class="range-readout" hidden></div>
+        <button id="refresh-btn" class="refresh-btn" type="button" title="Refresh data"></button>
+        <hr class="foot-sep" />
         <span id="footer-version" class="src"></span>
-        <button id="logout-btn" class="btn-ghost" type="button" hidden>Sign out</button>
       </div>
     </nav>
 
     <div class="content">
       <header class="main-header">
         <h2 class="view-title" id="view-title">Overview</h2>
+        <!-- Traditional account menu (hosted only): top-right dropdown. -->
+        <div class="account" id="account-menu" hidden>
+          <button class="account-btn" id="account-btn" type="button" aria-haspopup="true" aria-expanded="false">
+            <span id="account-label">Account</span>
+            <span class="account-caret" aria-hidden="true">&#9662;</span>
+          </button>
+          <div class="account-drop" id="account-drop" hidden>
+            <button id="logout-btn" class="account-item" type="button">Sign out</button>
+          </div>
+        </div>
       </header>
-
-      <!-- Floating window readout: fixed so the selected range stays visible
-           while scrolling the detail views. Shown only on Analytics. -->
-      <div id="range-readout" class="range-readout" hidden></div>
 
       <main id="dash" hidden>
         <!-- Overview -->
