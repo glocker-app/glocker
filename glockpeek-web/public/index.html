@@ -30,7 +30,6 @@
         <li><button data-view="overview" class="active">Overview</button></li>
         <li><button data-view="history">History</button></li>
         <li><button data-view="usage">Usage</button></li>
-        <li><button data-view="bypasses">Bypasses</button></li>
         <li id="nav-devices" hidden><button data-view="devices">Devices</button></li>
         <li id="nav-users" class="nav-admin" hidden><button data-view="users">Admin</button></li>
       </ul>
@@ -124,6 +123,24 @@
             <div class="heatmap-legend" id="heatmap-legend"></div>
           </section>
 
+          <!-- Bypasses folded into History: exposure over time + deliberate grants -->
+          <div class="grid-2">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Exposure over time</h2>
+                <p class="panel-sub">Time glocker wasn&rsquo;t guarding, per bucket: unmanaged (uninstalled) vs downtime (installed but the watchdog saw it stopped).</p>
+              </div>
+              <div class="tall-chart"><canvas id="chart-exposure"></canvas></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Unblocks</h2>
+                <p class="panel-sub">Deliberate temporary grants &mdash; most recent first.</p>
+              </div>
+              <div id="unblock-list" class="unmanaged-list"></div>
+            </section>
+          </div>
+
           <!-- False positives hidden from the day-detail hit list -->
           <section class="panel">
             <div class="panel-head">
@@ -208,33 +225,6 @@
               </div>
             </div>
           </section>
-        </section>
-
-        <!-- Bypasses -->
-        <section class="view" data-view="bypasses">
-          <div class="grid-2">
-            <section class="panel">
-              <div class="panel-head">
-                <h2>Unblocks</h2>
-                <p class="panel-sub">Deliberate temporary grants &mdash; by reason.</p>
-              </div>
-              <div id="unblock-reasons" class="ranklist"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-head">
-                <h2>Unmanaged exposure</h2>
-                <p class="panel-sub">Spans when glocker was uninstalled.</p>
-              </div>
-              <div id="unmanaged-list" class="unmanaged-list"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-head">
-                <h2>Observed downtime</h2>
-                <p class="panel-sub">Spans the heartbeat watchdog saw glocker not running.</p>
-              </div>
-              <div id="downtime-list" class="unmanaged-list"></div>
-            </section>
-          </div>
         </section>
 
         <section class="view" data-view="devices">

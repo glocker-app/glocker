@@ -27,7 +27,6 @@ const VIEW_TITLES = {
   overview: "Overview",
   history: "History",
   usage: "Usage",
-  bypasses: "Bypasses",
   devices: "Devices",
   users: "Admin",
 };
@@ -701,9 +700,8 @@ function render() {
   renderCalendar(violations, b);
   renderTimeline(violations, b);
   resetDayDetail();
-  renderRanklist("unblock-reasons", tally(unblocks, "reason"), "var(--safe)");
-  renderUnmanaged(unmanaged);
-  renderDowntime(downtime);
+  renderExposure(unmanaged, downtime, b);
+  renderUnblockList(unblocks);
   renderUsage(b);
   renderIgnored();
 }
@@ -1431,52 +1429,101 @@ function renderRanklist(id, items, color) {
     .join("");
 }
 
-function renderUnmanaged(unmanaged) {
-  const el = document.getElementById("unmanaged-list");
-  if (!unmanaged.length) {
-    el.innerHTML = `<div class="empty">none in window — fully covered ✓</div>`;
+// bucketize splits [start, end] into day/week/month buckets, reusing the same
+// day≤45 / week≤180 / month thresholds the timeline uses so the exposure bar
+// lines up with the rest of History.
+function bucketize(start, end) {
+  const endc = Math.min(end, state.data.now);
+  const days = Math.round((endc - start) / DAY) + 1;
+  const gran = days <= 45 ? "day" : days <= 180 ? "week" : "month";
+  const out = [];
+  if (gran === "day") {
+    for (let t = startOfDay(start); t <= endc; t += DAY) {
+      out.push({ start: t, end: t + DAY, label: new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" }) });
+    }
+  } else if (gran === "week") {
+    let t = startOfDay(start) - weekdayIndex(new Date(start)) * DAY; // Monday of the first week
+    while (t <= endc) {
+      out.push({ start: t, end: t + 7 * DAY, label: new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" }) });
+      t += 7 * DAY;
+    }
+  } else {
+    let d = new Date(start); d = new Date(d.getFullYear(), d.getMonth(), 1);
+    const last = new Date(endc);
+    while (d <= last) {
+      const ne = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      out.push({ start: d.getTime(), end: ne.getTime(), label: d.toLocaleDateString(undefined, { month: "short", year: "2-digit" }) });
+      d = ne;
+    }
+  }
+  return out;
+}
+
+// renderExposure draws the stacked exposure bar: per bucket, hours glocker
+// wasn't guarding, split into unmanaged (uninstalled — from lifecycle events)
+// and downtime (installed but the heartbeat watchdog saw it stopped). Replaces
+// the old flat unmanaged/downtime lists. (Multi-device: both are the current
+// single-track signals; per-device semantics land in the liveness rework.)
+function renderExposure(unmanaged, downtime, b) {
+  const buckets = bucketize(b.start, b.end);
+  const now = state.data.now;
+  const overlapHrs = (periods, bs, be) => {
+    let ms = 0;
+    for (const p of periods) {
+      const pe = p.open ? now : p.end;
+      const s = Math.max(p.start, bs), e = Math.min(pe, be);
+      if (e > s) ms += e - s;
+    }
+    return ms / HOUR_MS;
+  };
+  const labels = buckets.map((bk) => bk.label);
+  const unm = buckets.map((bk) => overlapHrs(unmanaged, bk.start, bk.end));
+  const down = buckets.map((bk) => overlapHrs(downtime, bk.start, bk.end));
+  stackedBar("chart-exposure", labels, [
+    { label: "unmanaged", data: unm, color: cssVar("var(--danger)") },
+    { label: "downtime", data: down, color: cssVar("var(--signal)") },
+  ]);
+}
+
+// renderUnblockList shows deliberate temporary grants dated (was a reason→count
+// ranklist): date · domain · reason · duration, newest first.
+function renderUnblockList(unblocks) {
+  const el = document.getElementById("unblock-list");
+  if (!el) return;
+  if (!unblocks.length) {
+    el.innerHTML = `<div class="empty">no unblocks in window</div>`;
     return;
   }
-  el.innerHTML = [...unmanaged]
-    .sort((a, b) => b.start - a.start)
-    .map((p) => {
-      const why = [p.reason, p.note].filter(Boolean).join(" — ") || "no reason given";
-      const when = new Date(p.start).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-      return `<div class="um ${p.open ? "open" : ""}">
+  el.innerHTML = [...unblocks]
+    .sort((a, b) => b.ts - a.ts)
+    .map((u) => {
+      const when = new Date(u.ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      const what = [u.domain, u.reason].filter(Boolean).map(esc).join(" — ") || "unblock";
+      const dur = u.restoreTs ? fmtDur(u.restoreTs - u.ts) : "—";
+      return `<div class="um">
         <span class="when">${when}</span>
-        <span class="why">${esc(why)}</span>
-        <span class="dur">${fmtDur(p.end - p.start)}</span>
+        <span class="why">${what}</span>
+        <span class="dur">${dur}</span>
       </div>`;
     })
     .join("");
 }
 
-// Observed downtime from the glockdoc heartbeat watchdog. Unlike "unmanaged"
-// (derived from clean uninstall/install events), these are spans the watchdog
-// actually saw glocker not answering — so they also catch crashes and unclean
-// stops, and can register even when no uninstall was recorded.
-function renderDowntime(downtime) {
-  const el = document.getElementById("downtime-list");
-  if (!el) return;
-  if (!state.data.sources || !state.data.sources.heartbeat) {
-    el.innerHTML = `<div class="empty">no watchdog data yet</div>`;
-    return;
-  }
-  if (!downtime.length) {
-    el.innerHTML = `<div class="empty">none observed — watchdog saw glocker up ✓</div>`;
-    return;
-  }
-  el.innerHTML = [...downtime]
-    .sort((a, b) => b.start - a.start)
-    .map((p) => {
-      const when = new Date(p.start).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-      return `<div class="um ${p.open ? "open" : ""}">
-        <span class="when">${when}</span>
-        <span class="why">${p.open ? "still down" : "watchdog observed down"}</span>
-        <span class="dur">${fmtDur(p.end - p.start)}</span>
-      </div>`;
-    })
-    .join("");
+// stackedBar renders a stacked bar chart (hours on y) with a small legend.
+function stackedBar(id, labels, series) {
+  destroy(id);
+  const ctx = document.getElementById(id).getContext("2d");
+  const opts = baseOpts();
+  opts.scales.x.stacked = true;
+  opts.scales.y.stacked = true;
+  opts.scales.y.ticks.callback = (v) => v + "h";
+  opts.plugins.legend = { display: true, position: "bottom", labels: { color: TICK, boxWidth: 10, font: { family: "IBM Plex Mono", size: 10 } } };
+  opts.plugins.tooltip = { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y.toFixed(1)}h` } };
+  state.charts[id] = new Chart(ctx, {
+    type: "bar",
+    data: { labels, datasets: series.map((s) => ({ label: s.label, data: s.data, backgroundColor: s.color, borderWidth: 0 })) },
+    options: opts,
+  });
 }
 
 // ── Usage metrics ───────────────────────────────────────
