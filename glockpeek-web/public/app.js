@@ -1620,8 +1620,8 @@ function renderExposure(unmanaged, downtime, b) {
   // everywhere (calendar hatch, timeline shading), and downtime is the same
   // family one step back — so there's one "not guarding" colour to remember.
   stackedBar("chart-exposure", labels, [
-    { label: "unmanaged", data: unm, color: cssVar("var(--exposed)") },
-    { label: "downtime", data: down, color: cssVar("var(--exposed-dim)") },
+    { label: "removed", data: unm, color: cssVar("var(--exposed)") },
+    { label: "stopped", data: down, color: cssVar("var(--exposed-dim)") },
   ], { yUnit: "h", precision: 1 });
 }
 
