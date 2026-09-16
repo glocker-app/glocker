@@ -842,6 +842,19 @@ canvas { max-height: 260px; }
 .untag-bar { grid-area: bar; height: 3px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .untag-bar > span { display: block; height: 100%; background: var(--ink-faint); border-radius: 3px; }
 
+/* Untagged windows: collapsed by default; the summary carries the top-10 total. */
+.untag-details > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; }
+.untag-details > summary::-webkit-details-marker { display: none; }
+.untag-details > summary::before {
+  content: "\25B8"; color: var(--ink-faint); font-size: 12px;
+  display: inline-block; transition: transform 0.15s;
+}
+.untag-details[open] > summary::before { transform: rotate(90deg); }
+.untag-details > summary h2 { margin: 0; }
+.untag-total { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+.untag-details .panel-sub { margin-top: 8px; }
+.untag-details .untag-list { margin-top: 12px; }
+
 /* ── Per-tag colour pickers ────────────────────────────── */
 .tag-colors { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 14px; }
 .tagcolor-empty { color: var(--ink-faint); font-family: var(--mono); font-size: 12px; }

@@ -1919,7 +1919,10 @@ function renderTagColors(tu, available) {
 // the user can see what still needs a rule (and click to start one).
 function renderUntagged(tu, available) {
   const el = document.getElementById("usage-untagged");
+  const totalEl = document.getElementById("untagged-total");
+  const setTotal = (t) => { if (totalEl) totalEl.textContent = t; };
   if (!available) {
+    setTotal("tracking off");
     el.innerHTML = `<div class="empty">usage tracking is off</div>`;
     return;
   }
@@ -1928,12 +1931,17 @@ function renderUntagged(tu, available) {
     : "";
   const items = tu.untaggedItems || [];
   if (!items.length) {
+    setTotal("none ✓");
     el.innerHTML = `<div class="empty">nothing untagged — full coverage ✓</div>` + hiddenNote;
     return;
   }
+  const top = items.slice(0, 10);
+  const total10 = top.reduce((s, it) => s + it.ms, 0);
+  // Summary line (visible while collapsed): how much time the top 10 add up to,
+  // so a trivial amount can stay tucked away.
+  setTotal(`${fmtDur(total10)}${items.length > 10 ? ` · top 10 of ${items.length}` : ` · ${items.length} window${items.length === 1 ? "" : "s"}`}`);
   const max = items[0].ms || 1;
-  el.innerHTML = items
-    .slice(0, 10)
+  el.innerHTML = top
     .map((it) => {
       const pct = Math.round((it.ms / max) * 100);
       return `<div class="untag">

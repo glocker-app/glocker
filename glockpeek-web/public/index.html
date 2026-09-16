@@ -214,13 +214,17 @@
             </div>
           </section>
 
-          <!-- Untagged items feed rule creation -->
+          <!-- Untagged items feed rule creation. Collapsed by default — only
+               worth opening when there's meaningful untagged time. -->
           <section class="panel">
-            <div class="panel-head">
-              <h2>Untagged windows</h2>
+            <details class="untag-details">
+              <summary class="untag-summary">
+                <h2>Untagged windows</h2>
+                <span id="untagged-total" class="untag-total"></span>
+              </summary>
               <p class="panel-sub">Top 10 individual windows no rule matched, by active time. Click &plus; tag to start a rule for that window, then set a tag below and Save.</p>
-            </div>
-            <div id="usage-untagged" class="untag-list"></div>
+              <div id="usage-untagged" class="untag-list"></div>
+            </details>
           </section>
 
           <!-- Rules at the bottom -->
