@@ -382,6 +382,13 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .stat.safe .v { color: var(--safe); }
 
 /* ── Heatmap ──────────────────────────────────────────── */
+/* Vulnerability map + Unblocks-by-hour side by side in one panel: the compact
+   heatmap keeps its natural width on the left, the chart fills the rest. */
+.vuln-row { display: flex; gap: 32px; align-items: flex-start; flex-wrap: wrap; }
+.vuln-col-heat { flex: 0 0 auto; }
+.vuln-col-unblock { flex: 1 1 340px; min-width: 0; }
+.hour-chart { position: relative; height: 210px; }
+
 .heatmap {
   display: grid;
   grid-template-columns: 24px repeat(24, minmax(0, 1fr));

@@ -111,26 +111,28 @@
             </aside>
           </div>
 
-          <!-- Vulnerability map: the weekday × hour grid already carries the
-               by-weekday and by-hour breakdowns, so those separate charts were
-               dropped as redundant. -->
-          <div class="grid-2">
-            <section class="panel">
-              <div class="panel-head">
-                <h2>Vulnerability map</h2>
-                <p class="panel-sub">Violations by hour &times; weekday. Brighter is more exposed.</p>
+          <!-- Vulnerability map + Unblocks-by-hour share one panel: the heatmap
+               is compact, so the by-hour chart fills the space beside it rather
+               than the map's cell stretching tall and empty. -->
+          <section class="panel">
+            <div class="vuln-row">
+              <div class="vuln-col vuln-col-heat">
+                <div class="panel-head">
+                  <h2>Vulnerability map</h2>
+                  <p class="panel-sub">Violations by hour &times; weekday. Brighter is more exposed.</p>
+                </div>
+                <div id="heatmap" class="heatmap"></div>
+                <div class="heatmap-legend" id="heatmap-legend"></div>
               </div>
-              <div id="heatmap" class="heatmap"></div>
-              <div class="heatmap-legend" id="heatmap-legend"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-head">
-                <h2>Unblocks by hour</h2>
-                <p class="panel-sub">When in the day you unblock, coloured by reason (aggregated over the window &mdash; never crowds).</p>
+              <div class="vuln-col vuln-col-unblock">
+                <div class="panel-head">
+                  <h2>Unblocks by hour</h2>
+                  <p class="panel-sub">When in the day you unblock, coloured by reason (aggregated over the window &mdash; never crowds).</p>
+                </div>
+                <div class="hour-chart"><canvas id="chart-unblock-hour"></canvas></div>
               </div>
-              <div class="tall-chart"><canvas id="chart-unblock-hour"></canvas></div>
-            </section>
-          </div>
+            </div>
+          </section>
 
           <!-- Bypasses folded into History: exposure over time + deliberate grants -->
           <div class="grid-2">
