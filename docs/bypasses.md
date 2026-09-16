@@ -92,6 +92,55 @@ Your phone. No software on this laptop addresses this.
 **Status:** out of scope for the agent; the accountability/reporting side
 (glockpeek) is the only lever, and only if the phone reports in too.
 
+## Fixes, by what they cost
+
+The same eight items cut by what it takes to close them. Nothing here is
+scheduled — it's so the cheap wins aren't lost among the structural ones.
+
+### Config only — works today
+
+| Item | Fix |
+|---|---|
+| 1 (partial) | Add `chrome`, `chromium`, `brave` to `programs.list`. Doesn't touch Firefox DoH, but closes "use the other browser with secure DNS" — and non-Firefox browsers are already a content-monitoring blind spot, since the extension is Firefox-only. |
+| 2 | List `old.reddit.com`, `m.youtube.com` etc. as their own `domains.list` entries. Tedious and unbounded, but available now. |
+| 3 | `programs.list` with `tor-browser`, `mullvad-browser`. Subject to the item-5 caveat. |
+| 4 | `content.keywords.url_keywords` — `nitter`, `archive.`, `redd.it`, `piped`. Firefox-only, but the right layer for a set nobody can enumerate. |
+
+### Needs implementing
+
+| Item | Change | Size |
+|---|---|---|
+| 1 | `"DNSOverHTTPS": {"Enabled": false, "Locked": true}` in the policy JSON `internal/install/firefox.go` already writes, plus a Chrome managed-policy file at `/etc/opt/chrome/policies/managed/`. | Small — best value on this page |
+| 5 | Match `/proc/<pid>/exe` (resolved path or inode) alongside `comm` in `internal/monitoring/forbidden.go`. Makes every config-only program restriction above actually stick. | Small–medium |
+| 2 | A `subdomains:` field on `Domain`, or prefix expansion from a common list. Caps the problem rather than solving it — hosts files can't wildcard. | Medium |
+| 4 | A Chrome build of the extension. | Large |
+| 1, 3, 7 | The structural fix below. | v2 |
+
+### Detectable by `precheck`
+
+All read-only and file-based, which is what the package already does:
+
+- **`doh-firefox`** — parse `/etc/firefox/policies/policies.json` plus each
+  profile's `prefs.js`/`user.js` for `network.trr.mode`. OPEN if DoH is on, or
+  merely unlocked.
+- **`doh-chrome`** — check `/etc/opt/chrome/policies/managed/` for
+  `DnsOverHttpsMode`.
+- **`alt-browsers`** — scan `PATH`, `/var/lib/flatpak`, `~/.local/share` for
+  browsers absent from `programs.list`. Tells you what to add, which beats
+  guessing.
+- **`userns`** — read `/proc/sys/kernel/unprivileged_userns_clone` and
+  `/proc/sys/user/max_user_namespaces`. Settles whether item 7 is real here.
+- **`nsswitch`** — check the `hosts:` line in `/etc/nsswitch.conf` still contains
+  `files`. Cheap, and catches the root-level variant too.
+- **`container-groups`** — `docker`/`podman`/`lxd` membership. Root-equivalent,
+  and fits precheck's existing escalation framing directly.
+
+Scoping caveat: precheck's package doc frames it as routes to *become root or
+recover*. These are resolver-layer evasion — a different axis. They belong under
+a second heading in the report, not mixed into the existing findings, or the
+break-glass narrative gets muddied. Either way precheck stays advisory: it
+reports, it doesn't enforce.
+
 ## The structural fix
 
 Items 1, 3, and most of 7 share one root cause: blocking at the hosts-file layer
