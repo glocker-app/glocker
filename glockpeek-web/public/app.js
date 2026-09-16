@@ -1113,6 +1113,14 @@ function renderTimeline(violations, unblocks, unmanaged, b) {
       const x2 = xAt(a, Math.min(p.open ? now : p.end, b.end));
       if (x2 > x1) ctx.fillRect(x1, a.top, x2 - x1, a.height);
     }
+    // Selected-day band: mirrors the calendar's ring so the two views stay in
+    // sync. Read live so a click (which calls tl.draw()) updates it.
+    if (state.openDay != null && state.openDay >= b.start && state.openDay <= b.end) {
+      const x1 = xAt(a, Math.max(state.openDay, b.start));
+      const x2 = xAt(a, Math.min(state.openDay + DAY, b.end));
+      ctx.fillStyle = "rgba(255,255,255,0.10)";
+      ctx.fillRect(x1, a.top, Math.max(3, x2 - x1), a.height);
+    }
     ctx.restore();
   };
 
@@ -1224,6 +1232,7 @@ function renderMonth(monthStart, counts, winStart, winEnd, today) {
       count > 0 && inWindow ? "has" : "",
       clean ? "clean" : "",
       t === today ? "today" : "",
+      state.openDay != null && dayKey(t) === dayKey(state.openDay) ? "sel" : "",
     ].filter(Boolean).join(" ");
     const bg = inWindow && count > 0 ? `background:${countColor(count)}` : "";
     const label = new Date(t).toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric", year: "numeric" });
@@ -1339,8 +1348,21 @@ function renderIgnored() {
     .join("");
 }
 
+// highlightSelectedDay reflects the open day on BOTH the calendar and the
+// timeline, so clicking a day in one shows the selection in the other. The
+// calendar gets a ring on the matching cell; the timeline redraws so its overlay
+// paints the selected-day band (it reads state.openDay live).
+function highlightSelectedDay() {
+  document.querySelectorAll(".cal-day[data-ts]").forEach((cell) => {
+    cell.classList.toggle("sel", state.openDay != null && dayKey(Number(cell.dataset.ts)) === dayKey(state.openDay));
+  });
+  const tl = state.charts["chart-timeline"];
+  if (tl) tl.draw();
+}
+
 function showDay(dayTs) {
   state.openDay = dayTs; // remembered so re-fetches can re-open the same day
+  highlightSelectedDay();
   const k = dayKey(dayTs);
   const hits = (state.dayIndex.get(k) || []).slice().sort((a, b) => a.ts - b.ts);
   const dateLabel = new Date(dayTs).toLocaleDateString(undefined, {

@@ -543,6 +543,18 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 /* Timeline is a compact sparkline — the calendar carries the detailed per-day
    view, so the trend line just needs to show shape, not fill a tall panel. */
 .spark-wrap { position: relative; height: 88px; }
+.tl-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px;
+  font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+.tl-key { display: inline-flex; align-items: center; gap: 6px; }
+.tl-sw { display: inline-block; flex: 0 0 auto; }
+.tl-line { width: 16px; height: 2px; background: var(--danger); }
+.tl-band { width: 14px; height: 11px; border-radius: 2px; background: rgba(192, 70, 143, 0.3); }
+.tl-tick { width: 3px; height: 12px; border-radius: 1px; background: linear-gradient(var(--signal), var(--safe)); }
+.tl-sel { width: 12px; height: 11px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); }
+
+/* Selected day: a bright ring on the calendar cell, mirrored by the timeline's
+   selected-day band, so clicking one shows the selection in the other. */
+.cal-day.sel { box-shadow: 0 0 0 2px #e8eefc; z-index: 1; }
 .dd-empty {
   font-family: var(--mono); font-size: 13px; color: var(--ink-faint);
   display: flex; align-items: center; justify-content: center;
