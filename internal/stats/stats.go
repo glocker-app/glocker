@@ -58,10 +58,16 @@ type Options struct {
 	// Billing configures the hosted paid tier (Merchant-of-Record). Disabled by
 	// default; when off, the /api/billing endpoints are not mounted.
 	Billing BillingOptions
+	// Version is the build tag (git describe), surfaced via /api/me for the
+	// dashboard footer so you can tell what's deployed.
+	Version string
 }
 
 // requireEncryption, when true, makes /api/ingest refuse plaintext batches.
 var requireEncryption bool
+
+// buildVersion is the build tag (git describe), surfaced via /api/me.
+var buildVersion string
 
 // Register mounts the dashboard and its API onto mux, backed by database.
 // glockpeek owns the whole listener, so the dashboard is served at the root
@@ -78,6 +84,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	appURL = o.AppURL
 	adminEmail = strings.TrimSpace(o.AdminEmail)
 	requireEncryption = o.RequireEncryption
+	buildVersion = o.Version
 	initBilling(o.Billing)
 	initCaptcha(o.Captcha)
 	sub, err := fs.Sub(assetsFS, "assets")

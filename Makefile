@@ -8,11 +8,18 @@ help: ## display this help message
 
 
 
+# Build version stamped into binaries via -ldflags -X main.version. git describe
+# gives the nearest tag + commits-since + short sha, and -dirty flags an
+# uncommitted tree, so `glockpeek -version` / the dashboard footer say exactly
+# what's running. Falls back to "dev" outside a git checkout.
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+GOLDFLAGS := -ldflags "-X main.version=$(VERSION)"
+
 build-all: ## Build all binaries
-	go build -o glocker ./cmd/glocker
-	go build -o glocklock ./cmd/glocklock
-	go build -o glockpeek ./cmd/glockpeek
-	go build -o glockdoc ./cmd/glockdoc
+	go build $(GOLDFLAGS) -o glocker ./cmd/glocker
+	go build $(GOLDFLAGS) -o glocklock ./cmd/glocklock
+	go build $(GOLDFLAGS) -o glockpeek ./cmd/glockpeek
+	go build $(GOLDFLAGS) -o glockdoc ./cmd/glockdoc
 
 
 install: build-all ## Rebuild and reinstall (in-place; stops+swaps+restarts the daemon)
@@ -48,7 +55,7 @@ deploy-full: deploy deploy-landing deploy-extension ## Full deploy: dashboard bi
 
 deploy: ## Deploy the glockpeek dashboard binary to the VPS
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy DEPLOY_HOST=my.example.com"; exit 1; }
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o dist/glockpeek ./cmd/glockpeek
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o dist/glockpeek ./cmd/glockpeek
 	scp dist/glockpeek $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.new
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -m 0755 /tmp/glockpeek.new /usr/local/bin/glockpeek && rm -f /tmp/glockpeek.new && sudo systemctl restart glockpeek && sleep 2 && systemctl is-active glockpeek'
 
@@ -114,10 +121,10 @@ RELEASE_DIR := dist/release
 release: ## Build + checksum + minisign the release binaries (needs minisign + your key)
 	@command -v minisign >/dev/null || { echo "install minisign first — https://jedisct1.github.io/minisign/"; exit 1; }
 	rm -rf $(RELEASE_DIR) && mkdir -p $(RELEASE_DIR)
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o $(RELEASE_DIR)/glocker   ./cmd/glocker
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o $(RELEASE_DIR)/glocklock ./cmd/glocklock
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o $(RELEASE_DIR)/glockpeek ./cmd/glockpeek
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o $(RELEASE_DIR)/glockdoc  ./cmd/glockdoc
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o $(RELEASE_DIR)/glocker   ./cmd/glocker
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o $(RELEASE_DIR)/glocklock ./cmd/glocklock
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o $(RELEASE_DIR)/glockpeek ./cmd/glockpeek
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o $(RELEASE_DIR)/glockdoc  ./cmd/glockdoc
 	cd $(RELEASE_DIR) && sha256sum glocker glocklock glockpeek glockdoc > SHA256SUMS
 	minisign -Sm $(RELEASE_DIR)/SHA256SUMS -s $(MINISIGN_KEY)
 	@echo "✓ signed — upload $(RELEASE_DIR)/* (binaries + SHA256SUMS + SHA256SUMS.minisig) to the GitHub release"

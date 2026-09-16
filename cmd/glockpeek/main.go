@@ -36,7 +36,13 @@ import (
 
 const defaultListen = "127.0.0.1:4317"
 
+// version is the build tag, stamped at build time via
+// -ldflags "-X main.version=$(git describe ...)" (see the Makefile). "dev" for
+// an un-stamped `go build`.
+var version = "dev"
+
 func main() {
+	showVersion := flag.Bool("version", false, "print the build version and exit")
 	listen := flag.String("listen", "", "address to serve on (overrides config; default "+defaultListen+")")
 	dbDSN := flag.String("db", "", "database DSN (overrides config; e.g. a sqlite file path for dev)")
 	dbDriver := flag.String("driver", "", "database driver override: sqlite|postgres (pairs with -db; lets you run against a throwaway copy for migration validation without touching the config)")
@@ -46,6 +52,11 @@ func main() {
 	setLimit := flag.String("setlimit", "", "set the device (API-token) limit for this email (use with -devices), then exit")
 	devices := flag.Int("devices", 1, "device limit to apply with -setlimit (negative = unlimited)")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version)
+		return
+	}
 
 	addr := defaultListen
 	driver := config.DefaultDatabaseDriver
@@ -148,6 +159,7 @@ func main() {
 		Captcha:           captcha,
 		RequireEncryption: requireEncryption,
 		Billing:           billingOpts,
+		Version:           version,
 	}
 	desc := "hosted: login required"
 	if !hosted {
@@ -164,7 +176,7 @@ func main() {
 	stats.Register(mux, db, opts)
 
 	// Note: the DSN is deliberately NOT logged — it can carry a database password.
-	log.Printf("glockpeek serving the dashboard at http://%s/ (%s); db driver %s", addr, desc, driver)
+	log.Printf("glockpeek %s serving the dashboard at http://%s/ (%s); db driver %s", version, addr, desc, driver)
 	log.Fatal(http.ListenAndServe(addr, mux))
 }
 

@@ -2400,11 +2400,13 @@ function renderUsageReadout(u, available) {
 
 // Like renderRanklist, but the value is a duration rather than a count.
 
+// The footer just shows the build tag now (git describe, from /api/me), so you
+// can tell what version the dashboard is running.
 function renderFooter() {
-  const s = state.data.sources;
-  const mark = (ok) => (ok ? "✓" : "✗ missing");
-  document.getElementById("footer-sources").textContent =
-    `reports ${mark(s.reports)}  ·  unblocks ${mark(s.unblocks)}  ·  lifecycle ${mark(s.lifecycle)}  ·  usage ${mark(s.usage)}  ·  read ${new Date(state.data.now).toLocaleString()}`;
+  const el = document.getElementById("footer-version");
+  if (!el) return;
+  const v = state.me && state.me.version;
+  el.textContent = v ? `glockpeek ${v}` : "";
 }
 
 // ── Chart.js helpers ────────────────────────────────────

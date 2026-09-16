@@ -243,5 +243,6 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		"subStatus":     u.SubStatus,
 		"deviceLimit":   store.EffectiveDeviceLimit(u),
 		"subCurrentEnd": u.SubCurrentEnd,
+		"version":       buildVersion,
 	})
 }
