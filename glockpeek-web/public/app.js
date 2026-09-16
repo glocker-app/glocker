@@ -1622,7 +1622,7 @@ function renderExposure(unmanaged, downtime, b) {
   stackedBar("chart-exposure", labels, [
     { label: "removed", data: unm, color: cssVar("var(--exposed)") },
     { label: "stopped", data: down, color: cssVar("var(--exposed-dim)") },
-  ], { yUnit: "h", precision: 1 });
+  ], { yUnit: "h", precision: 1, autoSkipX: true });
 }
 
 // renderUnblocksByHour: unblocks aggregated into 24 hour-of-day buckets, stacked
@@ -1669,11 +1669,14 @@ function renderUnblockList(unblocks) {
 // stackedBar renders a stacked bar chart with a small legend. yUnit suffixes the
 // y-axis + tooltip ("h" for hours, "" for counts); precision is the tooltip's
 // decimal places.
-function stackedBar(id, labels, series, { yUnit = "", precision = 0 } = {}) {
+function stackedBar(id, labels, series, { yUnit = "", precision = 0, autoSkipX = false } = {}) {
   destroy(id);
   const ctx = document.getElementById(id).getContext("2d");
   const opts = baseOpts();
   opts.scales.x.stacked = true;
+  // Let Chart.js thin the x labels to what actually fits (day buckets over a
+  // long window would otherwise smear into an unreadable row).
+  if (autoSkipX) { opts.scales.x.ticks.autoSkip = true; opts.scales.x.ticks.maxTicksLimit = 12; }
   opts.scales.y.stacked = true;
   opts.scales.y.ticks.callback = (v) => v + yUnit;
   opts.plugins.legend = { display: true, position: "bottom", labels: { color: TICK, boxWidth: 10, font: { family: "IBM Plex Mono", size: 10 } } };
