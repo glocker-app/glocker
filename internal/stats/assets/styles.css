@@ -554,7 +554,9 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .subtabs button:hover { color: var(--ink); }
 .subtabs button.active { color: #07090d; background: var(--signal); border-color: var(--signal); }
 .subview { display: none; }
-.subview.active { display: block; }
+/* Mirror .view's column+gap so panels inside a sub-tab keep their spacing
+   (a plain block collapsed the gaps — notably under the usage stat tiles). */
+.subview.active { display: flex; flex-direction: column; gap: 22px; }
 
 /* Floating window readout — fixed so the selected range stays visible while
    scrolling the detail views. */
