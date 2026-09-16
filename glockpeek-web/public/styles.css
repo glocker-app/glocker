@@ -97,9 +97,7 @@ body {
   box-shadow: 0 0 8px var(--danger);
 }
 .reticle::before { left: 50%; top: 7px; bottom: 7px; width: 1px; transform: translateX(-50%); opacity: 0.6; }
-.reticle::after  { top: 50%; left: 7px; right: 7px; height: 1px; transform: translateY(-50%); opacity: 0.6;
-  animation: sweep 4s linear infinite; transform-origin: center; }
-@keyframes sweep { from { transform: translateY(-50%) rotate(0); } to { transform: translateY(-50%) rotate(360deg); } }
+.reticle::after  { top: 50%; left: 7px; right: 7px; height: 1px; transform: translateY(-50%); opacity: 0.6; }
 
 .brand h1 {
   font-family: var(--display);
@@ -151,6 +149,27 @@ body {
 .nav li.nav-admin button.active { color: #fff; background: var(--panel-2); box-shadow: inset 2px 0 0 var(--signal); }
 
 .sidebar-foot { margin-top: auto; padding: 10px 8px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+
+/* Refresh button: a conic-progress ring (time left to the next auto-refresh)
+   around a ↻ glyph, plus the countdown. --rf (0..1) is set each tick in JS. */
+#refresh-btn { display: inline-flex; align-items: center; gap: 8px; }
+#refresh-btn .rf-ring {
+  position: relative; width: 22px; height: 22px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; line-height: 1; color: var(--ink-dim);
+}
+#refresh-btn .rf-ring::before {
+  content: ""; position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(var(--signal) calc(var(--rf, 1) * 360deg), var(--line-2) 0);
+  -webkit-mask: radial-gradient(transparent 54%, #000 56%);
+  mask: radial-gradient(transparent 54%, #000 56%);
+}
+#refresh-btn .rf-text { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+#refresh-btn .rf-cd { color: var(--ink-faint); margin-left: 2px; }
+#refresh-btn:hover { border-color: var(--signal); }
+#refresh-btn:hover .rf-ring { color: var(--ink); }
+#refresh-btn.refreshing .rf-ring { animation: rf-spin 0.8s linear infinite; }
+@keyframes rf-spin { to { transform: rotate(360deg); } }
 .src { font-family: var(--mono); font-size: 10px; line-height: 1.6; color: var(--ink-faint); }
 .range-buttons { display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
 .range-buttons button {
@@ -753,7 +772,7 @@ canvas { max-height: 260px; }
 .view.active > *:nth-child(4) { animation-delay: 0.20s; }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
-  .view.active > *, .reticle::after { animation: none !important; }
+  .view.active > * { animation: none !important; }
 }
 
 /* ── Usage tag pie ─────────────────────────────────────── */

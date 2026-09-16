@@ -391,12 +391,22 @@ async function bootDashboard(me) {
     const s = Math.max(0, Math.round(ms / 1000));
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   };
+  // The button is a conic-progress ring (fraction of time left until the next
+  // auto-refresh) around a ↻ glyph, plus the countdown. Built once; paintRefresh
+  // only updates the ring fraction (--rf) and the countdown text.
+  if (refreshBtn) {
+    refreshBtn.innerHTML = `<span class="rf-ring" aria-hidden="true">&#8635;</span><span class="rf-text">Refresh <span class="rf-cd"></span></span>`;
+  }
   const paintRefresh = () => {
-    if (refreshBtn && !refreshBtn.disabled) refreshBtn.textContent = `↻ Refresh · ${cdText(nextRefreshAt - Date.now())}`;
+    if (!refreshBtn || refreshBtn.disabled) return;
+    const remaining = Math.max(0, nextRefreshAt - Date.now());
+    refreshBtn.style.setProperty("--rf", (refreshEveryMs > 0 ? remaining / refreshEveryMs : 0).toFixed(3));
+    const cd = refreshBtn.querySelector(".rf-cd");
+    if (cd) cd.textContent = cdText(remaining);
   };
   const runRefresh = async () => {
-    if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.textContent = "↻ Refreshing…"; }
-    try { await reloadData(); renderSync(); } finally { if (refreshBtn) refreshBtn.disabled = false; }
+    if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.classList.add("refreshing"); }
+    try { await reloadData(); renderSync(); } finally { if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.classList.remove("refreshing"); } }
   };
 
   if (refreshBtn) {
