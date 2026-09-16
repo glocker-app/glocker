@@ -40,11 +40,11 @@ func TestIngestIdempotent(t *testing.T) {
 	db := openMem(t)
 	const uid = 1
 	v := []Violation{{TS: 1000, Keyword: "porn", URL: "https://x/?q=porn", Type: "url-keyword", Domain: "x"}}
-	if err := db.IngestViolations(uid, v); err != nil {
+	if err := db.IngestViolations(uid, 0, v); err != nil {
 		t.Fatalf("ingest: %v", err)
 	}
 	// Re-ingesting the same (user,ts,keyword,url) must not duplicate.
-	if err := db.IngestViolations(uid, []Violation{{TS: 1000, Keyword: "porn", URL: "https://x/?q=porn"}}); err != nil {
+	if err := db.IngestViolations(uid, 0, []Violation{{TS: 1000, Keyword: "porn", URL: "https://x/?q=porn"}}); err != nil {
 		t.Fatalf("re-ingest: %v", err)
 	}
 	got, _ := db.Violations(uid)
@@ -53,10 +53,10 @@ func TestIngestIdempotent(t *testing.T) {
 	}
 
 	// Usage + heartbeat unique on (user, ts).
-	if err := db.IngestUsage(uid, []UsageSample{{TS: 5, ActiveClass: "kitty"}}); err != nil {
+	if err := db.IngestUsage(uid, 0, []UsageSample{{TS: 5, ActiveClass: "kitty"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.IngestUsage(uid, []UsageSample{{TS: 5, ActiveClass: "firefox"}}); err != nil {
+	if err := db.IngestUsage(uid, 0, []UsageSample{{TS: 5, ActiveClass: "firefox"}}); err != nil {
 		t.Fatal(err)
 	}
 	us, _ := db.UsageSamples(uid)
@@ -72,12 +72,12 @@ func TestTenantIsolation(t *testing.T) {
 	const alice, bob = 1, 2
 
 	same := Violation{TS: 1000, Keyword: "porn", URL: "https://x/?q=porn", Domain: "x"}
-	if err := db.IngestViolations(alice, []Violation{same}); err != nil {
+	if err := db.IngestViolations(alice, 0, []Violation{same}); err != nil {
 		t.Fatal(err)
 	}
 	// Bob ingests the identical record — must NOT collide with Alice's (the
 	// unique key is per-user), and must land in Bob's data only.
-	if err := db.IngestViolations(bob, []Violation{same}); err != nil {
+	if err := db.IngestViolations(bob, 0, []Violation{same}); err != nil {
 		t.Fatalf("bob ingest identical record: %v", err)
 	}
 
@@ -193,11 +193,11 @@ func TestIngestViolationsRecordID(t *testing.T) {
 	huge := "https://www.google.com/search?q=x&sca_esv=" + strings.Repeat("a", 5000)
 	v := Violation{TS: 1000, RecordID: "rid-a", Keyword: "porn", URL: huge, Type: "url-keyword"}
 
-	if err := db.IngestViolations(uid, []Violation{v}); err != nil {
+	if err := db.IngestViolations(uid, 0, []Violation{v}); err != nil {
 		t.Fatalf("ingest long url: %v", err)
 	}
 	// Re-sending the identical row is idempotent.
-	if err := db.IngestViolations(uid, []Violation{v}); err != nil {
+	if err := db.IngestViolations(uid, 0, []Violation{v}); err != nil {
 		t.Fatalf("re-ingest: %v", err)
 	}
 	got, _ := db.Violations(uid)
@@ -211,7 +211,7 @@ func TestIngestViolationsRecordID(t *testing.T) {
 	// A different RecordID (distinct content) is a distinct violation, even at the
 	// same (user, ts).
 	v2 := Violation{TS: 1000, RecordID: "rid-b", Keyword: "porn", URL: "https://other.example/z", Type: "url-keyword"}
-	if err := db.IngestViolations(uid, []Violation{v2}); err != nil {
+	if err := db.IngestViolations(uid, 0, []Violation{v2}); err != nil {
 		t.Fatalf("ingest distinct url: %v", err)
 	}
 	if got, _ := db.Violations(uid); len(got) != 2 {
@@ -221,7 +221,7 @@ func TestIngestViolationsRecordID(t *testing.T) {
 	// The E2E guarantee: the same RecordID re-sent with entirely different content
 	// bytes (as ciphertext would be every sync) must NOT create a new row.
 	v3 := Violation{TS: 1000, RecordID: "rid-a", Keyword: "ciphertext-blob-2", URL: "different-ciphertext", Type: "url-keyword"}
-	if err := db.IngestViolations(uid, []Violation{v3}); err != nil {
+	if err := db.IngestViolations(uid, 0, []Violation{v3}); err != nil {
 		t.Fatalf("re-ingest ciphertext variant: %v", err)
 	}
 	if got, _ := db.Violations(uid); len(got) != 2 {
@@ -261,7 +261,7 @@ func TestListUsersAndDeleteUserData(t *testing.T) {
 	}
 
 	// Give the victim data across several tables.
-	if err := db.IngestViolations(victim.ID, []Violation{{TS: 1, Keyword: "k", URL: "http://x"}}); err != nil {
+	if err := db.IngestViolations(victim.ID, 0, []Violation{{TS: 1, Keyword: "k", URL: "http://x"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.SetRulesConfig(victim.ID, []Rule{{Program: "p", Title: "t", Tag: "Activity:x"}}, map[string]string{"Activity:x": "#fff"}); err != nil {

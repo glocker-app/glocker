@@ -162,7 +162,7 @@ type ingestPayload struct {
 // cursors from what glockpeek already has (only sending the gap).
 func handleIngest(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		writeJSON(w, map[string]any{"cursors": db.HighWaterMarks(userFrom(r).ID)})
+		writeJSON(w, map[string]any{"cursors": db.HighWaterMarks(userFrom(r).ID, deviceFrom(r))})
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -186,15 +186,16 @@ func handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	uid := userFrom(r).ID
+	dev := deviceFrom(r) // the authenticating token = this device; 0 in local mode
 	for _, step := range []struct {
 		name string
 		fn   func() error
 	}{
-		{"violations", func() error { return db.IngestViolations(uid, in.Violations) }},
-		{"unblocks", func() error { return db.IngestUnblocks(uid, in.Unblocks) }},
-		{"lifecycle", func() error { return db.IngestLifecycle(uid, in.Lifecycle) }},
-		{"usage", func() error { return db.IngestUsage(uid, in.Usage) }},
-		{"heartbeat", func() error { return db.IngestHeartbeats(uid, in.Heartbeat) }},
+		{"violations", func() error { return db.IngestViolations(uid, dev, in.Violations) }},
+		{"unblocks", func() error { return db.IngestUnblocks(uid, dev, in.Unblocks) }},
+		{"lifecycle", func() error { return db.IngestLifecycle(uid, dev, in.Lifecycle) }},
+		{"usage", func() error { return db.IngestUsage(uid, dev, in.Usage) }},
+		{"heartbeat", func() error { return db.IngestHeartbeats(uid, dev, in.Heartbeat) }},
 	} {
 		if err := step.fn(); err != nil {
 			// Name the failing stage and pass the error back in the body so the

@@ -201,20 +201,28 @@ func (db *DB) CreateAPIToken(userID uint, name string) (string, error) {
 // UserByAPIToken returns the user a bearer token belongs to, and stamps
 // LastUsedAt.
 func (db *DB) UserByAPIToken(token string) (*User, error) {
+	u, _, err := db.UserAndDeviceByAPIToken(token)
+	return u, err
+}
+
+// UserAndDeviceByAPIToken resolves a bearer token to its user AND the token's own
+// id, which serves as the device id (one API token = one connected device). The
+// ingest path stamps this onto every row so an account's devices don't collide.
+func (db *DB) UserAndDeviceByAPIToken(token string) (*User, uint, error) {
 	if token == "" {
-		return nil, ErrInvalidCredentials
+		return nil, 0, ErrInvalidCredentials
 	}
 	var row APIToken
 	if err := db.Where("token_hash = ?", hashToken(token)).First(&row).Error; err != nil {
-		return nil, ErrInvalidCredentials
+		return nil, 0, ErrInvalidCredentials
 	}
 	now := time.Now()
 	db.Model(&row).Update("last_used_at", &now)
 	var u User
 	if err := db.First(&u, row.UserID).Error; err != nil {
-		return nil, ErrInvalidCredentials
+		return nil, 0, ErrInvalidCredentials
 	}
-	return &u, nil
+	return &u, row.ID, nil
 }
 
 // UserByEmail looks up a user by email (for the admin CLI).

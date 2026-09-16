@@ -95,8 +95,33 @@ func (db *DB) Migrate() error {
 	if err := db.migrateRecordIDIndexes(); err != nil {
 		return fmt.Errorf("store: record_id index migration: %w", err)
 	}
+	if err := db.migrateDeviceID(); err != nil {
+		return fmt.Errorf("store: device_id index migration: %w", err)
+	}
 	if err := db.AutoMigrate(AllModels()...); err != nil {
 		return fmt.Errorf("store: migrate: %w", err)
+	}
+	return nil
+}
+
+// migrateDeviceID drops the per-source unique indexes so AutoMigrate rebuilds
+// them to include the new device_id column. Each ingest row is now scoped to a
+// device (the authenticating API token), so the natural keys gain device_id:
+// usage/heartbeat become (user_id, device_id, ts), lifecycle
+// (user_id, device_id, ts, type), violations/unblocks (user_id, device_id,
+// record_id). Without this, multiple agents on one account collided on the old
+// (user_id, ts) keys and silently dropped each other's time-aligned rows.
+//
+// AutoMigrate adds device_id (default 0) before recreating the indexes, so
+// existing single-device rows keep working: they were unique on (user_id, ts),
+// so (user_id, 0, ts) is unique too. Idempotent (drop-if-exists then rebuild).
+func (db *DB) migrateDeviceID() error {
+	for _, idx := range []string{"ux_violation", "ux_unblock", "ux_lifecycle", "ux_usage", "ux_heartbeat"} {
+		// Raw SQL for the same Postgres/SQLite portability reason as the migrations
+		// above; names are fixed literals.
+		if err := db.Exec("DROP INDEX IF EXISTS " + idx).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }

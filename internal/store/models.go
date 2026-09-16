@@ -88,12 +88,17 @@ type APIToken struct {
 // a stable per-record fingerprint the agent computes over the plaintext (see
 // e2e.RecordID); (UserID, RecordID) is the natural key.
 type Violation struct {
-	ID     uint  `gorm:"primaryKey" json:"-"`
-	UserID uint  `gorm:"index;uniqueIndex:ux_violation,priority:1" json:"-"`
-	TS     int64 `gorm:"index" json:"ts"`
+	ID uint `gorm:"primaryKey" json:"-"`
+	// UserID + DeviceID scope every row to one account's one device. DeviceID is
+	// stamped server-side from the authenticating API token (one token = one
+	// device); the agent never sends it. It is part of the dedup key so the same
+	// slip on two devices is two rows, while one device's resends still dedup.
+	UserID   uint  `gorm:"index;uniqueIndex:ux_violation,priority:1" json:"-"`
+	DeviceID uint  `gorm:"index;uniqueIndex:ux_violation,priority:2" json:"-"`
+	TS       int64 `gorm:"index" json:"ts"`
 	// RecordID is HMAC(masterKey, ts|keyword|url) under E2E, or sha256 of the same
 	// in plaintext mode. The dedup key; set by the agent, opaque to the server.
-	RecordID string `gorm:"uniqueIndex:ux_violation,priority:2" json:"recordId"`
+	RecordID string `gorm:"uniqueIndex:ux_violation,priority:3" json:"recordId"`
 	Keyword  string `json:"keyword"`
 	// URLHash is sha256(URL). Vestigial for dedup now that RecordID is the key, but
 	// still populated so plaintext-mode ignored-matching keeps working.
@@ -108,8 +113,9 @@ type Violation struct {
 type Unblock struct {
 	ID        uint   `gorm:"primaryKey" json:"-"`
 	UserID    uint   `gorm:"index;uniqueIndex:ux_unblock,priority:1" json:"-"`
+	DeviceID  uint   `gorm:"index;uniqueIndex:ux_unblock,priority:2" json:"-"`
 	TS        int64  `gorm:"index" json:"ts"`
-	RecordID  string `gorm:"uniqueIndex:ux_unblock,priority:2" json:"recordId"`
+	RecordID  string `gorm:"uniqueIndex:ux_unblock,priority:3" json:"recordId"`
 	Domain    string `json:"domain"`
 	RestoreTS *int64 `json:"restoreTs"`
 	Reason    string `json:"reason"`
@@ -117,10 +123,11 @@ type Unblock struct {
 
 // LifecycleEvent is an install/uninstall record (drives the UNMANAGED overlay).
 type LifecycleEvent struct {
-	ID     uint   `gorm:"primaryKey" json:"-"`
-	UserID uint   `gorm:"index;uniqueIndex:ux_lifecycle,priority:1" json:"-"`
-	TS     int64  `gorm:"index;uniqueIndex:ux_lifecycle,priority:2" json:"ts"`
-	Type   string `gorm:"uniqueIndex:ux_lifecycle,priority:3" json:"type"`
+	ID       uint   `gorm:"primaryKey" json:"-"`
+	UserID   uint   `gorm:"index;uniqueIndex:ux_lifecycle,priority:1" json:"-"`
+	DeviceID uint   `gorm:"index;uniqueIndex:ux_lifecycle,priority:2" json:"-"`
+	TS       int64  `gorm:"index;uniqueIndex:ux_lifecycle,priority:3" json:"ts"`
+	Type     string `gorm:"uniqueIndex:ux_lifecycle,priority:4" json:"type"`
 	Reason string `json:"reason"`
 	Note   string `json:"note"`
 }
@@ -131,7 +138,8 @@ type LifecycleEvent struct {
 type UsageSample struct {
 	ID             uint   `gorm:"primaryKey" json:"-"`
 	UserID         uint   `gorm:"index;uniqueIndex:ux_usage,priority:1" json:"-"`
-	TS             int64  `gorm:"uniqueIndex:ux_usage,priority:2" json:"ts"`
+	DeviceID       uint   `gorm:"index;uniqueIndex:ux_usage,priority:2" json:"-"`
+	TS             int64  `gorm:"uniqueIndex:ux_usage,priority:3" json:"ts"`
 	IdleMS         int64  `json:"idleMs"`
 	ActiveClass    string `json:"activeClass"`
 	ActiveInstance string `json:"activeInstance"`
@@ -141,10 +149,11 @@ type UsageSample struct {
 
 // Heartbeat is one liveness sample recorded by glockdoc (drives downtime spans).
 type Heartbeat struct {
-	ID     uint  `gorm:"primaryKey" json:"-"`
-	UserID uint  `gorm:"index;uniqueIndex:ux_heartbeat,priority:1" json:"-"`
-	TS     int64 `gorm:"uniqueIndex:ux_heartbeat,priority:2" json:"ts"`
-	Alive  bool  `json:"alive"`
+	ID       uint  `gorm:"primaryKey" json:"-"`
+	UserID   uint  `gorm:"index;uniqueIndex:ux_heartbeat,priority:1" json:"-"`
+	DeviceID uint  `gorm:"index;uniqueIndex:ux_heartbeat,priority:2" json:"-"`
+	TS       int64 `gorm:"uniqueIndex:ux_heartbeat,priority:3" json:"ts"`
+	Alive    bool  `json:"alive"`
 }
 
 // Rule is one usage-categorization rule (optional program/title regex -> tag).

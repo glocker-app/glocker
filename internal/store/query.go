@@ -108,70 +108,78 @@ func (db *DB) IgnoredViolations(userID uint) ([]IgnoredViolation, error) {
 // IngestViolations upserts report lines; a re-sent (user, record_id) no-ops.
 // RecordID is the agent-computed dedup key (opaque under E2E); URLHash is still
 // filled for plaintext-mode ignored-matching but no longer keys the index.
-func (db *DB) IngestViolations(userID uint, rows []Violation) error {
+// Ingest* stamp userID + deviceID (the authenticating token = one device) on
+// every row so records are scoped to the account's specific device, then upsert
+// on the device-aware natural key. deviceID 0 is the local/single-device case.
+func (db *DB) IngestViolations(userID, deviceID uint, rows []Violation) error {
 	if len(rows) == 0 {
 		return nil
 	}
 	for i := range rows {
 		rows[i].UserID = userID
+		rows[i].DeviceID = deviceID
 		rows[i].URLHash = hashURL(rows[i].URL)
 	}
 	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "user_id"}, {Name: "record_id"}},
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "record_id"}},
 		DoNothing: true,
 	}).CreateInBatches(rows, 500).Error
 }
 
 // IngestUnblocks upserts unblock events; on conflict updates restore_ts+reason so
 // a later sync can close an unblock that was open when first sent.
-func (db *DB) IngestUnblocks(userID uint, rows []Unblock) error {
+func (db *DB) IngestUnblocks(userID, deviceID uint, rows []Unblock) error {
 	if len(rows) == 0 {
 		return nil
 	}
 	for i := range rows {
 		rows[i].UserID = userID
+		rows[i].DeviceID = deviceID
 	}
 	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "user_id"}, {Name: "record_id"}},
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "record_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"restore_ts", "reason"}),
 	}).CreateInBatches(rows, 500).Error
 }
 
-func (db *DB) IngestLifecycle(userID uint, rows []LifecycleEvent) error {
+func (db *DB) IngestLifecycle(userID, deviceID uint, rows []LifecycleEvent) error {
 	if len(rows) == 0 {
 		return nil
 	}
 	for i := range rows {
 		rows[i].UserID = userID
+		rows[i].DeviceID = deviceID
 	}
 	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "user_id"}, {Name: "ts"}, {Name: "type"}},
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "ts"}, {Name: "type"}},
 		DoNothing: true,
 	}).CreateInBatches(rows, 500).Error
 }
 
-func (db *DB) IngestUsage(userID uint, rows []UsageSample) error {
+func (db *DB) IngestUsage(userID, deviceID uint, rows []UsageSample) error {
 	if len(rows) == 0 {
 		return nil
 	}
 	for i := range rows {
 		rows[i].UserID = userID
+		rows[i].DeviceID = deviceID
 	}
 	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "user_id"}, {Name: "ts"}},
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "ts"}},
 		DoNothing: true,
 	}).CreateInBatches(rows, 500).Error
 }
 
-func (db *DB) IngestHeartbeats(userID uint, rows []Heartbeat) error {
+func (db *DB) IngestHeartbeats(userID, deviceID uint, rows []Heartbeat) error {
 	if len(rows) == 0 {
 		return nil
 	}
 	for i := range rows {
 		rows[i].UserID = userID
+		rows[i].DeviceID = deviceID
 	}
 	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "user_id"}, {Name: "ts"}},
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "ts"}},
 		DoNothing: true,
 	}).CreateInBatches(rows, 500).Error
 }
@@ -262,14 +270,18 @@ func (db *DB) AccountEncrypted(userID uint) bool {
 // sends records glockpeek doesn't already have (glockpeek is the source of truth
 // for what's been synced — no local cursor state, self-healing if the DB is
 // reset). Missing/empty tables report 0.
-func (db *DB) HighWaterMarks(userID uint) map[string]int64 {
+// HighWaterMarks returns the per-source max stored TS for one device, so the
+// syncer seeds each device's cursor from its OWN progress. It must be per-device:
+// keyed only by account, a newly-connected device would seed from another
+// device's newer marks and skip its own backlog.
+func (db *DB) HighWaterMarks(userID, deviceID uint) map[string]int64 {
 	out := map[string]int64{}
 	for src, model := range map[string]any{
 		"reports": &Violation{}, "unblocks": &Unblock{},
 		"lifecycle": &LifecycleEvent{}, "usage": &UsageSample{}, "heartbeat": &Heartbeat{},
 	} {
 		var max int64
-		db.Model(model).Where("user_id = ?", userID).Select("COALESCE(MAX(ts), 0)").Scan(&max)
+		db.Model(model).Where("user_id = ? AND device_id = ?", userID, deviceID).Select("COALESCE(MAX(ts), 0)").Scan(&max)
 		out[src] = max
 	}
 	return out

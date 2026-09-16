@@ -66,7 +66,10 @@ func defaultUser() *store.User {
 
 type ctxKey int
 
-const userKey ctxKey = 0
+const (
+	userKey   ctxKey = 0
+	deviceKey ctxKey = 1
+)
 
 // userFrom returns the authenticated user attached by requireUser/requireToken.
 func userFrom(r *http.Request) *store.User {
@@ -77,6 +80,19 @@ func userFrom(r *http.Request) *store.User {
 // withUser stores the user on the request context.
 func withUser(r *http.Request, u *store.User) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), userKey, u))
+}
+
+// deviceFrom returns the device id (the authenticating API token's id) attached
+// by requireToken. 0 when the request wasn't token-authenticated (browser
+// session or local/no-auth mode) — the single-device case.
+func deviceFrom(r *http.Request) uint {
+	d, _ := r.Context().Value(deviceKey).(uint)
+	return d
+}
+
+// withDevice stores the device id on the request context.
+func withDevice(r *http.Request, deviceID uint) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), deviceKey, deviceID))
 }
 
 // requireUser gates a handler behind a valid browser session (cookie). With auth
@@ -111,12 +127,12 @@ func requireToken(h http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		tok := bearer(r)
-		u, err := db.UserByAPIToken(tok)
+		u, deviceID, err := db.UserAndDeviceByAPIToken(tok)
 		if err != nil {
 			http.Error(w, "invalid or missing API token", http.StatusUnauthorized)
 			return
 		}
-		h(w, withUser(r, u))
+		h(w, withDevice(withUser(r, u), deviceID))
 	}
 }
 
