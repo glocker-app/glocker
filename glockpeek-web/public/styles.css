@@ -387,6 +387,9 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
   gap: 3px;
   font-family: var(--mono);
   min-width: 0;
+  /* Keep the map to roughly one calendar-month card's footprint rather than
+     stretching across the whole panel. */
+  max-width: 460px;
 }
 .hm-corner { }
 .hm-hour, .hm-day {
