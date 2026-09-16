@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>glocker &mdash; a distraction blocker for Linux</title>
+<meta name="description" content="glocker is an open-source distraction blocker for Linux. It blocks sites, on-page content, and apps on a schedule, and makes switching it off slow and deliberate." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' fill='%230d0f12'/%3E%3Ccircle cx='16' cy='16' r='7' fill='%23c8a055'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* lifted verbatim from internal/cli/style.go */
+    --amber:  #c8a055;   /* title + section heads */
+    --dim:    #697382;   /* labels, structure, box rules */
+    --good:   #78b982;   /* nominal state */
+    --alert:  #cd5f5f;   /* needs attention */
+    --fg:     #cfcabf;   /* terminal default foreground */
+    --bg:     #0d0f12;
+    --bg-lift:#14171c;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 14.5px; line-height: 1.85;
+    -webkit-font-smoothing: antialiased;
+  }
+  /* CRT: scanlines + a slow amber bloom from the top of the screen */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 2;
+    background: repeating-linear-gradient(to bottom, rgba(255,255,255,.022) 0 1px, transparent 1px 3px);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 1;
+    background: radial-gradient(ellipse 120% 60% at 50% -10%, rgba(200,160,85,.11), transparent 70%);
+  }
+  .screen { position: relative; z-index: 3; max-width: 800px; margin: 0 auto; padding: 0 20px 88px; overflow-x: hidden; }
+
+  a { color: var(--amber); text-decoration: none; border-bottom: 1px solid rgba(200,160,85,.35); }
+  a:hover { border-bottom-color: var(--amber); background: rgba(200,160,85,.08); }
+  a:focus-visible { outline: 1px solid var(--amber); outline-offset: 3px; }
+  b, strong { font-weight: 600; color: #e6e1d5; }
+  .dim { color: var(--dim); }
+  .ok  { color: var(--good); }
+  .bad { color: var(--alert); }
+  code { color: var(--amber); font: inherit; }
+
+  /* ---- prompt bar ------------------------------------------------------ */
+  .promptbar {
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+    gap: 10px 20px; padding: 26px 0 8px; font-size: 13.5px;
+  }
+  .promptbar .cmd { color: var(--dim); }
+  .promptbar .cmd b { color: var(--fg); font-weight: 500; }
+  .caret { display: inline-block; width: 8px; height: 15px; background: var(--amber);
+           vertical-align: -2px; margin-left: 3px; animation: blink 1.15s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .caret { animation: none; } }
+  .promptbar nav { display: flex; gap: 20px; }
+
+  /* ---- the frame: one box, drawn the way -status draws it -------------- */
+  .frame { margin-top: 14px; }
+  .fhead {
+    display: flex; align-items: center; gap: 0; margin: 0;
+    font-size: inherit; font-weight: 600; color: var(--amber); white-space: nowrap;
+  }
+  .fhead .g { color: var(--dim); font-weight: 400; }
+  .fhead .sub { color: var(--dim); font-weight: 400; }
+  .fhead .rule { flex: 1; height: 1px; background: var(--dim); opacity: .55; margin-left: 1ch; min-width: 2ch; }
+
+  .fbody { border-left: 1px solid rgba(105,115,130,.55); margin-left: .5ch; padding: 0 0 0 2.5ch; }
+  .fend { color: var(--dim); display: flex; align-items: center; }
+  .fend .rule { flex: 1; height: 1px; background: var(--dim); opacity: .55; }
+
+  /* section heads inside the frame: ├─ label ───── */
+  .shead {
+    display: flex; align-items: center; margin: 30px 0 10px -2.5ch;
+    color: var(--amber); font-weight: 600; font-size: inherit; white-space: nowrap;
+  }
+  .shead .g { color: var(--dim); font-weight: 400; }
+  .shead .rule { flex: 1; height: 1px; background: var(--dim); opacity: .45; margin-left: 1ch; }
+  .frame > .fbody > .shead:first-child { margin-top: 14px; }
+
+  /* ---- hero ------------------------------------------------------------ */
+  h1 {
+    font-size: clamp(26px, 5.4vw, 40px); font-weight: 600; line-height: 1.22;
+    letter-spacing: -.01em; margin: 10px 0 0; color: #f0e9da;
+    text-shadow: 0 0 26px rgba(200,160,85,.28);
+  }
+  h1 .hl { color: var(--amber); }
+  .lede { margin: 14px 0 4px; max-width: 62ch; color: var(--fg); }
+
+  /* ---- label / value rows ---------------------------------------------- */
+  .rows { margin: 0; padding: 0; }
+  .row { display: grid; grid-template-columns: 16ch 1fr; gap: 0 1ch; }
+  .row dt { color: var(--dim); }
+  .row dd { margin: 0; }
+  .detail { padding-left: 4ch; color: var(--fg); }
+
+  p { margin: 12px 0; max-width: 66ch; }
+  p.note { color: var(--dim); }
+
+  /* ---- bulleted entries ------------------------------------------------ */
+  ul.items { list-style: none; margin: 10px 0; padding: 0; max-width: 68ch; }
+  ul.items li { position: relative; padding-left: 3ch; margin: 10px 0; }
+  ul.items li::before { content: "▸"; position: absolute; left: 0; color: var(--amber); }
+  ul.items li .k { color: #e6e1d5; font-weight: 500; }
+
+  /* ---- command block --------------------------------------------------- */
+  pre.sh {
+    margin: 16px 0; padding: 14px 16px; background: var(--bg-lift);
+    border: 1px solid rgba(105,115,130,.3); border-left: 2px solid var(--amber);
+    overflow-x: auto; font-size: 13.5px; line-height: 1.95;
+  }
+  pre.sh .p { color: var(--good); }
+  pre.sh .c { color: var(--dim); }
+  pre.sh .m { color: var(--amber); }
+
+  footer {
+    margin-top: 26px; display: flex; flex-wrap: wrap; gap: 8px 24px;
+    justify-content: space-between; color: var(--dim); font-size: 13.5px;
+  }
+  footer .links { display: flex; gap: 22px; }
+
+  @media (max-width: 620px) {
+    .row { grid-template-columns: 1fr; }
+    .row dt { margin-top: 6px; }
+    .fhead .sub { display: none; }        /* the subtitle would run off the frame */
+    h1 { font-size: 21px; }
+    h1 br { display: none; }
+    .fbody { padding-left: 1.6ch; }
+    .shead { margin-left: -1.6ch; }
+  }
+</style>
+</head>
+<body>
+<div class="screen">
+
+  <div class="promptbar">
+    <span class="cmd">$ <b>glocker</b> -status<span class="caret"></span></span>
+    <nav>
+      <a href="https://github.com/nibrahim/glocker">GitHub</a>
+      <a href="https://my.glockerapp.com">Sign in</a>
+    </nav>
+  </div>
+
+  <section class="frame">
+    <h2 class="fhead"><span class="g">╭─&nbsp;</span>glocker<span class="sub">&nbsp;· a distraction blocker for Linux</span><i class="rule"></i></h2>
+    <div class="fbody">
+
+      <h1>Block the sites, the words <br>on the page, and the apps. <br><span class="hl">Then make quitting hard.</span></h1>
+      <p class="lede">glocker is an open-source tool that blocks distracting websites,
+      on-page content, and applications on a schedule you set. You own the machine, so it
+      can&rsquo;t lock you out for good &mdash; instead it makes switching it off slow and
+      deliberate.</p>
+
+      <dl class="rows" style="margin-top:18px">
+        <div class="row"><dt>service</dt><dd><span class="ok">●</span> online <span class="dim">· since boot</span></dd></div>
+        <div class="row"><dt>enforcement</dt><dd>hosts · content · programs · sudo</dd></div>
+        <div class="row"><dt>licence</dt><dd>open source <span class="dim">· self-host or hosted</span></dd></div>
+      </dl>
+
+      <h3 class="shead"><span class="g">├─&nbsp;</span>how it works<i class="rule"></i></h3>
+      <ul class="items">
+        <li><span class="k">Websites.</span> Sites and whole blocklists you name are routed
+          nowhere, through <code>/etc/hosts</code>.</li>
+        <li><span class="k">On-page content.</span> A Firefox extension scans page text for
+          keywords you set &mdash; catching what a domain block can&rsquo;t, like a search
+          result or a feed.</li>
+        <li><span class="k">Applications.</span> Named programs are closed the moment they
+          launch during a blocked window.</li>
+        <li><span class="k">Violation limit.</span> Too many attempts to reach blocked
+          content within a set window and the screen is locked, via <code>glocklock</code>.</li>
+      </ul>
+
+      <h3 class="shead"><span class="g">├─&nbsp;</span>blocking on Linux is hard<i class="rule"></i></h3>
+      <p>The problem is root: on your own machine you have it, and root can undo anything.
+      Editing <code>/etc/hosts</code>, stopping the service, killing the daemon,
+      uninstalling it &mdash; all of it needs root. glocker&rsquo;s answer is to withdraw
+      your <code>sudo</code> during the hours you set, so in those windows there&rsquo;s no
+      root to undo it with.</p>
+      <p class="note">Outside those hours, or as real root, it stays deliberate:
+      <code>/etc/hosts</code> and glocker&rsquo;s own binary are made immutable
+      (<code>chattr +i</code>) and restored every cycle, so a quick edit won&rsquo;t stick.</p>
+
+      <h3 class="shead"><span class="g">├─&nbsp;</span>uninstalling<i class="rule"></i></h3>
+      <p>Uninstalling is deliberately slow. <code>glocker -uninstall</code> asks for a
+      stated reason, then starts a metronome-paced typing challenge: you retype a passage
+      one keystroke per beat, and any mistake starts it over. Only once it&rsquo;s finished
+      does glocker drop the immutable flags, restore <code>/etc/hosts</code> and the
+      sudoers rules, and remove the service.</p>
+      <p class="note">glockdoc, a small watchdog, survives the uninstall &mdash; so even a
+      completed teardown is recorded rather than silent.</p>
+
+      <h3 class="shead"><span class="g">├─&nbsp;</span>room for real work<i class="rule"></i></h3>
+      <p>Blocking isn&rsquo;t the whole point &mdash; you still need the machine. Every exit
+      is possible, and written to the log:</p>
+      <ul class="items">
+        <li><span class="k">Timed unblock.</span> Open a specific domain for a set length of
+          time, with a reason.</li>
+        <li><span class="k">An app for an hour.</span> Grant a sometimes-needed app one hour
+          of runtime a day.</li>
+        <li><span class="k">Accountability.</span> Slips and unblocks can email someone you
+          chose.</li>
+      </ul>
+      <p><b>glockpeek</b> is the dashboard. It reads the records back &mdash; what was
+      blocked, what you unblocked, and how your time was spent. Run it locally, where the
+      data stays on your machine, or use the hosted one.</p>
+
+      <h3 class="shead"><span class="g">├─&nbsp;</span>why I made it<i class="rule"></i></h3>
+      <p>I built glocker for my own use, because nothing else fit my setup, and I&rsquo;ve
+      been running it for over a year.</p>
+
+      <h3 class="shead"><span class="g">├─&nbsp;</span>the programs<i class="rule"></i></h3>
+      <p class="note">glocker isn&rsquo;t one binary but a few small programs, each doing
+      one job and keeping an eye on the others.</p>
+      <dl class="rows">
+        <div class="row"><dt>glocker</dt><dd>the daemon; applies the blocking and records every event locally.</dd></div>
+        <div class="row"><dt>glockpeek</dt><dd>the dashboard; reads the records back, locally or hosted.</dd></div>
+        <div class="row"><dt>glockdoc</dt><dd>the watchdog; checks the daemon is alive and survives an uninstall.</dd></div>
+        <div class="row"><dt>glocklock</dt><dd>the screen locker; behind the violation lock and the uninstall gate.</dd></div>
+        <div class="row"><dt>firefox ext</dt><dd>scans page content for your keywords and reports matches.</dd></div>
+      </dl>
+
+      <h3 class="shead"><span class="g">├─&nbsp;</span>getting it<i class="rule"></i></h3>
+      <p>Everything&rsquo;s on GitHub. Copy the sample config, edit it to taste, then one
+      command builds glocker, pulls the blocklists from curated sources, and installs the
+      lot.</p>
+      <pre class="sh"><span class="c"># clone, configure, and go</span>
+<span class="p">$</span> git clone <span class="m">github.com/nibrahim/glocker</span>
+<span class="p">$</span> cp conf/conf.yaml.sample conf/conf.yaml
+<span class="p">$</span> $EDITOR conf/conf.yaml
+<span class="p">$</span> make full-install</pre>
+      <p class="note">Rather not run a server? A hosted option is coming: install just the
+      agent and let the dashboard and accountability email live on
+      <strong>glockerapp.com</strong> for a small subscription. See the
+      <a href="https://github.com/nibrahim/glocker/blob/master/INSTALL.md">setup guide</a>.</p>
+
+    </div>
+    <div class="fend">╰<i class="rule"></i></div>
+  </section>
+
+  <footer>
+    <span>Open source, for Linux.</span>
+    <span class="links">
+      <a href="https://github.com/nibrahim/glocker">GitHub</a>
+      <a href="https://my.glockerapp.com">Dashboard</a>
+      <a href="https://github.com/nibrahim/glocker/blob/master/INSTALL.md">Setup</a>
+    </span>
+  </footer>
+
+</div>
+</body>
+</html>

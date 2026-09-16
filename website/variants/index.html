@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>glocker site &mdash; design variants</title>
+<style>
+  body { margin: 0; background: #f4f4f5; color: #1e2024;
+    font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .w { max-width: 620px; margin: 0 auto; padding: 64px 24px 80px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.01em; }
+  p.sub { color: #6b7076; margin: 0 0 34px; }
+  a.v { display: block; text-decoration: none; color: inherit; padding: 18px 20px;
+        background: #fff; border: 1px solid #e2e3e6; border-radius: 10px; margin-bottom: 12px; }
+  a.v:hover { border-color: #9aa0a8; }
+  a.v b { display: block; font-size: 16px; font-weight: 600; margin-bottom: 3px; }
+  a.v span { color: #6b7076; font-size: 14px; }
+  .sw { display: flex; gap: 5px; margin-top: 12px; }
+  .sw i { width: 22px; height: 12px; border-radius: 2px; border: 1px solid rgba(0,0,0,.08); }
+  footer { margin-top: 30px; color: #8b9098; font-size: 13px; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<div class="w">
+  <h1>glocker &mdash; site design variants</h1>
+  <p class="sub">Three takes on the same copy. Pick one and I&rsquo;ll carry it through
+  the rest of the site and the glockpeek dashboard.</p>
+
+  <a class="v" href="journal.html">
+    <b>1 &mdash; Journal</b>
+    <span>Ruled paper, one ink colour, diagonal hatching where a fill would go.
+    Headings and marginalia in a pen hand; the install commands are a printed slip
+    taped to the page.</span>
+    <span class="sw"><i style="background:#fbfaf6"></i><i style="background:#22324e"></i><i style="background:#c0564a"></i><i style="background:#e2e9f1"></i></span>
+  </a>
+
+  <a class="v" href="terminal.html">
+    <b>2 &mdash; Status terminal</b>
+    <span>The whole page drawn as one <code>glocker -status</code> frame, using that
+    command&rsquo;s exact palette: amber heads, dim box rules, green and red only where
+    they mean something. Scanlines and an amber bloom on a near-black screen.</span>
+    <span class="sw"><i style="background:#0d0f12"></i><i style="background:#c8a055"></i><i style="background:#697382"></i><i style="background:#78b982"></i><i style="background:#cd5f5f"></i></span>
+  </a>
+
+  <a class="v" href="dashboard.html">
+    <b>3 &mdash; Modern dashboard</b>
+    <span>Low contrast, hairline dividers instead of cards, one desaturated slate accent.
+    The hero is a week of blocking windows read as a schedule. Follows the reader&rsquo;s
+    light or dark setting.</span>
+    <span class="sw"><i style="background:#f6f6f7"></i><i style="background:#23262b"></i><i style="background:#4f5d75"></i><i style="background:#e4e5e8"></i></span>
+  </a>
+
+  <footer>Files live in <code>website/variants/</code>. The current site is
+  <code>website/index.html</code>, untouched.</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>glocker &mdash; a distraction blocker for Linux</title>
+<meta name="description" content="glocker is an open-source distraction blocker for Linux. It blocks sites, on-page content, and apps on a schedule, and makes switching it off slow and deliberate." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%234f5d75'/%3E%3Crect x='9' y='9' width='14' height='5' rx='1.5' fill='%23fff'/%3E%3Crect x='9' y='18' width='8' height='5' rx='1.5' fill='%23fff' opacity='.5'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ground:  #f6f6f7;
+    --panel:   #ffffff;
+    --ink:     #23262b;   /* never pure black */
+    --ink-2:   #5c626c;
+    --ink-3:   #8b9099;
+    --hair:    #e4e5e8;
+    --hair-2:  #eeeff1;
+    --accent:  #4f5d75;   /* low-chroma slate; the only chromatic value */
+    --accent-w:#dfe3e9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:#131417; --panel:#191b1f; --ink:#e3e4e7; --ink-2:#a2a7b0; --ink-3:#71767f;
+      --hair:#282b31; --hair-2:#222429; --accent:#8b9bb5; --accent-w:#2c323c;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15.5px; line-height: 1.62; font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 1060px; margin: 0 auto; padding: 0 32px 96px; }
+  a { color: var(--ink); text-decoration: none; }
+  a:hover { color: var(--accent); }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: .855em;
+         color: var(--ink-2); background: var(--hair-2); padding: .08em .3em; border-radius: 3px; }
+  strong, b { font-weight: 600; }
+
+  /* ---- top bar --------------------------------------------------------- */
+  .bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    height: 62px; border-bottom: 1px solid var(--hair); font-size: 14px;
+  }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: -.012em; font-size: 16px; }
+  .brand .mark { width: 18px; height: 18px; border-radius: 5px; background: var(--accent); position: relative; }
+  .brand .mark::after { content: ""; position: absolute; left: 4px; top: 5px; width: 10px; height: 2.5px;
+                        border-radius: 2px; background: var(--panel); box-shadow: 0 5px 0 rgba(255,255,255,.45); }
+  .bar nav { display: flex; align-items: center; gap: 24px; color: var(--ink-2); }
+  .bar nav a.signin {
+    color: var(--panel); background: var(--accent); padding: 7px 15px; border-radius: 6px; font-weight: 500;
+  }
+  .bar nav a.signin:hover { opacity: .88; color: var(--panel); }
+
+  /* ---- hero ------------------------------------------------------------ */
+  .hero { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,420px); gap: 56px;
+          align-items: end; padding: 76px 0 72px; }
+  h1 { font-size: clamp(30px, 4.2vw, 46px); font-weight: 600; letter-spacing: -.028em;
+       line-height: 1.1; margin: 0; max-width: 13ch; }
+  .lede { color: var(--ink-2); font-size: 17px; margin: 20px 0 0; max-width: 46ch; }
+  .cta { display: flex; align-items: center; gap: 18px; margin-top: 28px; font-size: 14.5px; }
+  .cta .primary { background: var(--ink); color: var(--ground); padding: 9px 18px; border-radius: 6px; font-weight: 500; }
+  .cta .primary:hover { color: var(--ground); opacity: .88; }
+  .cta .ghost { color: var(--ink-2); border-bottom: 1px solid var(--hair); padding-bottom: 1px; }
+
+  /* ---- schedule panel (the hero object) -------------------------------- */
+  .panel { background: var(--panel); border: 1px solid var(--hair); border-radius: 10px; padding: 18px 20px 16px; }
+  .panel-head { display: flex; align-items: baseline; justify-content: space-between;
+                font-size: 13px; color: var(--ink-3); margin-bottom: 16px; }
+  .panel-head .t { color: var(--ink); font-weight: 500; font-size: 13.5px; }
+  .ruler { display: grid; grid-template-columns: 34px 1fr; gap: 10px; font-size: 11px; color: var(--ink-3); }
+  .ruler .marks { display: flex; justify-content: space-between; }
+  .day { display: grid; grid-template-columns: 34px 1fr; gap: 10px; align-items: center; margin-top: 5px; }
+  .day span { font-size: 11.5px; color: var(--ink-3); }
+  .track { position: relative; height: 13px; border-radius: 3px; background: var(--hair-2);
+           box-shadow: inset 0 0 0 1px var(--hair); }
+  .track i { position: absolute; top: 0; bottom: 0; background: var(--accent); border-radius: 3px; opacity: .88; }
+  .legend { display: flex; gap: 16px; align-items: center; margin-top: 16px; padding-top: 13px;
+            border-top: 1px solid var(--hair-2); font-size: 12px; color: var(--ink-3); }
+  .legend i { display: inline-block; width: 18px; height: 9px; border-radius: 2px; vertical-align: -1px; margin-right: 6px; }
+  .legend .b { background: var(--accent); opacity: .88; }
+  .legend .o { background: var(--hair-2); box-shadow: inset 0 0 0 1px var(--hair); }
+
+  /* ---- sections: label gutter + content -------------------------------- */
+  section { display: grid; grid-template-columns: 200px minmax(0,1fr); gap: 40px;
+            padding: 44px 0; border-top: 1px solid var(--hair); }
+  section > h2 { font-size: 15.5px; font-weight: 600; letter-spacing: -.012em; margin: 0; color: var(--ink); }
+  section > h2 + .body { margin: 0; }
+  .body > :first-child { margin-top: 0; }
+  .body p { margin: 14px 0 0; max-width: 68ch; color: var(--ink); }
+  .body p.sub { color: var(--ink-2); font-size: 14.5px; }
+
+  /* ---- divider grid (no cards) ----------------------------------------- */
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 0 36px; margin-top: -4px; }
+  .grid2 > div { padding: 18px 0; border-top: 1px solid var(--hair-2); }
+  .grid2 > div:nth-child(-n+2) { border-top: 0; padding-top: 0; }
+  .grid2 h3 { font-size: 14.5px; font-weight: 600; margin: 0 0 5px; letter-spacing: -.008em; }
+  .grid2 p { margin: 0; font-size: 14.5px; color: var(--ink-2); max-width: 40ch; }
+
+  /* ---- definition rows -------------------------------------------------- */
+  .defs { margin: 0; }
+  .defs > div { display: grid; grid-template-columns: 148px minmax(0,1fr); gap: 20px;
+                padding: 13px 0; border-top: 1px solid var(--hair-2); }
+  .defs > div:first-child { border-top: 0; padding-top: 0; }
+  .defs dt { font-weight: 500; font-size: 14.5px; }
+  .defs dd { margin: 0; color: var(--ink-2); font-size: 14.5px; }
+
+  /* ---- command block ---------------------------------------------------- */
+  pre.sh {
+    margin: 20px 0 0; padding: 16px 18px; background: var(--panel);
+    border: 1px solid var(--hair); border-radius: 8px; overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; line-height: 1.95; color: var(--ink);
+  }
+  pre.sh .c { color: var(--ink-3); }
+  pre.sh .p { color: var(--accent); }
+
+  footer { display: flex; flex-wrap: wrap; gap: 10px 28px; justify-content: space-between;
+           padding-top: 26px; border-top: 1px solid var(--hair); color: var(--ink-3); font-size: 13.5px; }
+  footer .links { display: flex; gap: 24px; }
+  footer a { color: var(--ink-2); }
+
+  @media (max-width: 860px) {
+    .page { padding: 0 22px 72px; }
+    .hero { grid-template-columns: 1fr; gap: 44px; padding: 52px 0; align-items: start; }
+    h1 { max-width: 18ch; }
+    section { grid-template-columns: 1fr; gap: 18px; padding: 34px 0; }
+    .grid2 { grid-template-columns: 1fr; }
+    .grid2 > div:nth-child(2) { border-top: 1px solid var(--hair-2); padding-top: 18px; }
+    .defs > div { grid-template-columns: 1fr; gap: 3px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="bar">
+    <span class="brand"><span class="mark"></span>glocker</span>
+    <nav>
+      <a href="https://github.com/nibrahim/glocker">GitHub</a>
+      <a href="https://github.com/nibrahim/glocker/blob/master/INSTALL.md">Setup</a>
+      <a class="signin" href="https://my.glockerapp.com">Sign in</a>
+    </nav>
+  </div>
+
+  <div class="hero">
+    <div>
+      <h1>A distraction blocker for Linux</h1>
+      <p class="lede">glocker blocks distracting websites, on-page content, and
+      applications on a schedule you set. You own the machine, so it can&rsquo;t lock you
+      out for good &mdash; instead it makes switching it off slow and deliberate.</p>
+      <div class="cta">
+        <a class="primary" href="https://github.com/nibrahim/glocker/blob/master/INSTALL.md">Install glocker</a>
+        <a class="ghost" href="https://github.com/nibrahim/glocker">Read the source</a>
+      </div>
+    </div>
+
+    <div class="panel" role="img" aria-label="An example week of blocking windows: weekdays blocked 09:00 to 17:00 and 20:00 to 23:00, Saturday 10:00 to 13:00, Sunday 20:00 to 23:00.">
+      <div class="panel-head"><span class="t">Blocking windows</span><span>your week, your hours</span></div>
+      <div class="ruler">
+        <span></span>
+        <span class="marks"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></span>
+      </div>
+      <div class="day"><span>Mon</span><div class="track"><i style="left:37.5%;width:33.33%"></i><i style="left:83.33%;width:12.5%"></i></div></div>
+      <div class="day"><span>Tue</span><div class="track"><i style="left:37.5%;width:33.33%"></i><i style="left:83.33%;width:12.5%"></i></div></div>
+      <div class="day"><span>Wed</span><div class="track"><i style="left:37.5%;width:33.33%"></i><i style="left:83.33%;width:12.5%"></i></div></div>
+      <div class="day"><span>Thu</span><div class="track"><i style="left:37.5%;width:33.33%"></i><i style="left:83.33%;width:12.5%"></i></div></div>
+      <div class="day"><span>Fri</span><div class="track"><i style="left:37.5%;width:33.33%"></i><i style="left:79.17%;width:16.67%"></i></div></div>
+      <div class="day"><span>Sat</span><div class="track"><i style="left:41.67%;width:12.5%"></i></div></div>
+      <div class="day"><span>Sun</span><div class="track"><i style="left:83.33%;width:12.5%"></i></div></div>
+      <div class="legend"><span><i class="b"></i>Blocked</span><span><i class="o"></i>Open</span></div>
+    </div>
+  </div>
+
+  <section>
+    <h2>How it works</h2>
+    <div class="body">
+      <div class="grid2">
+        <div>
+          <h3>Websites</h3>
+          <p>Sites and whole blocklists you name are routed nowhere, through <code>/etc/hosts</code>.</p>
+        </div>
+        <div>
+          <h3>On-page content</h3>
+          <p>A Firefox extension scans page text for keywords you set &mdash; catching what
+          a domain block can&rsquo;t, like a search result or a feed.</p>
+        </div>
+        <div>
+          <h3>Applications</h3>
+          <p>Named programs are closed the moment they launch during a blocked window.</p>
+        </div>
+        <div>
+          <h3>Violation limit</h3>
+          <p>Too many attempts to reach blocked content within a set window and the screen
+          is locked, via <code>glocklock</code>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Blocking on Linux is hard</h2>
+    <div class="body">
+      <p>The problem is root: on your own machine you have it, and root can undo anything.
+      Editing <code>/etc/hosts</code>, stopping the service, killing the daemon,
+      uninstalling it &mdash; all of it needs root. glocker&rsquo;s answer is to withdraw
+      your <code>sudo</code> during the hours you set, so in those windows there&rsquo;s no
+      root to undo it with.</p>
+      <p class="sub">Outside those hours, or as real root, it stays deliberate:
+      <code>/etc/hosts</code> and glocker&rsquo;s own binary are made immutable
+      (<code>chattr +i</code>) and restored every cycle, so a quick edit won&rsquo;t stick.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Uninstalling</h2>
+    <div class="body">
+      <p>Uninstalling is deliberately slow. <code>glocker -uninstall</code> asks for a
+      stated reason, then starts a metronome-paced typing challenge: you retype a passage
+      one keystroke per beat, and any mistake starts it over. Only once it&rsquo;s finished
+      does glocker drop the immutable flags, restore <code>/etc/hosts</code> and the
+      sudoers rules, and remove the service.</p>
+      <p class="sub">glockdoc, a small watchdog, survives the uninstall &mdash; so even a
+      completed teardown is recorded rather than silent.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Room for real work</h2>
+    <div class="body">
+      <p>Blocking isn&rsquo;t the whole point &mdash; you still need the machine. Every
+      exit is possible, and written to the log:</p>
+      <dl class="defs" style="margin-top:22px">
+        <div><dt>Timed unblock</dt><dd>Open a specific domain for a set length of time, with a reason.</dd></div>
+        <div><dt>An app for an hour</dt><dd>Grant a sometimes-needed app one hour of runtime a day.</dd></div>
+        <div><dt>Accountability</dt><dd>Slips and unblocks can email someone you chose.</dd></div>
+      </dl>
+      <p><strong>glockpeek</strong> is the dashboard. It reads the records back &mdash; what
+      was blocked, what you unblocked, and how your time was spent. Run it locally, where
+      the data stays on your machine, or use the hosted one.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Why I made it</h2>
+    <div class="body">
+      <p>I built glocker for my own use, because nothing else fit my setup, and I&rsquo;ve
+      been running it for over a year.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>The programs</h2>
+    <div class="body">
+      <p class="sub" style="margin-bottom:22px">glocker isn&rsquo;t one binary but a few
+      small programs, each doing one job and keeping an eye on the others.</p>
+      <dl class="defs">
+        <div><dt><code>glocker</code></dt><dd>The daemon; applies the blocking and records every event locally.</dd></div>
+        <div><dt><code>glockpeek</code></dt><dd>The dashboard; reads the records back, locally or hosted.</dd></div>
+        <div><dt><code>glockdoc</code></dt><dd>The watchdog; checks the daemon is alive and survives an uninstall.</dd></div>
+        <div><dt><code>glocklock</code></dt><dd>The screen locker; behind the violation lock and the uninstall gate.</dd></div>
+        <div><dt>Firefox extension</dt><dd>Scans page content for your keywords and reports matches.</dd></div>
+      </dl>
+    </div>
+  </section>
+
+  <section>
+    <h2>Getting it</h2>
+    <div class="body">
+      <p>Everything&rsquo;s on GitHub. Copy the sample config, edit it to taste, then one
+      command builds glocker, pulls the blocklists from curated sources, and installs the
+      lot.</p>
+      <pre class="sh"><span class="c"># clone, configure, and go</span>
+<span class="p">$</span> git clone github.com/nibrahim/glocker
+<span class="p">$</span> cp conf/conf.yaml.sample conf/conf.yaml
+<span class="p">$</span> $EDITOR conf/conf.yaml
+<span class="p">$</span> make full-install</pre>
+      <p class="sub">Rather not run a server? A hosted option is coming: install just the
+      agent and let the dashboard and accountability email live on
+      <strong>glockerapp.com</strong> for a small subscription. See the
+      <a href="https://github.com/nibrahim/glocker/blob/master/INSTALL.md">setup guide</a>.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>Open source, for Linux.</span>
+    <span class="links">
+      <a href="https://github.com/nibrahim/glocker">GitHub</a>
+      <a href="https://my.glockerapp.com">Dashboard</a>
+      <a href="https://github.com/nibrahim/glocker/blob/master/INSTALL.md">Setup</a>
+    </span>
+  </footer>
+
+</div>
+</body>
+</html>
