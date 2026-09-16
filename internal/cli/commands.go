@@ -223,15 +223,12 @@ func formatSyncCounts(m map[string]int) string {
 	return fmt.Sprintf("%s (%d records)", strings.Join(parts, ", "), total)
 }
 
-// GetInfoResponse returns a formatted configuration information report.
+// GetInfoResponse returns a formatted configuration information report in the
+// same framed style as -status (see the frame helper in style.go).
 func GetInfoResponse(cfg *config.Config) string {
-	var response strings.Builder
+	f := newFrame("glocker", " · configuration")
 
-	response.WriteString("╔════════════════════════════════════════════════╗\n")
-	response.WriteString("║            CONFIGURATION INFO                  ║\n")
-	response.WriteString("╚════════════════════════════════════════════════╝\n\n")
-
-	// Get domain counts from enforcement state
+	// Domains: totals, then the time-based ones spelled out (capped).
 	_, blockedCount, _ := enforcement.GetEnforcementState()
 	timeWindowDomains := enforcement.GetTimeWindowDomains()
 	timeBasedCount := len(timeWindowDomains)
@@ -239,33 +236,23 @@ func GetInfoResponse(cfg *config.Config) string {
 	if alwaysBlockCount < 0 {
 		alwaysBlockCount = 0
 	}
-
-	response.WriteString(fmt.Sprintf("Total Domains: %d (%d always blocked, %d time-based)\n\n",
-		blockedCount, alwaysBlockCount, timeBasedCount))
-
-	// Show time-based blocked domains (from cached data)
-	if timeBasedCount > 0 {
-		response.WriteString(fmt.Sprintf("Time-Based Domains (%d) — blocked during the listed windows, accessible otherwise:\n", timeBasedCount))
-		for i, domain := range timeWindowDomains {
-			response.WriteString(fmt.Sprintf("  %s: blocked %s\n", domain.Name, formatTimeWindows(domain.BlockWindows)))
-			if i >= 9 && len(timeWindowDomains) > 10 {
-				response.WriteString(fmt.Sprintf("  ... and %d more\n", timeBasedCount-10))
-				break
-			}
+	f.head("domains")
+	f.row("blocked", fmt.Sprintf("%d", blockedCount))
+	f.row("always", fmt.Sprintf("%d", alwaysBlockCount))
+	f.row("time-based", fmt.Sprintf("%d", timeBasedCount)+dim("   blocked only in the listed windows"))
+	for i, domain := range timeWindowDomains {
+		f.detail(domain.Name + dim("  blocked "+formatTimeWindows(domain.BlockWindows)))
+		if i >= 9 && len(timeWindowDomains) > 10 {
+			f.detail(dim(fmt.Sprintf("… and %d more", timeBasedCount-10)))
+			break
 		}
-		response.WriteString("\n")
 	}
 
-	// Show forbidden programs with time windows
+	// Forbidden programs, bucketed. "always" requires both window lists empty;
+	// an allow-only program is forbidden outside those windows, not always.
 	if cfg.Programs.Enabled && len(cfg.Programs.List) > 0 {
-		response.WriteString(fmt.Sprintf("Forbidden Programs (%d) — killed on sight during the listed windows:\n", len(cfg.Programs.List)))
-
-		// Bucket programs by which windows they set. "always killed" requires
-		// both lists empty; an allow-only program is forbidden outside those
-		// windows, not unconditionally.
 		var alwaysBlocked []string
 		var windowed []config.ForbiddenProgram
-
 		for _, program := range cfg.Programs.List {
 			if len(program.KillWindows) == 0 && len(program.AllowWindows) == 0 {
 				alwaysBlocked = append(alwaysBlocked, program.Name)
@@ -274,65 +261,54 @@ func GetInfoResponse(cfg *config.Config) string {
 			}
 		}
 
+		f.head("programs")
 		if len(alwaysBlocked) > 0 {
-			response.WriteString(fmt.Sprintf("  killed always: %s\n", strings.Join(alwaysBlocked, ", ")))
+			f.row("killed always", strings.Join(alwaysBlocked, ", "))
 		}
-
 		for _, program := range windowed {
 			hasKill := len(program.KillWindows) > 0
 			hasAllow := len(program.AllowWindows) > 0
 			switch {
 			case hasKill && hasAllow:
-				response.WriteString(fmt.Sprintf("  %s: killed %s; otherwise allowed %s, killed outside\n",
-					program.Name, formatTimeWindows(program.KillWindows), formatTimeWindows(program.AllowWindows)))
+				f.detail(program.Name + dim("  killed "+formatTimeWindows(program.KillWindows)+
+					"; else allowed "+formatTimeWindows(program.AllowWindows)+", killed outside"))
 			case hasAllow:
-				response.WriteString(fmt.Sprintf("  %s: allowed %s, killed otherwise\n",
-					program.Name, formatTimeWindows(program.AllowWindows)))
+				f.detail(program.Name + dim("  allowed "+formatTimeWindows(program.AllowWindows)+", killed otherwise"))
 			default:
-				response.WriteString(fmt.Sprintf("  %s: killed %s\n",
-					program.Name, formatTimeWindows(program.KillWindows)))
+				f.detail(program.Name + dim("  killed "+formatTimeWindows(program.KillWindows)))
 			}
 		}
-		response.WriteString("\n")
 	}
 
-	// Show programs killed on block (browser DNS-cache flush)
+	// Programs killed on `glocker -block` (browser DNS-cache flush).
 	if len(cfg.Domains.KillOnBlock) > 0 {
-		response.WriteString(fmt.Sprintf("Killed On Block (%d) — terminated on `glocker -block` to flush browser DNS caches:\n",
-			len(cfg.Domains.KillOnBlock)))
-		response.WriteString(fmt.Sprintf("  %s\n\n", strings.Join(cfg.Domains.KillOnBlock, ", ")))
+		f.head("kill on block")
+		f.row("programs", strings.Join(cfg.Domains.KillOnBlock, ", "))
+		f.detail(dim("terminated on `glocker -block` to flush browser DNS caches"))
 	}
 
-	// Show sudoers restrictions
+	// Sudoers: sudo is permitted only during the listed windows.
 	if cfg.Sudoers.Enabled && len(cfg.Sudoers.AllowWindows) > 0 {
-		response.WriteString("Sudoers Restrictions — sudo is PERMITTED during the listed windows, blocked otherwise:\n")
-		response.WriteString(fmt.Sprintf("  User: %s\n", cfg.User))
-		response.WriteString(fmt.Sprintf("  sudo allowed %s\n\n", formatTimeWindows(cfg.Sudoers.AllowWindows)))
+		f.head("sudo")
+		f.row("user", cfg.User)
+		f.row("allowed", formatTimeWindows(cfg.Sudoers.AllowWindows)+dim("   blocked otherwise"))
 	}
 
-	// Show extension keywords
+	// Extension keywords.
 	if len(cfg.Content.Keywords.URLKeywords) > 0 || len(cfg.Content.Keywords.ContentKeywords) > 0 {
-		response.WriteString("Extension Keywords:\n")
-
-		if len(cfg.Content.Keywords.URLKeywords) > 0 {
-			response.WriteString(fmt.Sprintf("  URL Keywords (%d): %s\n",
-				len(cfg.Content.Keywords.URLKeywords),
-				strings.Join(cfg.Content.Keywords.URLKeywords, ", ")))
+		f.head("keywords")
+		if n := len(cfg.Content.Keywords.URLKeywords); n > 0 {
+			f.row(fmt.Sprintf("url (%d)", n), strings.Join(cfg.Content.Keywords.URLKeywords, ", "))
 		}
-
-		if len(cfg.Content.Keywords.ContentKeywords) > 0 {
-			response.WriteString(fmt.Sprintf("  Content Keywords (%d): %s\n",
-				len(cfg.Content.Keywords.ContentKeywords),
-				strings.Join(cfg.Content.Keywords.ContentKeywords, ", ")))
+		if n := len(cfg.Content.Keywords.ContentKeywords); n > 0 {
+			f.row(fmt.Sprintf("content (%d)", n), strings.Join(cfg.Content.Keywords.ContentKeywords, ", "))
 		}
-
-		if len(cfg.Content.Keywords.Whitelist) > 0 {
-			response.WriteString(fmt.Sprintf("  Whitelisted: %d domains\n", len(cfg.Content.Keywords.Whitelist)))
+		if n := len(cfg.Content.Keywords.Whitelist); n > 0 {
+			f.row("whitelisted", fmt.Sprintf("%d domains", n))
 		}
 	}
 
-	response.WriteString("\nEND\n")
-	return response.String()
+	return f.close() + "\nEND\n"
 }
 
 // formatTimeWindows converts time windows to a readable string.

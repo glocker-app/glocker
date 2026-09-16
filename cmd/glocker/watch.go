@@ -17,18 +17,18 @@ import (
 	"glocker/internal/ipc"
 )
 
-// statusFromSocket dials the running daemon and returns the status body (every
-// line up to the END sentinel, joined). The second return is false when the
-// socket can't be reached — typically because this process lacks root, since
-// the socket lives in a 0700 root-owned dir.
-func statusFromSocket() (string, bool) {
+// reportFromSocket dials the running daemon, sends cmd, and returns the body
+// (every line up to the END sentinel, joined). The second return is false when
+// the socket can't be reached — typically because this process lacks root,
+// since the socket lives in a 0700 root-owned dir.
+func reportFromSocket(cmd string) (string, bool) {
 	conn, err := net.Dial("unix", ipc.SocketPath)
 	if err != nil {
 		return "", false
 	}
 	defer conn.Close()
 
-	conn.Write([]byte("status\n"))
+	conn.Write([]byte(cmd + "\n"))
 	var b strings.Builder
 	sc := bufio.NewScanner(conn)
 	sc.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -40,6 +40,20 @@ func statusFromSocket() (string, bool) {
 		b.WriteByte('\n')
 	}
 	return b.String(), true
+}
+
+// statusFromSocket returns the live -status body from the daemon.
+func statusFromSocket() (string, bool) { return reportFromSocket("status") }
+
+// infoStatic renders the -info report from on-disk config when the daemon
+// socket can't be reached.
+func infoStatic() string {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return "  could not load config: " + err.Error() + "\n"
+	}
+	config.SetupLogging(cfg)
+	return strings.TrimSuffix(cli.GetInfoResponse(cfg), "\nEND\n") + "\n"
 }
 
 // statusStatic renders the fallback report from on-disk config when the daemon

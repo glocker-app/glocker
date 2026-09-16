@@ -23,6 +23,11 @@ func plainStatus(cfg *config.Config) string {
 	return testANSI.ReplaceAllString(GetStatusResponse(cfg, ServiceOnline), "")
 }
 
+// plainInfo is the same for the -info report.
+func plainInfo(cfg *config.Config) string {
+	return testANSI.ReplaceAllString(GetInfoResponse(cfg), "")
+}
+
 func TestGetStatusResponse(t *testing.T) {
 	cfg := &config.Config{
 		Domains: config.DomainsConfig{List: []config.Domain{
@@ -53,31 +58,31 @@ func TestGetStatusResponse_WithExtensionKeywords(t *testing.T) {
 		}},
 	}
 
-	response := GetInfoResponse(cfg)
+	response := plainInfo(cfg)
 
-	// Should contain extension keywords section
-	if !strings.Contains(response, "Extension Keywords:") {
-		t.Error("Response should contain 'Extension Keywords:'")
+	// Should contain the keywords section
+	if !strings.Contains(response, "keywords") {
+		t.Error("Response should contain the 'keywords' section")
 	}
 
 	// Should show URL keywords
-	if !strings.Contains(response, "URL Keywords (3):") {
-		t.Error("Response should show URL Keywords count")
+	if !strings.Contains(response, "url (3)") {
+		t.Error("Response should show URL keyword count")
 	}
 	if !strings.Contains(response, "gambling") || !strings.Contains(response, "casino") || !strings.Contains(response, "poker") {
 		t.Error("Response should contain all URL keywords")
 	}
 
 	// Should show content keywords
-	if !strings.Contains(response, "Content Keywords (2):") {
-		t.Error("Response should show Content Keywords count")
+	if !strings.Contains(response, "content (2)") {
+		t.Error("Response should show content keyword count")
 	}
 	if !strings.Contains(response, "bet") || !strings.Contains(response, "jackpot") {
 		t.Error("Response should contain all content keywords")
 	}
 
 	// Should show whitelist count
-	if !strings.Contains(response, "Whitelisted: 2 domains") {
+	if !strings.Contains(response, "whitelisted") || !strings.Contains(response, "2 domains") {
 		t.Error("Response should show whitelist count")
 	}
 }
@@ -95,7 +100,7 @@ func TestGetStatusResponse_WithManyKeywords(t *testing.T) {
 		}},
 	}
 
-	response := GetInfoResponse(cfg)
+	response := plainInfo(cfg)
 
 	// Should show all keywords (no truncation)
 	for _, keyword := range manyKeywords {
@@ -105,8 +110,8 @@ func TestGetStatusResponse_WithManyKeywords(t *testing.T) {
 	}
 
 	// Should show correct count
-	if !strings.Contains(response, "URL Keywords (12):") {
-		t.Error("Response should show correct URL Keywords count")
+	if !strings.Contains(response, "url (12)") {
+		t.Error("Response should show correct URL keyword count")
 	}
 }
 

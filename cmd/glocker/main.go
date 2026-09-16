@@ -540,36 +540,18 @@ func main() {
 
 	// Handle info command
 	if *infoFlag {
-		// Try to get info from socket first
-		if _, err := os.Stat(ipc.SocketPath); err == nil {
-			conn, err := net.Dial("unix", ipc.SocketPath)
-			if err == nil {
-				defer conn.Close()
-
-				conn.Write([]byte("info\n"))
-
-				scanner := bufio.NewScanner(conn)
-				for scanner.Scan() {
-					line := scanner.Text()
-					if line == "END" {
-						break
-					}
-					fmt.Println(line)
-				}
-				return
-			}
+		// GetInfoResponse emits ANSI colour (like -status); strip it when our
+		// own stdout isn't a TTY or NO_COLOR is set. Prefer the daemon's live
+		// render, fall back to on-disk config.
+		useColor := term.IsTerminal(int(os.Stdout.Fd())) && os.Getenv("NO_COLOR") == ""
+		body, live := reportFromSocket("info")
+		if !live {
+			body = infoStatic()
 		}
-
-		// Socket not available, need to load config for static info
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			log.Fatalf("Failed to load config: %v", err)
+		if !useColor {
+			body = stripANSI(body)
 		}
-		config.SetupLogging(cfg)
-
-		log.Println("(Service not running - showing configuration only)")
-		response := cli.GetInfoResponse(cfg)
-		fmt.Print(response)
+		fmt.Print(body)
 		return
 	}
 
