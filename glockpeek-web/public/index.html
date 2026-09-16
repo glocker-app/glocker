@@ -29,6 +29,7 @@
       <ul class="nav" id="nav">
         <li><button data-view="overview" class="active">Overview</button></li>
         <li><button data-view="analytics">Analytics</button></li>
+        <li id="nav-config" hidden><button data-view="config">Config</button></li>
         <li id="nav-devices" hidden><button data-view="devices">Devices</button></li>
         <li id="nav-users" class="nav-admin" hidden><button data-view="users">Admin</button></li>
       </ul>
@@ -255,6 +256,18 @@
           </section>
           </div><!-- /subview usage -->
         </section><!-- /view analytics -->
+
+        <section class="view" data-view="config">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Configuration</h2>
+              <p class="panel-sub">What each connected device is enforcing — services, keywords, forbidden programs and guardrails. Synced end-to-end encrypted; decrypted here in your browser. <span id="config-sub"></span></p>
+            </div>
+            <div id="config-list" class="config-list"></div>
+            <p id="config-empty" class="config-empty" hidden>No configuration synced yet. It shows up here once a device running a recent glocker syncs its config.</p>
+            <p id="config-error" class="login-error" hidden></p>
+          </section>
+        </section>
 
         <section class="view" data-view="devices">
           <section class="panel">

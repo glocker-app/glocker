@@ -1092,3 +1092,34 @@ canvas { max-height: 260px; }
 }
 .sync-val { font-family: var(--mono); font-size: 13.5px; color: var(--ink); text-align: right; }
 .sync-val.sync-stale { color: var(--ink-faint); }
+
+/* ── Config tab ─────────────────────────────────────────── */
+.config-list { display: flex; flex-direction: column; gap: 16px; }
+.config-empty { color: var(--ink-faint); font-size: 0.9rem; }
+
+.config-card { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); overflow: hidden; }
+.cfg-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+.cfg-name { font-family: var(--display); font-size: 1rem; color: var(--ink); }
+.cfg-when { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+.cfg-locked { padding: 14px; color: var(--ink-faint); font-size: 0.88rem; }
+
+.cfg-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 22px; padding: 14px; }
+.cfg-section h4 {
+  margin: 0 0 8px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--signal); font-weight: 600;
+}
+
+.svc-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.svc-pill {
+  font-size: 11px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--line-2);
+  white-space: nowrap;
+}
+.svc-pill.on { color: var(--safe); border-color: color-mix(in srgb, var(--safe) 45%, var(--line-2)); background: color-mix(in srgb, var(--safe) 12%, transparent); }
+.svc-pill.off { color: var(--ink-faint); opacity: 0.7; }
+
+.cfg-row { display: flex; gap: 10px; padding: 2px 0; font-size: 0.85rem; line-height: 1.4; }
+.cfg-k { flex: 0 0 auto; min-width: 96px; color: var(--ink-faint); }
+.cfg-v { flex: 1 1 auto; color: var(--ink-dim); word-break: break-word; }

@@ -19,6 +19,7 @@ const state = { data: null, winStart: null, winEnd: null, view: "overview", anal
 const VIEW_TITLES = {
   overview: "Overview",
   analytics: "Analytics",
+  config: "Config",
   devices: "Devices",
   users: "Admin",
 };
@@ -515,6 +516,11 @@ async function bootDashboard(me) {
     renderTagContributors(state.selectedTag, state.lastTagUsage);
   });
 
+  // The Config tab is available in both local and hosted mode (a device's own
+  // config in local mode, every device's in hosted). Shown always; it carries an
+  // empty state until an agent has synced its config.
+  document.getElementById("nav-config").hidden = false;
+
   restoreWindow(); // pick the window (saved cookie or default) now data is loaded
   setupRules();
   renderFooter();
@@ -546,6 +552,7 @@ function setView(view) {
   const rr = document.getElementById("range-readout");
   if (rr) rr.hidden = view !== "analytics"; // the range only applies to Analytics
   if (view === "analytics") setSubtab(state.analyticsTab || "history");
+  if (view === "config") renderConfig();
   if (view === "devices") renderDevices();
   if (view === "users") renderUsers();
   // Charts built while their view was display:none have zero size; fix on reveal.
@@ -2997,6 +3004,174 @@ function fmtAgo(ms) {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+// ── Config tab ──────────────────────────────────────────
+// The per-device configuration snapshot the agent syncs (see /api/config). The
+// blob is opaque to the server; the browser decrypts it (if encrypted) and
+// renders it. The JSON shape parsed below is produced by the agent's config
+// subset builder (internal/syncer) — keep the two in step.
+
+const CONFIG_LOCKED = Symbol("locked");
+
+// SERVICE_LABELS maps the services object's keys to human labels, in display order.
+const SERVICE_LABELS = [
+  ["hosts", "Website blocking"],
+  ["forbiddenPrograms", "Forbidden programs"],
+  ["contentMonitoring", "Content monitoring"],
+  ["violationTracking", "Violation tracking"],
+  ["usageMonitor", "Usage tracking"],
+  ["sudoers", "Sudo restrictions"],
+  ["tamperDetection", "Tamper detection"],
+  ["panic", "Panic mode"],
+  ["sync", "Sync to glockpeek"],
+];
+
+// escHtml escapes a string for safe interpolation into innerHTML. Config content
+// (keywords, program names, domains) is user data, so every interpolation of it
+// goes through here.
+function escHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+
+// fmtWindows renders a TimeWindow array like the CLI: "09:00-17:00 (Mon,Tue)";
+// an empty list means the field's "always" default.
+function fmtWindows(wins) {
+  if (!Array.isArray(wins) || wins.length === 0) return "always";
+  return wins
+    .map((w) => `${escHtml(w.start)}-${escHtml(w.end)} (${escHtml((w.days || []).join(","))})`)
+    .join("; ");
+}
+
+// decryptConfigBlob turns one device's stored blob into its parsed config object.
+// Plaintext rows parse directly; encrypted rows are opened under the master key
+// (unlocking the vault first if needed). Returns CONFIG_LOCKED when it can't be
+// decrypted or parsed.
+async function decryptConfigBlob(c) {
+  try {
+    if (!c.encrypted) return JSON.parse(c.config);
+    if (!masterKey && !(await unlockVault())) return CONFIG_LOCKED;
+    const aad = new TextEncoder().encode(`${c.ts}|deviceconfig|config`);
+    const plain = new TextDecoder().decode(await decryptField(masterKey, c.config, aad));
+    return JSON.parse(plain);
+  } catch {
+    return CONFIG_LOCKED;
+  }
+}
+
+// renderConfig fetches every device's snapshot, decrypts each in the browser, and
+// renders one card per device. Empty state until an agent has synced its config.
+async function renderConfig() {
+  const listEl = document.getElementById("config-list");
+  const emptyEl = document.getElementById("config-empty");
+  const errEl = document.getElementById("config-error");
+  const subEl = document.getElementById("config-sub");
+  errEl.hidden = true;
+
+  let configs = [];
+  try {
+    const r = await fetch("api/config", { credentials: "same-origin" });
+    if (!r.ok) throw new Error(`server returned ${r.status}`);
+    configs = (await r.json()).configs || [];
+  } catch (e) {
+    listEl.innerHTML = "";
+    emptyEl.hidden = true;
+    if (subEl) subEl.textContent = "";
+    errEl.textContent = `Could not load configuration: ${e.message}`;
+    errEl.hidden = false;
+    return;
+  }
+
+  if (configs.length === 0) {
+    listEl.innerHTML = "";
+    if (subEl) subEl.textContent = "";
+    emptyEl.hidden = false;
+    return;
+  }
+  emptyEl.hidden = true;
+  if (subEl) subEl.textContent = `${configs.length} device${configs.length === 1 ? "" : "s"}.`;
+
+  const cards = [];
+  for (const c of configs) {
+    const parsed = await decryptConfigBlob(c);
+    cards.push(renderConfigCard(c, parsed === CONFIG_LOCKED ? null : parsed, parsed === CONFIG_LOCKED));
+  }
+  listEl.innerHTML = cards.join("");
+}
+
+// renderConfigCard builds one device's card. cfg is the parsed subset, or null
+// when the snapshot is locked/unreadable.
+function renderConfigCard(c, cfg, locked) {
+  const name = c.name ? escHtml(c.name) : "This machine";
+  const when = c.ts ? escHtml(fmtAgo(c.ts)) : "";
+  const head = `<div class="cfg-head"><span class="cfg-name">${name}</span>` +
+    `<span class="cfg-when">${c.encrypted ? "🔒 " : ""}${when}</span></div>`;
+
+  if (locked) {
+    return `<div class="config-card">${head}<div class="cfg-locked">Encrypted under a key this browser can't open.</div></div>`;
+  }
+  if (!cfg || typeof cfg !== "object") {
+    return `<div class="config-card">${head}<div class="cfg-locked">Unreadable snapshot.</div></div>`;
+  }
+
+  const sections = [];
+
+  // Services as on/off pills.
+  const svc = cfg.services || {};
+  const pills = SERVICE_LABELS.map(([k, label]) => {
+    const on = !!svc[k];
+    const extra = k === "sync" && on && svc.syncEncrypted ? " · e2e" : "";
+    return `<span class="svc-pill ${on ? "on" : "off"}">${escHtml(label + extra)}</span>`;
+  }).join("");
+  sections.push(`<div class="cfg-section"><h4>Services</h4><div class="svc-pills">${pills}</div></div>`);
+
+  // Keywords.
+  const kw = cfg.keywords || {};
+  const kwRows = [];
+  if ((kw.url || []).length) kwRows.push(cfgRow(`URL (${kw.url.length})`, kw.url.map(escHtml).join(", ")));
+  if ((kw.content || []).length) kwRows.push(cfgRow(`Content (${kw.content.length})`, kw.content.map(escHtml).join(", ")));
+  if (kw.whitelistCount) kwRows.push(cfgRow("Whitelisted", `${kw.whitelistCount} domains`));
+  if (kwRows.length) sections.push(`<div class="cfg-section"><h4>Keywords</h4>${kwRows.join("")}</div>`);
+
+  // Forbidden programs.
+  const pr = cfg.programs || {};
+  const prRows = [];
+  if ((pr.alwaysKilled || []).length) prRows.push(cfgRow("Killed always", pr.alwaysKilled.map(escHtml).join(", ")));
+  for (const p of pr.windowed || []) {
+    let desc;
+    if ((p.kill || []).length && (p.allow || []).length) desc = `killed ${fmtWindows(p.kill)}; else allowed ${fmtWindows(p.allow)}, killed outside`;
+    else if ((p.allow || []).length) desc = `allowed ${fmtWindows(p.allow)}, killed otherwise`;
+    else desc = `killed ${fmtWindows(p.kill)}`;
+    prRows.push(cfgRow(escHtml(p.name) + (p.extendible ? " ⏳" : ""), desc));
+  }
+  if (prRows.length) sections.push(`<div class="cfg-section"><h4>Forbidden programs</h4>${prRows.join("")}</div>`);
+
+  // Domains.
+  const dm = cfg.domains || {};
+  const dmRows = [];
+  if (dm.blocked != null) dmRows.push(cfgRow("Blocked", `${dm.blocked}`));
+  if (dm.alwaysBlocked != null) dmRows.push(cfgRow("Always", `${dm.alwaysBlocked}`));
+  for (const d of dm.timeBased || []) dmRows.push(cfgRow(escHtml(d.name), `blocked ${fmtWindows(d.block)}`));
+  if (dmRows.length) sections.push(`<div class="cfg-section"><h4>Domains</h4>${dmRows.join("")}</div>`);
+
+  // Guardrails.
+  const g = cfg.guardrails || {};
+  const gRows = [];
+  if ((g.sudoAllow || []).length) gRows.push(cfgRow("Sudo allowed", fmtWindows(g.sudoAllow)));
+  if (g.unblockMaxPerDay != null) gRows.push(cfgRow("Unblocks/day", g.unblockMaxPerDay > 0 ? `${g.unblockMaxPerDay}` : "no cap"));
+  if (g.violationMax != null) gRows.push(cfgRow("Violation limit", `${g.violationMax} in ${g.violationWindowMin ?? "?"}m`));
+  if (g.panicDurationMin != null) gRows.push(cfgRow("Panic duration", `${g.panicDurationMin}m`));
+  if (g.checkIntervalSec != null) gRows.push(cfgRow("Check interval", `${g.checkIntervalSec}s`));
+  if (gRows.length) sections.push(`<div class="cfg-section"><h4>Guardrails</h4>${gRows.join("")}</div>`);
+
+  return `<div class="config-card">${head}<div class="cfg-body">${sections.join("")}</div></div>`;
+}
+
+// cfgRow is a label/value line inside a config section. label and valueHtml are
+// expected to be already-escaped or literal-safe.
+function cfgRow(label, valueHtml) {
+  return `<div class="cfg-row"><span class="cfg-k">${label}</span><span class="cfg-v">${valueHtml}</span></div>`;
 }
 
 // renderSync fills the Data-sync panel from /api/sync: when the daemon last
