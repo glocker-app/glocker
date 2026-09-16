@@ -114,14 +114,23 @@
           <!-- Vulnerability map: the weekday × hour grid already carries the
                by-weekday and by-hour breakdowns, so those separate charts were
                dropped as redundant. -->
-          <section class="panel">
-            <div class="panel-head">
-              <h2>Vulnerability map</h2>
-              <p class="panel-sub">Violations by hour &times; weekday. Brighter is more exposed.</p>
-            </div>
-            <div id="heatmap" class="heatmap"></div>
-            <div class="heatmap-legend" id="heatmap-legend"></div>
-          </section>
+          <div class="grid-2">
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Vulnerability map</h2>
+                <p class="panel-sub">Violations by hour &times; weekday. Brighter is more exposed.</p>
+              </div>
+              <div id="heatmap" class="heatmap"></div>
+              <div class="heatmap-legend" id="heatmap-legend"></div>
+            </section>
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Unblocks by hour</h2>
+                <p class="panel-sub">When in the day you unblock, coloured by reason (aggregated over the window &mdash; never crowds).</p>
+              </div>
+              <div class="tall-chart"><canvas id="chart-unblock-hour"></canvas></div>
+            </section>
+          </div>
 
           <!-- Bypasses folded into History: exposure over time + deliberate grants -->
           <div class="grid-2">

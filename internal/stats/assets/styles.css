@@ -18,6 +18,7 @@
   --danger: #ff4d4d;   /* violation / exposure */
   --danger-deep: #b81d24;
   --exposed: #c0468f;  /* unmanaged — a different kind of vulnerability */
+  --exposed-dim: #7c3a5e; /* downtime — same family as unmanaged, one step back */
 
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --sans: "IBM Plex Sans", system-ui, sans-serif;

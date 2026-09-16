@@ -697,8 +697,9 @@ function render() {
   renderStreak(state.data.violations); // standing, all-history — not windowed
   renderReadout(violations, unblocks, unmanaged, heat, b);
   renderHeatmap(heat);
+  renderUnblocksByHour(unblocks);
   renderCalendar(violations, b);
-  renderTimeline(violations, b);
+  renderTimeline(violations, unblocks, unmanaged, b);
   resetDayDetail();
   renderExposure(unmanaged, downtime, b);
   renderUnblockList(unblocks);
@@ -1067,7 +1068,7 @@ function renderHeatmap(heat) {
     <span class="legend-key"><span class="swatch hatch"></span> mostly unmanaged (glocker off)</span>`;
 }
 
-function renderTimeline(violations, b) {
+function renderTimeline(violations, unblocks, unmanaged, b) {
   const days = Math.round((b.end - b.start) / DAY) + 1;
   const labels = [], data = [], dayTs = [];
   const counts = new Map();
@@ -1090,12 +1091,56 @@ function renderTimeline(violations, b) {
     return granularity === "week" ? weekdayIndex(d) === 0 : d.getDate() === 1;
   };
 
-  // Hovering a point fills the day inspector with that day's breakdown.
+  // Map a timestamp to an x pixel on the (categorical, day-spaced) axis: line
+  // points sit at i/(days-1) across the plot, so a ts at fractional day f lands
+  // at f/(days-1). Gives real intra-day resolution on a 1–2 day window and still
+  // places markers correctly on a long one.
+  const now = state.data.now;
+  const xAt = (area, ts) => {
+    if (days <= 1) return area.left + area.width / 2;
+    const f = (ts - b.start) / DAY;
+    return area.left + Math.max(0, Math.min(1, f / (days - 1))) * area.width;
+  };
+
+  // Behind the line: shade the stretches glocker was unmanaged, in the same pink
+  // used for the calendar hatch, so "off" reads consistently across the tab.
+  const underlay = (c) => {
+    const { ctx, chartArea: a } = c;
+    ctx.save();
+    ctx.fillStyle = "rgba(192,70,143,0.18)";
+    for (const p of unmanaged) {
+      const x1 = xAt(a, Math.max(p.start, b.start));
+      const x2 = xAt(a, Math.min(p.open ? now : p.end, b.end));
+      if (x2 > x1) ctx.fillRect(x1, a.top, x2 - x1, a.height);
+    }
+    ctx.restore();
+  };
+
+  // On top: a thin vertical marker at each unblock's exact time, coloured by
+  // reason (same mapping as the by-hour chart).
+  const rc = reasonColorMap(unblocks);
+  const overlay = (c) => {
+    const { ctx, chartArea: a } = c;
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    ctx.globalAlpha = 0.85;
+    for (const u of unblocks) {
+      if (u.ts < b.start || u.ts > b.end) continue;
+      ctx.strokeStyle = rc.get((u.reason || "(none)").trim() || "(none)") || cssVar("var(--exposed)");
+      const x = xAt(a, u.ts);
+      ctx.beginPath();
+      ctx.moveTo(x, a.top);
+      ctx.lineTo(x, a.bottom);
+      ctx.stroke();
+    }
+    ctx.restore();
+  };
+
   lineChart("chart-timeline", labels, data, {
     onPoint: (index) => {
       if (index != null && dayTs[index] != null) showDay(dayTs[index]);
     },
-    gridAt,
+    gridAt, underlay, overlay,
   });
 }
 
@@ -1479,10 +1524,30 @@ function renderExposure(unmanaged, downtime, b) {
   const labels = buckets.map((bk) => bk.label);
   const unm = buckets.map((bk) => overlapHrs(unmanaged, bk.start, bk.end));
   const down = buckets.map((bk) => overlapHrs(downtime, bk.start, bk.end));
+  // Colours match the tab's shared language: --exposed (pink) is "unmanaged"
+  // everywhere (calendar hatch, timeline shading), and downtime is the same
+  // family one step back — so there's one "not guarding" colour to remember.
   stackedBar("chart-exposure", labels, [
-    { label: "unmanaged", data: unm, color: cssVar("var(--danger)") },
-    { label: "downtime", data: down, color: cssVar("var(--signal)") },
-  ]);
+    { label: "unmanaged", data: unm, color: cssVar("var(--exposed)") },
+    { label: "downtime", data: down, color: cssVar("var(--exposed-dim)") },
+  ], { yUnit: "h", precision: 1 });
+}
+
+// renderUnblocksByHour: unblocks aggregated into 24 hour-of-day buckets, stacked
+// by reason (same reason→colour map as the timeline markers). Window-agnostic —
+// always 24 bars — so it never crowds, and it surfaces the time-of-day pattern
+// ("when do I cave"). Sits beside the vulnerability map.
+function renderUnblocksByHour(unblocks) {
+  const rc = reasonColorMap(unblocks);
+  const labels = Array.from({ length: 24 }, (_, h) => (h % 3 === 0 ? String(h).padStart(2, "0") : ""));
+  const series = [...rc.keys()].map((r) => {
+    const data = new Array(24).fill(0);
+    for (const u of unblocks) {
+      if (((u.reason || "(none)").trim() || "(none)") === r) data[new Date(u.ts).getHours()]++;
+    }
+    return { label: r, data, color: rc.get(r) };
+  });
+  stackedBar("chart-unblock-hour", labels, series, { yUnit: "", precision: 0 });
 }
 
 // renderUnblockList shows deliberate temporary grants dated (was a reason→count
@@ -1509,16 +1574,18 @@ function renderUnblockList(unblocks) {
     .join("");
 }
 
-// stackedBar renders a stacked bar chart (hours on y) with a small legend.
-function stackedBar(id, labels, series) {
+// stackedBar renders a stacked bar chart with a small legend. yUnit suffixes the
+// y-axis + tooltip ("h" for hours, "" for counts); precision is the tooltip's
+// decimal places.
+function stackedBar(id, labels, series, { yUnit = "", precision = 0 } = {}) {
   destroy(id);
   const ctx = document.getElementById(id).getContext("2d");
   const opts = baseOpts();
   opts.scales.x.stacked = true;
   opts.scales.y.stacked = true;
-  opts.scales.y.ticks.callback = (v) => v + "h";
+  opts.scales.y.ticks.callback = (v) => v + yUnit;
   opts.plugins.legend = { display: true, position: "bottom", labels: { color: TICK, boxWidth: 10, font: { family: "IBM Plex Mono", size: 10 } } };
-  opts.plugins.tooltip = { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y.toFixed(1)}h` } };
+  opts.plugins.tooltip = { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y.toFixed(precision)}${yUnit}` } };
   state.charts[id] = new Chart(ctx, {
     type: "bar",
     data: { labels, datasets: series.map((s) => ({ label: s.label, data: s.data, backgroundColor: s.color, borderWidth: 0 })) },
@@ -1847,6 +1914,17 @@ const TAG_COLORS = [
   "#f0a020", "#2f9e8f", "#4a90d9", "#c0468f", "#7bc86c",
   "#9b6dff", "#ff4d4d", "#e8734a", "#54c7d6", "#c9a227",
 ];
+
+// reasonColorMap assigns each unblock reason a stable colour from the palette
+// (first-appearance order, sorted so it's deterministic across renders). Shared
+// by the timeline unblock markers and the by-hour chart so a reason is the same
+// colour in both. Blank reasons collapse to "(none)".
+function reasonColorMap(unblocks) {
+  const reasons = [...new Set(unblocks.map((u) => (u.reason || "(none)").trim() || "(none)"))].sort();
+  const m = new Map();
+  reasons.forEach((r, i) => m.set(r, TAG_COLORS[i % TAG_COLORS.length]));
+  return m;
+}
 
 function renderUsageTags(tu, available) {
   const wrap = document.getElementById("usage-tags-wrap");
@@ -2449,7 +2527,7 @@ function barChart(id, labels, data, colorVar) {
   });
 }
 
-function lineChart(id, labels, data, { onPoint, gridAt } = {}) {
+function lineChart(id, labels, data, { onPoint, gridAt, underlay, overlay } = {}) {
   destroy(id);
   const ctx = document.getElementById(id).getContext("2d");
   const grad = ctx.createLinearGradient(0, 0, 0, 240);
@@ -2470,6 +2548,13 @@ function lineChart(id, labels, data, { onPoint, gridAt } = {}) {
       color: (c) => (gridAt(c.index) ? GRID : "transparent"),
     };
   }
+  // underlay draws behind the line (unmanaged shading); overlay on top (unblock
+  // markers). Both get (chart) and use its chartArea for time→pixel mapping.
+  const xplugin = (underlay || overlay) ? [{
+    id: id + "-xdraw",
+    beforeDatasetsDraw: (c) => { if (underlay) underlay(c); },
+    afterDatasetsDraw: (c) => { if (overlay) overlay(c); },
+  }] : [];
   state.charts[id] = new Chart(ctx, {
     type: "line",
     data: {
@@ -2487,6 +2572,7 @@ function lineChart(id, labels, data, { onPoint, gridAt } = {}) {
       }],
     },
     options: opts,
+    plugins: xplugin,
   });
 }
 
