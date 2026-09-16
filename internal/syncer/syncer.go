@@ -330,13 +330,17 @@ func (s *Syncer) syncOnce() {
 func (s *Syncer) build() (Payload, map[string]int64) {
 	var p Payload
 	p.Encrypted = s.e2e // batch-level marker: true iff we're encrypting sensitive fields
+	// Each source skips records at-or-before its cursor (strict `> cur`), matching
+	// PendingCounts. Using `>= cur` re-sent the record sitting exactly at the
+	// cursor's max TS every tick — harmless to glockpeek (RecordID dedups) but it
+	// inflated the "session" push tally forever even when pending was 0.
 	max := map[string]int64{}
 
 	if rows, err := reports.ParseReportsLog(s.paths.reports); err == nil {
 		cur := s.cursors["reports"]
 		for _, e := range rows {
 			ts := e.Timestamp.UnixMilli()
-			if ts < cur {
+			if ts <= cur {
 				continue
 			}
 			p.Violations = append(p.Violations, violation{
@@ -358,7 +362,7 @@ func (s *Syncer) build() (Payload, map[string]int64) {
 				continue
 			}
 			ts := e.UnblockTime.UnixMilli()
-			if ts < cur {
+			if ts <= cur {
 				continue
 			}
 			u := unblock{
@@ -380,7 +384,7 @@ func (s *Syncer) build() (Payload, map[string]int64) {
 		cur := s.cursors["lifecycle"]
 		for _, e := range rows {
 			ts := e.Timestamp.UnixMilli()
-			if ts < cur {
+			if ts <= cur {
 				continue
 			}
 			p.Lifecycle = append(p.Lifecycle, lifecycle{
@@ -397,7 +401,7 @@ func (s *Syncer) build() (Payload, map[string]int64) {
 		cur := s.cursors["heartbeat"]
 		for _, e := range rows {
 			ts := e.Timestamp.UnixMilli()
-			if ts < cur {
+			if ts <= cur {
 				continue
 			}
 			p.Heartbeat = append(p.Heartbeat, heartbeat{TS: ts, Alive: e.Alive})
@@ -408,7 +412,7 @@ func (s *Syncer) build() (Payload, map[string]int64) {
 	if rows, err := parseUsageLog(s.paths.usage); err == nil {
 		cur := s.cursors["usage"]
 		for _, r := range rows {
-			if r.TS < cur {
+			if r.TS <= cur {
 				continue
 			}
 			// The window title is the sensitive bit (document/URL/message text);

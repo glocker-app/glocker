@@ -146,11 +146,13 @@ func TestSeedCursorsFromGlockpeek(t *testing.T) {
 		t.Fatalf("cursor not seeded: %v", s.cursors)
 	}
 
-	// build() keeps only ts >= mid: the boundary record + the later one (2 of 3),
-	// dropping the already-synced first record.
+	// build() keeps only ts > mid: glockpeek already holds up to (and including)
+	// the middle record, so we send just the later one (1 of 3). Re-sending the
+	// boundary record glockpeek already has was the bug that made the "session"
+	// push tally climb forever while pending stayed 0.
 	p, _ := s.build()
-	if len(p.Violations) != 2 {
-		t.Errorf("seeding should trim to 2 (>= cursor), got %d", len(p.Violations))
+	if len(p.Violations) != 1 {
+		t.Errorf("seeding should trim to 1 (> cursor), got %d", len(p.Violations))
 	}
 }
 
