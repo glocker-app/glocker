@@ -542,7 +542,7 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 #chart-timeline { cursor: pointer; }
 /* Timeline is a compact sparkline — the calendar carries the detailed per-day
    view, so the trend line just needs to show shape, not fill a tall panel. */
-.spark-wrap { position: relative; height: 88px; }
+.spark-wrap { position: relative; height: 108px; }
 .tl-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px;
   font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
 .tl-key { display: inline-flex; align-items: center; gap: 6px; }
@@ -551,6 +551,33 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .tl-band { width: 14px; height: 11px; border-radius: 2px; background: rgba(192, 70, 143, 0.3); }
 .tl-tick { width: 3px; height: 12px; border-radius: 1px; background: linear-gradient(var(--signal), var(--safe)); }
 .tl-sel { width: 12px; height: 11px; border-radius: 2px; background: rgba(255, 255, 255, 0.14); }
+.tl-line2 { width: 16px; height: 2px; background: var(--safe); }
+
+/* Analytics sub-tabs (History / Usage) beneath the shared range strip. */
+.subtabs { display: flex; gap: 8px; margin: 18px 0 4px; }
+.subtabs button {
+  font-family: var(--mono); font-size: 12.5px; color: var(--ink-dim);
+  background: transparent; border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 7px 16px; cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.subtabs button:hover { color: var(--ink); }
+.subtabs button.active { color: #07090d; background: var(--signal); border-color: var(--signal); }
+.subview { display: none; }
+.subview.active { display: block; }
+
+/* Floating window readout — fixed so the selected range stays visible while
+   scrolling the detail views. */
+.range-readout {
+  position: fixed; top: 16px; right: 22px; z-index: 40;
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 12.5px; color: var(--ink);
+  background: rgba(13, 19, 32, 0.92); border: 1px solid var(--line-2);
+  border-radius: 999px; padding: 7px 14px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+.range-readout .rr-arrow { color: var(--ink-faint); }
+.range-readout .rr-days { color: var(--signal); font-size: 11px; margin-left: 2px; }
 
 /* Selected day: a bright ring on the calendar cell, mirrored by the timeline's
    selected-day band, so clicking one shows the selection in the other. */

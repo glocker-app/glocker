@@ -28,8 +28,7 @@
 
       <ul class="nav" id="nav">
         <li><button data-view="overview" class="active">Overview</button></li>
-        <li><button data-view="history">History</button></li>
-        <li><button data-view="usage">Usage</button></li>
+        <li><button data-view="analytics">Analytics</button></li>
         <li id="nav-devices" hidden><button data-view="devices">Devices</button></li>
         <li id="nav-users" class="nav-admin" hidden><button data-view="users">Admin</button></li>
       </ul>
@@ -43,17 +42,12 @@
     <div class="content">
       <header class="main-header">
         <h2 class="view-title" id="view-title">Overview</h2>
-        <div class="range" id="range-control">
-          <label>window</label>
-          <div class="range-buttons" id="range-buttons"></div>
-          <div class="range-nav" id="range-nav">
-            <button id="range-prev" title="Previous window" aria-label="Previous window">&lsaquo;</button>
-            <span class="range-label" id="range-label"></span>
-            <button id="range-next" title="Next window" aria-label="Next window">&rsaquo;</button>
-          </div>
-        </div>
         <button id="refresh-btn" class="btn-ghost" type="button" title="Refresh data">&#8635; Refresh</button>
       </header>
+
+      <!-- Floating window readout: fixed so the selected range stays visible
+           while scrolling the detail views. Shown only on Analytics. -->
+      <div id="range-readout" class="range-readout" hidden></div>
 
       <main id="dash" hidden>
         <!-- Overview -->
@@ -83,7 +77,28 @@
         </section>
 
         <!-- History (with Patterns widgets appended below) -->
-        <section class="view" data-view="history">
+        <section class="view" data-view="analytics">
+          <!-- Shared range selector: brush the all-history strip to pick the
+               window; both sub-tabs below reflect it. -->
+          <section class="panel strip-panel">
+            <div class="panel-head">
+              <h2>Range</h2>
+              <p class="panel-sub">Drag across the strip to choose the window — History and Usage below reflect it. Lines are violations and unblocks per day; the pink band is unmanaged time.</p>
+            </div>
+            <div class="spark-wrap"><canvas id="chart-timeline"></canvas></div>
+            <div class="tl-legend">
+              <span class="tl-key"><span class="tl-sw tl-line"></span> violations/day</span>
+              <span class="tl-key"><span class="tl-sw tl-line2"></span> unblocks/day</span>
+              <span class="tl-key"><span class="tl-sw tl-band"></span> unmanaged</span>
+            </div>
+          </section>
+
+          <nav class="subtabs" id="analytics-subtabs">
+            <button data-subtab="history" class="active">History</button>
+            <button data-subtab="usage">Usage</button>
+          </nav>
+
+          <div class="subview active" data-subtab="history">
           <div class="history">
             <div class="history-main">
               <section class="panel">
@@ -92,20 +107,6 @@
                   <p class="panel-sub">Each cell is a day. Green = clean &amp; managed, red = violations, hatched = unmanaged (glocker off). Click a day for details.</p>
                 </div>
                 <div id="calendar" class="calendar"></div>
-              </section>
-
-              <section class="panel">
-                <div class="panel-head">
-                  <h2>Timeline</h2>
-                  <p class="panel-sub">Violations per day across the window. Click a point for details.</p>
-                </div>
-                <div class="spark-wrap"><canvas id="chart-timeline"></canvas></div>
-                <div class="tl-legend">
-                  <span class="tl-key"><span class="tl-sw tl-line"></span> violations/day</span>
-                  <span class="tl-key"><span class="tl-sw tl-band"></span> unmanaged</span>
-                  <span class="tl-key"><span class="tl-sw tl-tick"></span> unblock (by reason)</span>
-                  <span class="tl-key"><span class="tl-sw tl-sel"></span> selected day</span>
-                </div>
               </section>
             </div>
 
@@ -166,10 +167,9 @@
             </div>
             <div id="ignored-list" class="ign-list"></div>
           </section>
-        </section>
+          </div><!-- /subview history -->
 
-        <!-- Usage -->
-        <section class="view" data-view="usage">
+          <div class="subview" data-subtab="usage">
           <section class="readout" id="usage-readout"></section>
 
           <!-- Per-day activity -->
@@ -242,7 +242,8 @@
               </div>
             </div>
           </section>
-        </section>
+          </div><!-- /subview usage -->
+        </section><!-- /view analytics -->
 
         <section class="view" data-view="devices">
           <section class="panel">

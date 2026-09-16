@@ -10,23 +10,15 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY = 86400000;
 const HOUR = 3600000;
 
-const RANGES = [
-  { id: "1d", label: "1d", days: 1 },
-  { id: "1w", label: "1w", days: 7 },
-  { id: "30d", label: "30d", days: 30 },
-  { id: "90d", label: "90d", days: 90 },
-  { id: "1y", label: "1y", days: 365 },
-  { id: "all", label: "all", days: null },
-];
-
-// offset counts fixed windows back from the most recent: 0 = latest window
-// ending now, -1 = the window immediately before it, etc.
-const state = { data: null, range: "30d", offset: 0, view: "overview", charts: {}, rules: [], tagColors: {}, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null };
+// The window is an arbitrary [winStart, winEnd] range, chosen by brushing the
+// all-history timeline strip at the top (no more fixed presets). Null until the
+// first data load picks a default (see defaultWindow).
+const DEFAULT_WINDOW_DAYS = 30;
+const state = { data: null, winStart: null, winEnd: null, view: "overview", analyticsTab: "history", charts: {}, rules: [], tagColors: {}, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null };
 
 const VIEW_TITLES = {
   overview: "Overview",
-  history: "History",
-  usage: "Usage",
+  analytics: "Analytics",
   devices: "Devices",
   users: "Admin",
 };
@@ -341,8 +333,6 @@ async function bootDashboard(me) {
   if (me && me.encrypted) {
     await unlockVault();
   }
-  restoreWindow(); // apply the saved range/offset before building controls
-  buildRangeButtons();
   try {
     const res = await fetch("api/data");
     if (res.status === 401) { showLogin(); return; }
@@ -465,6 +455,12 @@ async function bootDashboard(me) {
   });
   window.addEventListener("hashchange", () => setView(viewFromHash()));
 
+  // Analytics sub-tabs (History / Usage) share the strip + window above them.
+  document.getElementById("analytics-subtabs").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-subtab]");
+    if (btn) setSubtab(btn.dataset.subtab);
+  });
+
   // Mark a violation as a false positive from the day-detail hit list.
   document.getElementById("day-detail").addEventListener("click", (e) => {
     const btn = e.target.closest(".hit-x");
@@ -494,16 +490,18 @@ async function bootDashboard(me) {
     renderTagContributors(state.selectedTag, state.lastTagUsage);
   });
 
-  clampOffset(); // a saved offset may point past the data we actually have
+  restoreWindow(); // pick the window (saved cookie or default) now data is loaded
   setupRules();
   renderFooter();
   render();
   setView(viewFromHash()); // honour a deep-linked view like #usage on load
 }
 
-// The view named by the URL hash (e.g. "#usage"), or "overview" if absent/unknown.
+// The view named by the URL hash, or "overview" if absent/unknown. Legacy
+// #history / #usage links map to the Analytics view with that sub-tab selected.
 function viewFromHash() {
-  const v = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+  let v = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+  if (v === "history" || v === "usage") { state.analyticsTab = v; v = "analytics"; }
   return VIEW_TITLES[v] ? v : "overview";
 }
 
@@ -520,6 +518,9 @@ function setView(view) {
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.dataset.view === view));
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   document.getElementById("view-title").textContent = VIEW_TITLES[view] || view;
+  const rr = document.getElementById("range-readout");
+  if (rr) rr.hidden = view !== "analytics"; // the range only applies to Analytics
+  if (view === "analytics") setSubtab(state.analyticsTab || "history");
   if (view === "devices") renderDevices();
   if (view === "users") renderUsers();
   // Charts built while their view was display:none have zero size; fix on reveal.
@@ -527,6 +528,18 @@ function setView(view) {
     for (const c of Object.values(state.charts)) {
       try { c.resize(); } catch { /* chart may be mid-rebuild */ }
     }
+  });
+}
+
+// setSubtab switches the Analytics History/Usage sub-view. The shared strip +
+// window stay put; only the detail content below changes.
+function setSubtab(tab) {
+  state.analyticsTab = tab;
+  document.querySelectorAll("#analytics-subtabs button").forEach((b) => b.classList.toggle("active", b.dataset.subtab === tab));
+  document.querySelectorAll(".subview").forEach((v) => v.classList.toggle("active", v.dataset.subtab === tab));
+  // Charts sized while their sub-view was hidden need a resize once revealed.
+  requestAnimationFrame(() => {
+    for (const c of Object.values(state.charts)) { try { c.resize(); } catch { /* mid-rebuild */ } }
   });
 }
 
@@ -550,67 +563,51 @@ const startOfDay = (ts) => {
   return d.getTime();
 };
 
-// ── Range / window control ──────────────────────────────
-function buildRangeButtons() {
-  const wrap = document.getElementById("range-buttons");
-  for (const r of RANGES) {
-    const b = document.createElement("button");
-    b.textContent = r.label;
-    b.dataset.id = r.id;
-    if (r.id === state.range) b.classList.add("active");
-    b.addEventListener("click", () => {
-      state.range = r.id;
-      state.offset = 0; // reset to the most recent window when resizing
-      wrap.querySelectorAll("button").forEach((x) => x.classList.toggle("active", x.dataset.id === r.id));
-      saveWindow();
-      render();
-    });
-    wrap.appendChild(b);
-  }
-
-  // Step one window into the past / future.
-  document.getElementById("range-prev").addEventListener("click", () => shiftWindow(-1));
-  document.getElementById("range-next").addEventListener("click", () => shiftWindow(1));
+// ── Window: an arbitrary [winStart, winEnd] range brushed on the strip ──────
+// allBounds is the full data extent (the strip's domain); windowBounds is the
+// current selection every detail view renders.
+function allBounds() {
+  return { start: startOfDay(earliestTs()), end: state.data.now };
 }
 
-function shiftWindow(dir) {
-  const r = RANGES.find((x) => x.id === state.range);
-  if (!r.days) return; // "all" is not shiftable
-  const next = Math.min(0, state.offset + dir);
-  if (next === state.offset) return;
-  // Don't page past the earliest data we have.
-  if (dir < 0 && windowBounds().start <= startOfDay(earliestTs())) return;
-  state.offset = next;
+// defaultWindow selects the most recent DEFAULT_WINDOW_DAYS, clamped to the data
+// we have — used when there's no usable saved window.
+function defaultWindow() {
+  const all = allBounds();
+  state.winEnd = all.end;
+  state.winStart = Math.max(all.start, startOfDay(all.end) - (DEFAULT_WINDOW_DAYS - 1) * DAY);
+}
+
+// setWindow commits a new selection: clamp into the data extent, enforce a
+// one-day minimum, persist, then re-render the detail views + floating readout.
+function setWindow(start, end) {
+  const all = allBounds();
+  let s = Math.max(all.start, Math.min(start, end));
+  let e = Math.min(all.end, Math.max(start, end));
+  if (e - s < DAY) e = Math.min(all.end, s + DAY);
+  state.winStart = s;
+  state.winEnd = e;
   saveWindow();
   render();
 }
 
-// ── Persisted window (cookie) ───────────────────────────
-// Remember the selected range + offset so a reload lands on the same window.
-// (WINDOW_COOKIE is declared up top so init() can use it before this point.)
+// ── Persisted window (cookie): remember the selection across reloads. ────────
 function saveWindow() {
-  setCookie(WINDOW_COOKIE, `${state.range}|${state.offset}`, 365);
+  if (state.winStart == null || state.winEnd == null) return;
+  setCookie(WINDOW_COOKIE, `${state.winStart}|${state.winEnd}`, 365);
 }
 
+// restoreWindow loads a saved [start,end] clamped to the current data extent,
+// falling back to defaultWindow if absent/unusable. Needs state.data.
 function restoreWindow() {
-  const raw = getCookie(WINDOW_COOKIE);
-  if (!raw) return;
-  const [range, offsetStr] = raw.split("|");
-  if (!RANGES.some((r) => r.id === range)) return; // stale/unknown range id
-  state.range = range;
-  const off = parseInt(offsetStr, 10);
-  state.offset = Number.isFinite(off) && off < 0 ? off : 0;
-}
-
-// Pull a restored offset forward if it points before the earliest data (e.g. a
-// day-old cookie, or data that has since rolled off). Needs state.data.
-function clampOffset() {
-  const r = RANGES.find((x) => x.id === state.range);
-  if (!r || !r.days) { state.offset = 0; return; } // "all" has no offset
-  if (state.offset >= 0) { state.offset = 0; return; }
-  const span = r.days * DAY;
-  const maxBack = Math.floor((startOfDay(state.data.now) - startOfDay(earliestTs())) / span);
-  if (state.offset < -maxBack) state.offset = -maxBack;
+  const all = allBounds();
+  const [a, b] = (getCookie(WINDOW_COOKIE) || "").split("|").map(Number);
+  if (Number.isFinite(a) && Number.isFinite(b) && b > a) {
+    state.winStart = Math.max(all.start, a);
+    state.winEnd = Math.min(all.end, b);
+    if (state.winEnd - state.winStart >= DAY) return;
+  }
+  defaultWindow();
 }
 
 function setCookie(name, value, days) {
@@ -631,39 +628,17 @@ function earliestTs() {
 }
 
 function windowBounds() {
-  const now = state.data.now;
-  const r = RANGES.find((x) => x.id === state.range);
-  if (!r.days) {
-    // "all" — from the earliest event we have.
-    const start = startOfDay(earliestTs());
-    return { start, end: now };
-  }
-  // Anchor to day boundaries and page back by whole windows.
-  const endDayStart = startOfDay(now) + state.offset * r.days * DAY;
-  const start = endDayStart - (r.days - 1) * DAY;
-  const end = state.offset === 0 ? now : endDayStart + DAY - 1;
-  return { start, end };
+  return { start: state.winStart, end: state.winEnd };
 }
 
-// Update the pager label and enabled/disabled state of the step buttons.
-function renderRangeControl(b) {
-  const r = RANGES.find((x) => x.id === state.range);
-  const nav = document.getElementById("range-nav");
-  const label = document.getElementById("range-label");
-  const prev = document.getElementById("range-prev");
-  const next = document.getElementById("range-next");
-
-  if (!r.days) {
-    nav.hidden = true;
-    return;
-  }
-  nav.hidden = false;
-  const fmt = (ts) => new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  const fmtY = (ts) => new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-  label.textContent = `${fmt(b.start)} – ${fmtY(b.end)}`;
-
-  next.disabled = state.offset === 0;
-  prev.disabled = b.start <= startOfDay(earliestTs());
+// updateRangeReadout writes the selected range into the floating overlay, which
+// is fixed-positioned so it stays visible while you scroll the detail views.
+function updateRangeReadout() {
+  const el = document.getElementById("range-readout");
+  if (!el || state.winStart == null) return;
+  const fmt = (ts) => new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const days = Math.round((state.winEnd - state.winStart) / DAY);
+  el.innerHTML = `<span class="rr-from">${fmt(state.winStart)}</span><span class="rr-arrow">→</span><span class="rr-to">${fmt(state.winEnd)}</span><span class="rr-days">${days}d</span>`;
 }
 
 const within = (ts, b) => ts >= b.start && ts <= b.end;
@@ -671,7 +646,7 @@ const within = (ts, b) => ts >= b.start && ts <= b.end;
 // ── Master render ───────────────────────────────────────
 function render() {
   const b = windowBounds();
-  renderRangeControl(b);
+  updateRangeReadout();
   const violations = state.data.violations.filter((v) => within(v.ts, b));
   const unblocks = state.data.unblocks.filter((u) => within(u.ts, b));
   const unmanaged = state.data.unmanaged
@@ -699,7 +674,7 @@ function render() {
   renderHeatmap(heat);
   renderUnblocksByHour(unblocks);
   renderCalendar(violations, b);
-  renderTimeline(violations, unblocks, unmanaged, b);
+  renderTimeline();
   resetDayDetail();
   renderExposure(unmanaged, downtime, b);
   renderUnblockList(unblocks);
@@ -1068,88 +1043,173 @@ function renderHeatmap(heat) {
     <span class="legend-key"><span class="swatch hatch"></span> mostly unmanaged (glocker off)</span>`;
 }
 
-function renderTimeline(violations, unblocks, unmanaged, b) {
-  const days = Math.round((b.end - b.start) / DAY) + 1;
-  const labels = [], data = [], dayTs = [];
-  const counts = new Map();
-  for (const v of violations) counts.set(dayKey(v.ts), (counts.get(dayKey(v.ts)) || 0) + 1);
+// renderTimeline draws the ALL-HISTORY strip at the top: two shared-Y sparklines
+// (violations + unblocks per day), the unmanaged stretches as a pink shaded
+// background, and the current window as a brush selection (the rest dimmed).
+// Dragging the selection — create / move / resize its edges — sets the window.
+function renderTimeline() {
+  const all = allBounds();
+  const start = all.start, end = all.end, now = state.data.now;
+  const days = Math.max(1, Math.round((end - start) / DAY) + 1);
+  const vday = new Array(days).fill(0), uday = new Array(days).fill(0);
+  const idx = (ts) => Math.min(days - 1, Math.max(0, Math.floor((ts - start) / DAY)));
+  for (const v of state.data.violations) if (v.ts >= start) vday[idx(v.ts)]++;
+  for (const u of state.data.unblocks) if (u.ts >= start) uday[idx(u.ts)]++;
+
+  const labels = [];
   for (let i = 0; i < days; i++) {
-    const ts = b.start + i * DAY;
-    const d = new Date(ts);
-    labels.push(d.getDate() === 1 || i === 0 ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "");
-    data.push(counts.get(dayKey(ts)) || 0);
-    dayTs.push(ts);
+    const d = new Date(start + i * DAY);
+    labels.push(d.getDate() === 1 || i === 0 ? d.toLocaleDateString(undefined, { month: "short", day: days > 120 ? undefined : "numeric" }) : "");
   }
-  // Vertical gridline density adapts to the window: every day for short
-  // windows, weekly once daily would crowd, monthly for long spans.
-  const granularity = days <= 45 ? "day" : days <= 180 ? "week" : "month";
-  const gridAt = (i) => {
-    const ts = dayTs[i];
-    if (ts == null) return false;
-    if (granularity === "day") return true;
-    const d = new Date(ts);
-    return granularity === "week" ? weekdayIndex(d) === 0 : d.getDate() === 1;
-  };
 
-  // Map a timestamp to an x pixel on the (categorical, day-spaced) axis: line
-  // points sit at i/(days-1) across the plot, so a ts at fractional day f lands
-  // at f/(days-1). Gives real intra-day resolution on a 1–2 day window and still
-  // places markers correctly on a long one.
-  const now = state.data.now;
-  const xAt = (area, ts) => {
-    if (days <= 1) return area.left + area.width / 2;
-    const f = (ts - b.start) / DAY;
-    return area.left + Math.max(0, Math.min(1, f / (days - 1))) * area.width;
-  };
+  // Continuous time↔pixel across the plot; with offset:false, category point i
+  // sits at i/(days-1), which equals (ts-start)/(end-start), so the brush aligns
+  // with the sparkline.
+  const spanMs = Math.max(1, end - start);
+  const xAt = (a, ts) => a.left + Math.max(0, Math.min(1, (ts - start) / spanMs)) * a.width;
 
-  // Behind the line: shade the stretches glocker was unmanaged, in the same pink
-  // used for the calendar hatch, so "off" reads consistently across the tab.
+  // Behind the lines: unmanaged stretches, in the calendar-hatch pink.
   const underlay = (c) => {
     const { ctx, chartArea: a } = c;
     ctx.save();
-    ctx.fillStyle = "rgba(192,70,143,0.18)";
-    for (const p of unmanaged) {
-      const x1 = xAt(a, Math.max(p.start, b.start));
-      const x2 = xAt(a, Math.min(p.open ? now : p.end, b.end));
+    ctx.fillStyle = "rgba(192,70,143,0.20)";
+    for (const p of state.data.unmanaged) {
+      const x1 = xAt(a, Math.max(p.start, start));
+      const x2 = xAt(a, Math.min(p.open ? now : p.end, end));
       if (x2 > x1) ctx.fillRect(x1, a.top, x2 - x1, a.height);
     }
-    // Selected-day band: mirrors the calendar's ring so the two views stay in
-    // sync. Read live so a click (which calls tl.draw()) updates it.
-    if (state.openDay != null && state.openDay >= b.start && state.openDay <= b.end) {
-      const x1 = xAt(a, Math.max(state.openDay, b.start));
-      const x2 = xAt(a, Math.min(state.openDay + DAY, b.end));
-      ctx.fillStyle = "rgba(255,255,255,0.10)";
-      ctx.fillRect(x1, a.top, Math.max(3, x2 - x1), a.height);
-    }
     ctx.restore();
   };
 
-  // On top: a thin vertical marker at each unblock's exact time, coloured by
-  // reason (same mapping as the by-hour chart).
-  const rc = reasonColorMap(unblocks);
+  // On top: dim everything outside the selected window and mark its edges — the
+  // classic brush look. Reads state.winStart/winEnd live so a drag redraw (or a
+  // calendar click) updates it without a full re-render.
   const overlay = (c) => {
     const { ctx, chartArea: a } = c;
+    if (state.winStart == null) return;
+    const x1 = xAt(a, state.winStart), x2 = xAt(a, state.winEnd);
     ctx.save();
-    ctx.lineWidth = 1.5;
-    ctx.globalAlpha = 0.85;
-    for (const u of unblocks) {
-      if (u.ts < b.start || u.ts > b.end) continue;
-      ctx.strokeStyle = rc.get((u.reason || "(none)").trim() || "(none)") || cssVar("var(--exposed)");
-      const x = xAt(a, u.ts);
-      ctx.beginPath();
-      ctx.moveTo(x, a.top);
-      ctx.lineTo(x, a.bottom);
-      ctx.stroke();
+    ctx.fillStyle = "rgba(5,7,11,0.60)";
+    ctx.fillRect(a.left, a.top, x1 - a.left, a.height);
+    ctx.fillRect(x2, a.top, a.right - x2, a.height);
+    ctx.strokeStyle = "#e8eefc";
+    ctx.lineWidth = 2;
+    for (const x of [x1, x2]) {
+      ctx.beginPath(); ctx.moveTo(x, a.top); ctx.lineTo(x, a.bottom); ctx.stroke();
+      ctx.fillStyle = "#e8eefc";
+      ctx.fillRect(x - 1.5, a.top + a.height / 2 - 8, 3, 16); // grab knob
     }
     ctx.restore();
   };
 
-  lineChart("chart-timeline", labels, data, {
-    onPoint: (index) => {
-      if (index != null && dayTs[index] != null) showDay(dayTs[index]);
+  stripChart("chart-timeline", labels, [
+    { label: "violations", data: vday, color: cssVar("var(--danger)"), fill: true },
+    { label: "unblocks", data: uday, color: cssVar("var(--safe)"), fill: false },
+  ], { underlay, overlay });
+
+  wireBrush(document.getElementById("chart-timeline"));
+}
+
+// stripChart: a compact multi-line sparkline (shared Y, integer axis) with the
+// brush under/overlay plugins. Distinct from lineChart (single series + points).
+function stripChart(id, labels, series, { underlay, overlay } = {}) {
+  destroy(id);
+  const ctx = document.getElementById(id).getContext("2d");
+  const opts = baseOpts();
+  opts.plugins.tooltip.enabled = false;
+  opts.scales.x.grid = { display: false };
+  opts.scales.x.ticks.maxTicksLimit = 8;
+  opts.scales.y.ticks.maxTicksLimit = 3;
+  const plugins = [{
+    id: id + "-brush",
+    beforeDatasetsDraw: (c) => underlay && underlay(c),
+    afterDatasetsDraw: (c) => overlay && overlay(c),
+  }];
+  state.charts[id] = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels,
+      datasets: series.map((s) => ({
+        label: s.label, data: s.data,
+        borderColor: s.color,
+        backgroundColor: s.fill ? s.color + "33" : "transparent",
+        fill: s.fill, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
+      })),
     },
-    gridAt, underlay, overlay,
+    options: opts,
+    plugins,
   });
+}
+
+// wireBrush turns the strip canvas into a range selector: drag empty space to
+// create a window, drag its body to pan, drag an edge to resize. It live-updates
+// the selection + floating readout during the drag (cheap chart.draw()), then
+// commits via setWindow (full re-render) on release. Attached once per canvas;
+// reads the chart live so it survives the chart being rebuilt each render.
+function wireBrush(canvas) {
+  if (!canvas || canvas.dataset.brushWired) return;
+  canvas.dataset.brushWired = "1";
+  const HANDLE = 8;
+  let drag = null;
+
+  const chart = () => state.charts["chart-timeline"];
+  const area = () => { const c = chart(); return c && c.chartArea; };
+  const relX = (e) => e.clientX - canvas.getBoundingClientRect().left;
+  const pxToTs = (a, px) => {
+    const { start, end } = allBounds();
+    return start + Math.max(0, Math.min(1, (px - a.left) / a.width)) * (end - start);
+  };
+  const tsToPx = (a, ts) => {
+    const { start, end } = allBounds();
+    return a.left + Math.max(0, Math.min(1, (ts - start) / Math.max(1, end - start))) * a.width;
+  };
+  const zone = (a, px) => {
+    const xL = tsToPx(a, state.winStart), xR = tsToPx(a, state.winEnd);
+    if (Math.abs(px - xL) <= HANDLE) return "resizeL";
+    if (Math.abs(px - xR) <= HANDLE) return "resizeR";
+    return px > xL && px < xR ? "move" : "create";
+  };
+
+  canvas.addEventListener("pointermove", (e) => {
+    const a = area(); if (!a) return;
+    const px = relX(e);
+    if (!drag) {
+      if (state.winStart == null || px < a.left || px > a.right) { canvas.style.cursor = "default"; return; }
+      const z = zone(a, px);
+      canvas.style.cursor = z === "move" ? "grab" : z === "create" ? "crosshair" : "ew-resize";
+      return;
+    }
+    const ts = pxToTs(a, px);
+    if (drag.mode === "resizeL") state.winStart = Math.min(ts, state.winEnd - DAY);
+    else if (drag.mode === "resizeR") state.winEnd = Math.max(ts, state.winStart + DAY);
+    else if (drag.mode === "move") {
+      const w = drag.w, { start, end } = allBounds();
+      state.winStart = Math.max(start, Math.min(ts - drag.off, end - w));
+      state.winEnd = state.winStart + w;
+    } else {
+      state.winStart = Math.min(drag.anchor, ts);
+      state.winEnd = Math.max(drag.anchor, ts);
+    }
+    updateRangeReadout();
+    chart().draw();
+  });
+
+  canvas.addEventListener("pointerdown", (e) => {
+    const a = area(); if (!a) return;
+    const px = relX(e);
+    if (px < a.left || px > a.right) return;
+    const z = state.winStart == null ? "create" : zone(a, px);
+    drag = { mode: z };
+    if (z === "create") { drag.anchor = pxToTs(a, px); state.winStart = state.winEnd = drag.anchor; }
+    else if (z === "move") { drag.w = state.winEnd - state.winStart; drag.off = pxToTs(a, px) - state.winStart; }
+    canvas.setPointerCapture(e.pointerId);
+    canvas.style.cursor = z === "move" ? "grabbing" : "ew-resize";
+    e.preventDefault();
+  });
+
+  const finish = () => { if (drag) { drag = null; setWindow(state.winStart, state.winEnd); } };
+  canvas.addEventListener("pointerup", finish);
+  canvas.addEventListener("pointercancel", finish);
 }
 
 // Milliseconds of a given day [t, t+DAY) that glocker was unmanaged, clipped to
