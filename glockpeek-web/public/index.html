@@ -100,7 +100,7 @@
                   <h2>Timeline</h2>
                   <p class="panel-sub">Violations per day across the window. Click a point for details.</p>
                 </div>
-                <canvas id="chart-timeline"></canvas>
+                <div class="spark-wrap"><canvas id="chart-timeline"></canvas></div>
               </section>
             </div>
 
@@ -112,31 +112,17 @@
             </aside>
           </div>
 
-          <!-- Patterns widgets (moved here from the former Patterns view) -->
-          <div class="grid-3">
-            <section class="panel">
-              <div class="panel-head">
-                <h2>Vulnerability map</h2>
-                <p class="panel-sub">Violations by hour &times; weekday. Brighter is more exposed.</p>
-              </div>
-              <div id="heatmap" class="heatmap"></div>
-              <div class="heatmap-legend" id="heatmap-legend"></div>
-            </section>
-            <section class="panel">
-              <div class="panel-head">
-                <h2>By weekday</h2>
-                <p class="panel-sub">Total violations on each day of the week across the window.</p>
-              </div>
-              <canvas id="chart-weekday"></canvas>
-            </section>
-            <section class="panel">
-              <div class="panel-head">
-                <h2>By hour</h2>
-                <p class="panel-sub">Total violations in each hour of the day (00&ndash;23), all days combined.</p>
-              </div>
-              <canvas id="chart-hour"></canvas>
-            </section>
-          </div>
+          <!-- Vulnerability map: the weekday × hour grid already carries the
+               by-weekday and by-hour breakdowns, so those separate charts were
+               dropped as redundant. -->
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Vulnerability map</h2>
+              <p class="panel-sub">Violations by hour &times; weekday. Brighter is more exposed.</p>
+            </div>
+            <div id="heatmap" class="heatmap"></div>
+            <div class="heatmap-legend" id="heatmap-legend"></div>
+          </section>
 
           <!-- False positives hidden from the day-detail hit list -->
           <section class="panel">

@@ -698,8 +698,6 @@ function render() {
   renderStreak(state.data.violations); // standing, all-history — not windowed
   renderReadout(violations, unblocks, unmanaged, heat, b);
   renderHeatmap(heat);
-  renderWeekdayChart(violations);
-  renderHourChart(violations);
   renderCalendar(violations, b);
   renderTimeline(violations, b);
   resetDayDetail();
@@ -1071,19 +1069,6 @@ function renderHeatmap(heat) {
     <span class="legend-key"><span class="swatch hatch"></span> mostly unmanaged (glocker off)</span>`;
 }
 
-function renderWeekdayChart(violations) {
-  const data = new Array(7).fill(0);
-  for (const v of violations) data[weekdayIndex(new Date(v.ts))]++;
-  barChart("chart-weekday", WEEKDAYS, data, "var(--danger)");
-}
-
-function renderHourChart(violations) {
-  const data = new Array(24).fill(0);
-  for (const v of violations) data[new Date(v.ts).getHours()]++;
-  const labels = Array.from({ length: 24 }, (_, h) => (h % 2 === 0 ? String(h).padStart(2, "0") : ""));
-  barChart("chart-hour", labels, data, "var(--signal)");
-}
-
 function renderTimeline(violations, b) {
   const days = Math.round((b.end - b.start) / DAY) + 1;
   const labels = [], data = [], dayTs = [];
@@ -1182,9 +1167,13 @@ function renderMonth(monthStart, counts, winStart, winEnd, today) {
     const unmMs = inWindow ? dayUnmanagedMs(t) : 0;
     const hatched = unmMs > HOUR_MS;
     const frac = Math.min(1, unmMs / DAY);
-    // A fully good day: in-window, no violations, and glocker was managing it
-    // (no more than a brief upgrade blip of unmanaged time).
-    const clean = inWindow && count === 0 && unmMs <= HOUR_MS;
+    // The background reflects the status of the MANAGED portion of the day:
+    // green (clean) when there were no violations, red-by-count when there were.
+    // The unmanaged stipple is layered on top (height = unmanaged fraction), so a
+    // day that was clean during the hours glocker watched still reads green with
+    // hatching over it — and a fully-unmanaged day is simply covered by 100%
+    // stipple, so no false green shows through.
+    const clean = inWindow && count === 0;
 
     const cls = [
       "cal-day",

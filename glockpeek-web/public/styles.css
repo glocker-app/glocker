@@ -529,6 +529,9 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 /* Days/points are clicked (not hovered) to open the detail. */
 .cal-day[data-ts] { cursor: pointer; }
 #chart-timeline { cursor: pointer; }
+/* Timeline is a compact sparkline — the calendar carries the detailed per-day
+   view, so the trend line just needs to show shape, not fill a tall panel. */
+.spark-wrap { position: relative; height: 88px; }
 .dd-empty {
   font-family: var(--mono); font-size: 13px; color: var(--ink-faint);
   display: flex; align-items: center; justify-content: center;
