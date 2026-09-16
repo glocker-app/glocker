@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -36,6 +37,10 @@ import (
 	"golang.org/x/term"
 )
 
+// version is stamped at build time via -ldflags "-X main.version=..." (git
+// describe; see the Makefile). It stays "dev" for a plain `go build`.
+var version = "dev"
+
 // readPassphrase reads without echo from a terminal; when stdin is piped it reads
 // a single line so `-connect` stays scriptable.
 func readPassphrase(prompt string) ([]byte, error) {
@@ -53,6 +58,17 @@ func readPassphrase(prompt string) ([]byte, error) {
 	return []byte(strings.TrimRight(line, "\r\n")), nil
 }
 
+// ansiRE matches SGR (color/style) escape sequences.
+var ansiRE = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// stripANSI removes ANSI SGR sequences so status output stays readable when the
+// client's stdout isn't a terminal (piped/redirected) or NO_COLOR is set. The
+// daemon always emits color because it can't see the client's terminal, so the
+// client decides whether to keep it.
+func stripANSI(s string) string {
+	return ansiRE.ReplaceAllString(s, "")
+}
+
 func main() {
 	// Parse command-line flags
 	installFlag := flag.Bool("install", false, "Install glocker as a system service")
@@ -60,6 +76,7 @@ func main() {
 	uninstallNote := flag.String("note", "", "Optional free-form note to attach to -uninstall (e.g. context for the reason)")
 	daemonFlag := flag.Bool("daemon", false, "Run as daemon (for systemd service)")
 	statusFlag := flag.Bool("status", false, "Show runtime status (violations, temp unblocks, panic mode)")
+	watchFlag := flag.Bool("watch", false, "Continuously refresh -status until Ctrl-C (alternate screen; TTY only)")
 	infoFlag := flag.Bool("info", false, "Show configuration info (domains, programs, keywords)")
 	blockHosts := flag.String("block", "", "Comma-separated list of hosts to add to always block list")
 	blockApps := flag.String("block-app", "", "Comma-separated list of programs to add to the forbidden-programs list (killed on sight, 24/7)")
@@ -76,9 +93,13 @@ func main() {
 
 	flag.Parse()
 
+	// Surface the build version in -status (rendered both here and, for the live
+	// path, inside the daemon — same binary, so the same stamped value).
+	cli.Version = version
+
 	// Handle version flag
 	if *versionFlag {
-		log.Println("Glocker v1.0.0")
+		fmt.Println("glocker " + version)
 		return
 	}
 
@@ -490,38 +511,30 @@ func main() {
 		return
 	}
 
+	// Handle watch command (continuous -status refresh).
+	if *watchFlag {
+		runStatusWatch()
+		return
+	}
+
 	// Handle status command (try socket first, only load config if needed)
 	if *statusFlag {
-		// Try to get live status from socket first
-		if _, err := os.Stat(ipc.SocketPath); err == nil {
-			conn, err := net.Dial("unix", ipc.SocketPath)
-			if err == nil {
-				defer conn.Close()
+		// GetStatusResponse always emits neon ANSI color (the daemon can't see
+		// the client's terminal). Strip it here when our own stdout isn't a TTY
+		// or NO_COLOR is set.
+		useColor := term.IsTerminal(int(os.Stdout.Fd())) && os.Getenv("NO_COLOR") == ""
 
-				conn.Write([]byte("status\n"))
-
-				scanner := bufio.NewScanner(conn)
-				for scanner.Scan() {
-					line := scanner.Text()
-					if line == "END" {
-						break
-					}
-					fmt.Println(line)
-				}
-				return
-			}
+		// Live status from the daemon if we can reach the socket; otherwise a
+		// static, honestly-labelled fallback (statusStatic picks the right
+		// ServiceState — "unknown" when we simply lack root, not "offline").
+		body, live := statusFromSocket()
+		if !live {
+			body = statusStatic()
 		}
-
-		// Socket not available, need to load config for static status
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			log.Fatalf("Failed to load config: %v", err)
+		if !useColor {
+			body = stripANSI(body)
 		}
-		config.SetupLogging(cfg)
-
-		log.Println("(Service not running - showing configuration only)")
-		response := cli.GetStatusResponse(cfg)
-		fmt.Print(response)
+		fmt.Print(body)
 		return
 	}
 

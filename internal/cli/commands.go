@@ -17,18 +17,43 @@ import (
 	"glocker/internal/web"
 )
 
-// GetStatusResponse returns a formatted runtime status report.
-func GetStatusResponse(cfg *config.Config) string {
-	var response strings.Builder
+// ServiceState is what the caller knows about the daemon when rendering status.
+type ServiceState int
+
+const (
+	// ServiceOnline: the daemon answered over the socket (server-side render).
+	ServiceOnline ServiceState = iota
+	// ServiceUnknown: the client couldn't reach the socket — almost always
+	// because it lacks root (the socket dir is 0700 root), so the daemon may
+	// well be running; we simply can't query it from here.
+	ServiceUnknown
+	// ServiceDown: we had the rights to reach the socket but nothing was there.
+	ServiceDown
+)
+
+// Version is the build version surfaced in -status. main stamps it from the
+// binary's -ldflags value (git describe); it stays "dev" for a plain `go build`.
+var Version = "dev"
+
+// GetStatusResponse returns a formatted runtime status report. svc says what the
+// caller knows about the daemon so the service line can't contradict reality
+// (e.g. a non-root client that can't reach the socket must not claim "offline").
+func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 	now := time.Now()
+	f := newFrame("glocker", " · runtime status")
 
-	response.WriteString("╔════════════════════════════════════════════════╗\n")
-	response.WriteString("║              RUNTIME STATUS                    ║\n")
-	response.WriteString("╚════════════════════════════════════════════════╝\n\n")
-
-	// Current time and service status
-	response.WriteString(fmt.Sprintf("Current Time: %s\n", now.Format("2006-01-02 15:04:05")))
-	response.WriteString(fmt.Sprintf("Service Status: Running\n\n"))
+	// Meta.
+	f.spacer()
+	f.row("time", now.Format("2006-01-02 15:04:05"))
+	f.row("version", Version)
+	switch svc {
+	case ServiceOnline:
+		f.row("service", good("●")+" online")
+	case ServiceDown:
+		f.row("service", alert("○")+" offline"+dim(" · daemon not running"))
+	default: // ServiceUnknown
+		f.row("service", accent("◌")+" unknown"+dim(" · this binary isn't setuid root — use the installed glocker"))
+	}
 
 	// Get blocked domain count from enforcement state
 	_, blockedCount, _ := enforcement.GetEnforcementState()
@@ -47,16 +72,13 @@ func GetStatusResponse(cfg *config.Config) string {
 	if effectiveBlocked < 0 {
 		effectiveBlocked = 0
 	}
-	response.WriteString(fmt.Sprintf("Currently Blocked Domains: %d\n", effectiveBlocked))
-	response.WriteString(fmt.Sprintf("Temporary Unblocks: %d active\n", activeUnblocks))
-
-	if activeUnblocks > 0 {
-		response.WriteString("  Active temporary unblocks:\n")
-		for _, unblock := range unblocks {
-			if now.Before(unblock.ExpiresAt) {
-				remaining := unblock.ExpiresAt.Sub(now)
-				response.WriteString(fmt.Sprintf("    - %s (expires in %v)\n", unblock.Domain, remaining.Round(time.Minute)))
-			}
+	f.head("domains")
+	f.row("blocked", fmt.Sprintf("%d", effectiveBlocked))
+	f.row("temp unblocks", fmt.Sprintf("%d", activeUnblocks))
+	for _, unblock := range unblocks {
+		if now.Before(unblock.ExpiresAt) {
+			remaining := unblock.ExpiresAt.Sub(now)
+			f.detail(unblock.Domain + dim(fmt.Sprintf("  expires in %v", remaining.Round(time.Minute))))
 		}
 	}
 
@@ -65,9 +87,9 @@ func GetStatusResponse(cfg *config.Config) string {
 	usedToday := countUnblocksToday(cfg)
 	if cfg.Domains.Unblocking.MaxPerDay > 0 {
 		left := max(0, cfg.Domains.Unblocking.MaxPerDay-usedToday)
-		response.WriteString(fmt.Sprintf("Unblocks Today: %d/%d used (%d left)\n", usedToday, cfg.Domains.Unblocking.MaxPerDay, left))
+		f.row("today", fmt.Sprintf("%d / %d", usedToday, cfg.Domains.Unblocking.MaxPerDay)+dim(fmt.Sprintf("   %d left", left)))
 	} else {
-		response.WriteString(fmt.Sprintf("Unblocks Today: %d (no daily cap)\n", usedToday))
+		f.row("today", fmt.Sprintf("%d", usedToday)+dim("   no daily cap"))
 	}
 
 	// Show program extensions (one-hour runtime grants for extendible
@@ -79,53 +101,45 @@ func GetStatusResponse(cfg *config.Config) string {
 			activeExtensions++
 		}
 	}
-	response.WriteString(fmt.Sprintf("Program Extensions: %d active\n", activeExtensions))
-	if activeExtensions > 0 {
-		response.WriteString("  Active program extensions:\n")
-		for _, ext := range extensions {
-			if now.Before(ext.ExpiresAt) {
-				remaining := ext.ExpiresAt.Sub(now)
-				response.WriteString(fmt.Sprintf("    - %s (expires in %v, reason: %s)\n",
-					ext.Program, remaining.Round(time.Minute), ext.Reason))
-			}
+	f.head("programs")
+	f.row("extensions", fmt.Sprintf("%d active", activeExtensions))
+	for _, ext := range extensions {
+		if now.Before(ext.ExpiresAt) {
+			remaining := ext.ExpiresAt.Sub(now)
+			f.detail(ext.Program + dim(fmt.Sprintf("  %v · %s", remaining.Round(time.Minute), ext.Reason)))
 		}
 	}
 
 	// Show violation tracking status
 	if cfg.ViolationTracking.Enabled {
 		violations := state.GetViolations()
-		recentViolations := 0
 		cutoff := now.Add(-time.Duration(cfg.ViolationTracking.TimeWindowMinutes) * time.Minute)
+		recent := make([]state.Violation, 0)
 		for _, v := range violations {
 			if v.Timestamp.After(cutoff) {
-				recentViolations++
+				recent = append(recent, v)
 			}
 		}
 
-		response.WriteString("\n")
-		response.WriteString("Violation Tracking:\n")
-		response.WriteString(fmt.Sprintf("  Recent Violations: %d/%d (in last %d minutes)\n",
-			recentViolations, cfg.ViolationTracking.MaxViolations, cfg.ViolationTracking.TimeWindowMinutes))
-		response.WriteString(fmt.Sprintf("  Total Violations: %d\n", len(violations)))
+		// Colour the recent count only when it has hit the threshold — otherwise
+		// it's just a number.
+		recentCount := fmt.Sprintf("%d / %d", len(recent), cfg.ViolationTracking.MaxViolations)
+		if cfg.ViolationTracking.MaxViolations > 0 && len(recent) >= cfg.ViolationTracking.MaxViolations {
+			recentCount = alertB(recentCount)
+		}
+		f.head("violations")
+		f.row("recent", recentCount+dim(fmt.Sprintf("   %dm window", cfg.ViolationTracking.TimeWindowMinutes)))
+		f.row("total", fmt.Sprintf("%d", len(violations)))
 
 		// Show the most recent violations in the active window so the
 		// user can see *what* tripped the counter, not just *how many*.
-		if recentViolations > 0 {
+		if len(recent) > 0 {
 			const maxShown = 5
-			response.WriteString("  Recent details:\n")
-
-			// Collect the in-window violations and sort newest-first. We can't
-			// rely on slice order: RecordViolation stamps time.Now() *before*
-			// taking the append lock, and violations arrive from independent
-			// goroutines (the forbidden-program killer, the /report web handler,
-			// content reports), so under a burst they can land out of timestamp
-			// order. Sort explicitly so the top 5 are genuinely the most recent.
-			recent := make([]state.Violation, 0, recentViolations)
-			for _, v := range violations {
-				if v.Timestamp.After(cutoff) {
-					recent = append(recent, v)
-				}
-			}
+			// Sort newest-first. We can't rely on slice order: RecordViolation
+			// stamps time.Now() *before* taking the append lock, and violations
+			// arrive from independent goroutines (the forbidden-program killer,
+			// the /report web handler, content reports), so under a burst they
+			// can land out of timestamp order.
 			sort.Slice(recent, func(i, j int) bool {
 				return recent[i].Timestamp.After(recent[j].Timestamp)
 			})
@@ -135,11 +149,10 @@ func GetStatusResponse(cfg *config.Config) string {
 				if target == "" {
 					target = v.URL
 				}
-				response.WriteString(fmt.Sprintf("    - [%s] %s: %s\n",
-					v.Timestamp.Format("15:04:05"), v.Type, target))
+				f.detail(dim(v.Timestamp.Format("15:04:05")) + "  " + v.Type + dim("  "+target))
 			}
-			if recentViolations > maxShown {
-				response.WriteString(fmt.Sprintf("    ... and %d more\n", recentViolations-maxShown))
+			if len(recent) > maxShown {
+				f.detail(dim(fmt.Sprintf("… and %d more", len(recent)-maxShown)))
 			}
 		}
 	}
@@ -148,15 +161,14 @@ func GetStatusResponse(cfg *config.Config) string {
 	panicUntil := state.GetPanicUntil()
 	if !panicUntil.IsZero() && now.Before(panicUntil) {
 		remaining := panicUntil.Sub(now)
-		response.WriteString("\n")
-		response.WriteString("⚠️  PANIC MODE ACTIVE ⚠️\n")
-		response.WriteString(fmt.Sprintf("Time Remaining: %v\n", remaining.Round(time.Second)))
+		f.head("panic")
+		f.row("state", alertB("active")+dim("  ")+alert(fmt.Sprintf("%v remaining", remaining.Round(time.Second))))
 	}
 
 	// Show glockpeek sync status.
-	response.WriteString("\n")
+	f.section("sync", " · glockpeek")
 	if !cfg.Sync.Enabled {
-		response.WriteString("Sync (glockpeek): disabled\n")
+		f.row("status", dim("disabled"))
 	} else {
 		ss := state.GetSyncSummary()
 		// Records sitting in the local logs that the next push will carry.
@@ -166,35 +178,31 @@ func GetStatusResponse(cfg *config.Config) string {
 			interval = time.Duration(config.DefaultSyncIntervalSeconds) * time.Second
 		}
 		if ss.LastSyncAt.IsZero() {
-			response.WriteString("Sync (glockpeek): enabled — nothing pushed yet\n")
-			response.WriteString(fmt.Sprintf("  Pending: %s\n", pending))
+			f.row("status", "enabled"+dim(" — nothing pushed yet"))
+			f.row("pending", pending)
 		} else {
-			response.WriteString(fmt.Sprintf("Sync (glockpeek): last push %s ago\n",
-				now.Sub(ss.LastSyncAt).Round(time.Second)))
-			response.WriteString(fmt.Sprintf("  This session: %s\n", formatSyncCounts(ss.Total)))
+			f.row("status", "last push "+dim(fmt.Sprintf("%s ago", now.Sub(ss.LastSyncAt).Round(time.Second))))
 			nextIn := ss.LastSyncAt.Add(interval).Sub(now).Round(time.Second)
 			if nextIn > 0 {
-				response.WriteString(fmt.Sprintf("  Pending: %s; next push in %s\n", pending, nextIn))
+				f.row("pending", pending+dim(fmt.Sprintf("   next in %s", nextIn)))
 			} else {
-				response.WriteString(fmt.Sprintf("  Pending: %s; next push imminent\n", pending))
+				f.row("pending", pending+dim("   next imminent"))
 			}
 		}
 		// Whether records are encrypted before upload (end-to-end) or sent as plaintext.
 		if cfg.Sync.Encryption() {
-			response.WriteString("  Encryption: ON — records end-to-end encrypted before upload\n")
+			f.row("encryption", good("on")+dim(" — end-to-end before upload"))
 		} else {
-			response.WriteString("  Encryption: OFF — records uploaded as plaintext\n")
+			f.row("encryption", alert("off")+dim(" — uploaded as plaintext"))
 		}
 		// Surface the most recent push failure (e.g. a require_encryption 422) so a
 		// stuck sync is visible without digging through the journal.
 		if ss.LastError != "" {
-			response.WriteString(fmt.Sprintf("  ⚠ last push FAILED %s ago: %s\n",
-				now.Sub(ss.LastErrorAt).Round(time.Second), ss.LastError))
+			f.row("error", alert(ss.LastError)+dim(fmt.Sprintf("   %s ago", now.Sub(ss.LastErrorAt).Round(time.Second))))
 		}
 	}
 
-	response.WriteString("\nEND\n")
-	return response.String()
+	return f.close() + "\nEND\n"
 }
 
 // formatSyncCounts renders per-source sync counts in a stable order, skipping

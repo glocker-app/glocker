@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +14,15 @@ import (
 	"glocker/internal/state"
 )
 
+// testANSI matches the SGR color sequences GetStatusResponse now always emits.
+var testANSI = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+// plainStatus returns the status report with neon ANSI color stripped, so
+// assertions can match on the underlying text regardless of styling.
+func plainStatus(cfg *config.Config) string {
+	return testANSI.ReplaceAllString(GetStatusResponse(cfg, ServiceOnline), "")
+}
+
 func TestGetStatusResponse(t *testing.T) {
 	cfg := &config.Config{
 		Domains: config.DomainsConfig{List: []config.Domain{
@@ -20,14 +30,14 @@ func TestGetStatusResponse(t *testing.T) {
 		}},
 	}
 
-	response := GetStatusResponse(cfg)
+	response := plainStatus(cfg)
 
-	if !strings.Contains(response, "RUNTIME STATUS") {
-		t.Error("Response should contain 'RUNTIME STATUS'")
+	if !strings.Contains(response, "runtime status") {
+		t.Error("Response should contain 'runtime status'")
 	}
 
-	if !strings.Contains(response, "Currently Blocked Domains") {
-		t.Error("Response should contain 'Currently Blocked Domains'")
+	if !strings.Contains(response, "blocked") {
+		t.Error("Response should contain the domains 'blocked' row")
 	}
 }
 
@@ -306,9 +316,9 @@ func TestGetStatusResponse_UnblocksLeft(t *testing.T) {
 		}
 	}
 
-	out := GetStatusResponse(cfg)
-	if !strings.Contains(out, "Unblocks Today: 2/3 used (1 left)") {
-		t.Errorf("status should show 2/3 used, 1 left; got:\n%s", out)
+	out := plainStatus(cfg)
+	if !strings.Contains(out, "2 / 3") || !strings.Contains(out, "1 left") {
+		t.Errorf("status should show 2 / 3 used, 1 left; got:\n%s", out)
 	}
 }
 
@@ -323,8 +333,8 @@ func TestGetStatusResponse_NoDailyCap(t *testing.T) {
 	enforcement.InitializeTestCache(cfg.Domains.List)
 	state.SetTempUnblocks([]state.TempUnblock{})
 
-	out := GetStatusResponse(cfg)
-	if !strings.Contains(out, "Unblocks Today: 0 (no daily cap)") {
+	out := plainStatus(cfg)
+	if !strings.Contains(out, "no daily cap") {
 		t.Errorf("status should show no daily cap; got:\n%s", out)
 	}
 }
@@ -521,8 +531,8 @@ func TestGetStatusResponse_ShowsActiveProgramExtension(t *testing.T) {
 		t.Fatalf("ProcessExtendRequest: %v", err)
 	}
 
-	resp := GetStatusResponse(cfg)
-	if !strings.Contains(resp, "Program Extensions: 1 active") {
+	resp := plainStatus(cfg)
+	if !strings.Contains(resp, "1 active") {
 		t.Errorf("status missing extension count line:\n%s", resp)
 	}
 	if !strings.Contains(resp, "firefox-esr") {
@@ -537,8 +547,8 @@ func TestGetStatusResponse_ZeroExtensionsLineAlwaysPresent(t *testing.T) {
 	extendTestConfig(t) // resets state to zero extensions
 	cfg := &config.Config{}
 
-	resp := GetStatusResponse(cfg)
-	if !strings.Contains(resp, "Program Extensions: 0 active") {
+	resp := plainStatus(cfg)
+	if !strings.Contains(resp, "0 active") {
 		t.Errorf("expected zero-count line in status, got:\n%s", resp)
 	}
 	if strings.Contains(resp, "Active program extensions:") {
@@ -570,9 +580,9 @@ func TestGetStatusResponse_ShowsRecentViolationDetails(t *testing.T) {
 		Type:      "content_report",
 	})
 
-	resp := GetStatusResponse(cfg)
-	if !strings.Contains(resp, "Recent details:") {
-		t.Errorf("status missing Recent details section:\n%s", resp)
+	resp := plainStatus(cfg)
+	if !strings.Contains(resp, "violations") {
+		t.Errorf("status missing violations section:\n%s", resp)
 	}
 	if !strings.Contains(resp, "youtube.com") || !strings.Contains(resp, "reddit.com") {
 		t.Errorf("status missing violation hosts:\n%s", resp)
@@ -602,9 +612,9 @@ func TestGetStatusResponse_NoViolationDetailsWhenNoneRecent(t *testing.T) {
 		Type:      "web_access",
 	})
 
-	resp := GetStatusResponse(cfg)
-	if strings.Contains(resp, "Recent details:") {
-		t.Errorf("status should not include Recent details when no recent violations:\n%s", resp)
+	resp := plainStatus(cfg)
+	if !strings.Contains(resp, "0 / 5") {
+		t.Errorf("status should show 0 recent violations:\n%s", resp)
 	}
 	if strings.Contains(resp, "old.com") {
 		t.Errorf("status should not list stale violation host:\n%s", resp)
@@ -635,8 +645,8 @@ func TestGetStatusResponse_TruncatesViolationDetails(t *testing.T) {
 		})
 	}
 
-	resp := GetStatusResponse(cfg)
-	if !strings.Contains(resp, "... and 2 more") {
+	resp := plainStatus(cfg)
+	if !strings.Contains(resp, "… and 2 more") {
 		t.Errorf("expected truncation line for 7 violations (cap 5):\n%s", resp)
 	}
 	// The 5 most recent (site0..site4) must be shown; the 2 oldest (site5, site6)

@@ -100,7 +100,7 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 			// exists.
 			conn.Write([]byte("pong\n"))
 		case "status":
-			response := cli.GetStatusResponse(cfg)
+			response := cli.GetStatusResponse(cfg, cli.ServiceOnline)
 			conn.Write([]byte(response))
 		case "info":
 			response := cli.GetInfoResponse(cfg)
