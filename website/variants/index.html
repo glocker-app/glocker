@@ -9,6 +9,7 @@
     font: 15px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
   .w { max-width: 620px; margin: 0 auto; padding: 64px 24px 80px; }
   h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 { font-size: 15px; font-weight: 600; margin: 34px 0 6px; letter-spacing: -.01em; }
   p.sub { color: #6b7076; margin: 0 0 34px; }
   a.v { display: block; text-decoration: none; color: inherit; padding: 18px 20px;
         background: #fff; border: 1px solid #e2e3e6; border-radius: 10px; margin-bottom: 12px; }
@@ -51,8 +52,31 @@
     <span class="sw"><i style="background:#f6f6f7"></i><i style="background:#23262b"></i><i style="background:#4f5d75"></i><i style="background:#e4e5e8"></i></span>
   </a>
 
-  <footer>Files live in <code>website/variants/</code>. The current site is
-  <code>website/index.html</code>, untouched.</footer>
+  <h2>The same three, applied to glockpeek</h2>
+  <p class="sub">The Analytics &rarr; History page, rebuilt in each style on one
+  shared dataset so the numbers are identical across all three.</p>
+
+  <a class="v" href="stats/journal.html">
+    <b>1 &mdash; Journal</b>
+    <span>The calendar becomes a hand-kept habit tracker: a tick for a clean day,
+    hatch density for how bad a day was, diagonal ruling for the hours glocker was
+    off. Bars are outlined and hatched rather than filled.</span>
+  </a>
+  <a class="v" href="stats/terminal.html">
+    <b>2 &mdash; Status terminal</b>
+    <span>Every panel drawn as its own <code>-status</code> frame, amber heads and
+    dim gutters, green and red kept for where they mean something.</span>
+  </a>
+  <a class="v" href="stats/dashboard.html">
+    <b>3 &mdash; Modern dashboard</b>
+    <span>The existing layout at much lower contrast, with the semantic colours
+    pulled down in chroma. Follows the reader&rsquo;s light or dark setting.</span>
+  </a>
+
+  <footer>Files live in <code>website/variants/</code>; the glockpeek pages in
+  <code>website/variants/stats/</code> (regenerate with <code>python3 build.py</code>
+  after editing the shared body). The current site is <code>website/index.html</code>,
+  untouched.</footer>
 </div>
 </body>
 </html>

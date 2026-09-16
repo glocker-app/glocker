@@ -1,0 +1,132 @@
+/* Skin 2 — status terminal. Palette lifted verbatim from internal/cli/style.go:
+   amber heads, dim grey structure, green and red used ONLY where they mean
+   something. Panels are drawn as -status frames (a dim left gutter and a titled
+   top rule), not as boxes. */
+
+:root {
+  --amber:#c8a055; --dim:#697382; --good:#78b982; --alert:#cd5f5f;
+  --fg:#cfcabf; --fg-hi:#e9e3d6; --bg:#0d0f12; --bg-lift:#14171c; --bg-cell:#1b1f26;
+  --band:#8d6f8a;
+  --b1:#5a3b3b; --b2:#8a4a4a; --b3:#b35555; --b4:#cd5f5f;
+  --hatch:rgba(105,115,130,.85);
+}
+
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 13.5px; line-height: 1.75; -webkit-font-smoothing: antialiased;
+}
+/* CRT: scanlines over everything, amber bloom off the top edge */
+body::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 9;
+  background: repeating-linear-gradient(to bottom, rgba(255,255,255,.022) 0 1px, transparent 1px 3px); }
+body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 8;
+  background: radial-gradient(ellipse 110% 45% at 50% -8%, rgba(200,160,85,.10), transparent 70%); }
+.app { position: relative; z-index: 10; }
+
+.sidebar { border-right: 1px solid rgba(105,115,130,.35); }
+.brand .reticle { width: 18px; height: 18px; flex: none; border: 1px solid var(--amber); border-radius: 50%;
+  position: relative; }
+.brand .reticle::after { content: ""; position: absolute; inset: 5px; background: var(--amber); border-radius: 50%; }
+.brand h1 { font-weight: 600; color: var(--fg-hi); }
+.brand h1 span { color: var(--amber); }
+.brand .tagline { color: var(--dim); }
+.nav button { color: var(--dim); }
+.nav button::before { content: "  "; white-space: pre; }
+.nav button:hover { color: var(--fg); }
+.nav button.active { color: var(--amber); }
+.nav button.active::before { content: "▸ "; }
+.nav-admin button { color: var(--alert); }
+.sidebar-foot { color: var(--dim); }
+.foot-sep { border: 0; border-top: 1px solid rgba(105,115,130,.3); width: 100%; margin: 0; }
+
+.main-header { border-bottom: 1px solid rgba(105,115,130,.35); }
+.main-header h2 { color: var(--amber); font-weight: 600; }
+.main-header h2::before { content: "$ glockpeek "; color: var(--dim); font-weight: 400; }
+.account-btn { color: var(--dim); border: 1px solid rgba(105,115,130,.4); }
+.account-btn:hover { color: var(--fg); border-color: var(--dim); }
+main { padding-top: 18px; }
+
+/* panels as -status frames: a titled top rule, a dim left gutter, a closing
+   bottom rule. A panel that holds two heads (the vulnerability row) keeps the
+   frame and opens each inner head with the section glyph instead. */
+.panel { padding: 0 0 20px 2.5ch; margin-left: .5ch; border-left: 1px solid rgba(105,115,130,.5);
+         position: relative; }
+.panel::after { content: ""; position: absolute; left: -.5ch; bottom: 0; width: 52%;
+                height: 1px; background: var(--dim); opacity: .5; }
+.panel-head { position: relative; margin-left: -2.5ch; }
+.panel-head h2 { color: var(--amber); font-weight: 600; font-size: 13.5px; letter-spacing: 0;
+                 text-transform: lowercase; display: flex; align-items: center; white-space: nowrap; }
+.panel-head h2::before { content: "├─ "; color: var(--dim); font-weight: 400; }
+.panel > .panel-head h2::before { content: "╭─ "; }
+.panel-head h2::after { content: ""; flex: 1; height: 1px; background: var(--dim); opacity: .45; margin-left: 1ch; }
+.panel-sub { color: var(--dim); margin-left: 2.5ch; font-size: 12.5px; }
+.panel-head + * { margin-top: 16px; }
+
+.strip-y, .strip-x, .bar-y, .bar-x, .heat-ticks, .heat-day, .cal-dow, .day-ticks { color: var(--dim); }
+.strip-svg .guide { stroke: rgba(105,115,130,.3); stroke-width: 1; }
+.strip-svg .band { fill: var(--band); opacity: .45; }
+.strip-svg .line-viol { fill: none; stroke: var(--alert); stroke-width: 1.1; stroke-linejoin: miter; }
+.strip-svg .line-unblock { fill: none; stroke: var(--good); stroke-width: 1.1; stroke-linejoin: miter; }
+.strip-svg .sel { fill: var(--amber); fill-opacity: .07; stroke: var(--amber); stroke-width: 1; }
+.tl-legend { color: var(--dim); }
+.tl-sw.tl-line { background: var(--alert); }
+.tl-sw.tl-line2 { background: var(--good); }
+.tl-sw.tl-band { background: var(--band); opacity: .6; }
+
+.subtabs { margin-left: 2.5ch; }
+.subtabs button { color: var(--dim); border: 1px solid rgba(105,115,130,.4); padding: 4px 14px; }
+.subtabs button::before { content: "[ "; } .subtabs button::after { content: " ]"; }
+.subtabs button.active { color: var(--amber); border-color: var(--amber); }
+
+.cal-title { color: var(--amber); font-weight: 600; text-transform: lowercase; letter-spacing: 0; }
+.cal-hits { color: var(--dim); }
+.cal-cell { background: var(--bg-cell); color: var(--dim); border: 1px solid transparent; }
+.cal-cell.future { background: none; color: rgba(105,115,130,.45); }
+.cal-cell.clean { background: rgba(120,185,130,.16); color: var(--good); }
+.cal-cell.viol { color: var(--fg-hi); }
+.cal-cell.viol.b1 { background: var(--b1); } .cal-cell.viol.b2 { background: var(--b2); }
+.cal-cell.viol.b3 { background: var(--b3); } .cal-cell.viol.b4 { background: var(--b4); }
+.cal-cell.unmanaged::after, .sw.unmanaged, .heat-cell.unmanaged, .day-hour.unmanaged {
+  background-image: repeating-linear-gradient(45deg, var(--hatch) 0 1px, transparent 1px 4px);
+}
+.cal-cell.unmanaged::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--u); }
+.cal-cell.today { border-color: var(--amber); }
+.cal-cell.selected { border-color: var(--fg-hi); }
+.sw.clean { background: rgba(120,185,130,.16); box-shadow: inset 0 0 0 1px var(--good); }
+.sw.viol.b1 { background: var(--b1); } .sw.viol.b2 { background: var(--b2); }
+.sw.viol.b3 { background: var(--b3); } .sw.viol.b4 { background: var(--b4); }
+.sw.unmanaged { background-color: var(--bg-cell); }
+.sw.today { box-shadow: inset 0 0 0 1px var(--amber); }
+.sw.peak { box-shadow: inset 0 0 0 1px var(--fg-hi); }
+.cal-legend, .heatmap-legend, .chart-legend { color: var(--dim); }
+
+.day-date { color: var(--fg-hi); font-weight: 500; padding-bottom: 12px;
+            border-bottom: 1px solid rgba(105,115,130,.3); }
+.day-hour { background: var(--bg-cell); }
+.day-verdict.good { color: var(--good); }
+.day-verdict.good::before { content: "● "; }
+.day-verdict.bad { color: var(--alert); }
+.day-verdict.bad::before { content: "○ "; }
+
+.heat-cell { background: var(--bg-cell); }
+.heat-cell.hit.b1 { background: var(--b1); } .heat-cell.hit.b2 { background: var(--b2); }
+.heat-cell.hit.b3 { background: var(--b3); } .heat-cell.hit.b4 { background: var(--b4); }
+.heat-cell.peak { box-shadow: inset 0 0 0 1px var(--amber); }
+
+.bar-plot { background: linear-gradient(to top, rgba(105,115,130,.22) 1px, transparent 1px) 0 0 / 100% calc(100% / var(--rows)) repeat-y; }
+.reason-entertainment, .sw.reason-entertainment { background: var(--amber); }
+.cause-removed, .sw.cause-removed { background: var(--alert); }
+.cause-stopped, .sw.cause-stopped { background: var(--band); }
+.bar.empty { background: none; }
+
+.grant-row { border-left: 2px solid var(--amber); background: rgba(200,160,85,.05); margin-bottom: 5px; }
+.grant-ts { color: var(--dim); }
+.grant-what { color: var(--fg); }
+.grant-len { color: var(--amber); }
+
+.ign-row { padding: 3px 0; }
+.ign-ts { color: var(--dim); }
+.ign-kw { color: var(--alert); }
+.ign-host { color: var(--fg); }
+.ign-restore { color: var(--dim); }
+.ign-restore:hover { color: var(--amber); }
