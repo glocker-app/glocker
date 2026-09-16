@@ -3022,7 +3022,6 @@ const SERVICE_LABELS = [
   ["violationTracking", "Violation tracking"],
   ["usageMonitor", "Usage tracking"],
   ["sudoers", "Sudo restrictions"],
-  ["tamperDetection", "Tamper detection"],
   ["panic", "Panic mode"],
   ["sync", "Sync to glockpeek"],
 ];

@@ -91,6 +91,11 @@ type Syncer struct {
 	paths    logPaths
 	client   *http.Client
 
+	// cfg is the loaded config, kept so the config-snapshot sync (see config.go)
+	// can build its subset. nil in the unit-test constructor, which never syncs
+	// config.
+	cfg *config.Config
+
 	// cursors[source] is the max TS already accepted for that source; each cycle
 	// sends records with TS >= cursor (the boundary re-send is idempotent).
 	cursors map[string]int64
@@ -112,6 +117,7 @@ func New(cfg *config.Config) *Syncer {
 		interval: time.Duration(orInt(cfg.Sync.IntervalSeconds, config.DefaultSyncIntervalSeconds)) * time.Second,
 		client:   &http.Client{Timeout: 30 * time.Second},
 		cursors:  map[string]int64{},
+		cfg:      cfg,
 	}
 	s.paths = resolveLogPaths(cfg)
 
@@ -258,6 +264,7 @@ func (s *Syncer) Run() {
 	}
 	slog.Info("syncer starting", "target", s.url, "interval", s.interval, "e2e", s.e2e)
 	s.seedCursors() // ask glockpeek what it already has, so we only send the gap
+	s.syncConfig()  // one-shot: reconcile this device's config snapshot on connect
 	s.syncOnce()
 	t := time.NewTicker(s.interval)
 	defer t.Stop()
