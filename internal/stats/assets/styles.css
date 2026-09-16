@@ -171,6 +171,7 @@ body {
 #refresh-btn.refreshing .rf-ring { animation: rf-spin 0.8s linear infinite; }
 @keyframes rf-spin { to { transform: rotate(360deg); } }
 .src { font-family: var(--mono); font-size: 10px; line-height: 1.6; color: var(--ink-faint); }
+.src .ver { font-style: italic; opacity: 0.8; }
 .range-buttons { display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
 .range-buttons button {
   font-family: var(--mono);
