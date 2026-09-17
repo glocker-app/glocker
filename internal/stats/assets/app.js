@@ -3041,13 +3041,33 @@ function escHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
-// fmtWindows renders a TimeWindow array like the CLI: "09:00-17:00 (Mon,Tue)";
-// an empty list means the field's "always" default.
+const DAY_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+// fmtDays compacts a day list into the shortest readable form: "daily",
+// "weekdays", "weekends", a contiguous range ("Mon–Fri"), or a comma list.
+// Output draws only from fixed labels, so it needs no escaping.
+function fmtDays(days) {
+  if (!Array.isArray(days) || days.length === 0) return "";
+  const set = new Set(days);
+  if (set.size === 7) return "daily";
+  if (set.size === 5 && ["Mon", "Tue", "Wed", "Thu", "Fri"].every((d) => set.has(d))) return "weekdays";
+  if (set.size === 2 && ["Sat", "Sun"].every((d) => set.has(d))) return "weekends";
+  const idx = days.map((d) => DAY_ORDER.indexOf(d)).filter((i) => i >= 0).sort((a, b) => a - b);
+  const contiguous = idx.length > 2 && idx.every((v, i) => i === 0 || v === idx[i - 1] + 1);
+  if (contiguous) return `${DAY_ORDER[idx[0]]}–${DAY_ORDER[idx[idx.length - 1]]}`;
+  return idx.map((i) => DAY_ORDER[i]).join(", ");
+}
+
+// fmtWindows renders a TimeWindow array as compact "HH:MM–HH:MM <days>" lines,
+// one window per line. An empty list means the field's "always" default.
 function fmtWindows(wins) {
   if (!Array.isArray(wins) || wins.length === 0) return "always";
   return wins
-    .map((w) => `${escHtml(w.start)}-${escHtml(w.end)} (${escHtml((w.days || []).join(","))})`)
-    .join("; ");
+    .map((w) => {
+      const d = fmtDays(w.days);
+      return `${escHtml(w.start)}–${escHtml(w.end)}${d ? ` <span class="cfg-days">${d}</span>` : ""}`;
+    })
+    .join("<br>");
 }
 
 // decryptConfigBlob turns one device's stored blob into its parsed config object.
@@ -3111,8 +3131,11 @@ async function renderConfig() {
 function renderConfigCard(c, cfg, locked) {
   const name = c.name ? escHtml(c.name) : "This machine";
   const when = c.ts ? escHtml(fmtAgo(c.ts)) : "";
+  const meta = c.encrypted
+    ? `<span class="cfg-lock">🔒</span> Encrypted · synced ${when}`
+    : `Synced ${when}`;
   const head = `<div class="cfg-head"><span class="cfg-name">${name}</span>` +
-    `<span class="cfg-when">${c.encrypted ? "🔒 " : ""}${when}</span></div>`;
+    `<span class="cfg-when">${meta}</span></div>`;
 
   if (locked) {
     return `<div class="config-card">${head}<div class="cfg-locked">Encrypted under a key this browser can't open.</div></div>`;
@@ -3121,57 +3144,70 @@ function renderConfigCard(c, cfg, locked) {
     return `<div class="config-card">${head}<div class="cfg-locked">Unreadable snapshot.</div></div>`;
   }
 
-  const sections = [];
+  // The narrow side rail (status-shaped: services + guardrails) and the wide
+  // main column (the list-heavy sections that need room to breathe).
+  const side = [];
+  const main = [];
 
-  // Services as on/off pills.
+  // Services as a state checklist — a green dot for on, muted for off.
   const svc = cfg.services || {};
-  const pills = SERVICE_LABELS.map(([k, label]) => {
+  const svcItems = SERVICE_LABELS.map(([k, label]) => {
     const on = !!svc[k];
-    const extra = k === "sync" && on && svc.syncEncrypted ? " · e2e" : "";
-    return `<span class="svc-pill ${on ? "on" : "off"}">${escHtml(label + extra)}</span>`;
+    const tag = k === "sync" && on && svc.syncEncrypted ? ` <span class="svc-tag">end-to-end</span>` : "";
+    return `<div class="svc-item ${on ? "on" : "off"}"><span class="svc-dot"></span><span>${escHtml(label)}${tag}</span></div>`;
   }).join("");
-  sections.push(`<div class="cfg-section"><h4>Services</h4><div class="svc-pills">${pills}</div></div>`);
+  side.push(cfgSection("Services", `<div class="svc-list">${svcItems}</div>`));
 
-  // Keywords.
-  const kw = cfg.keywords || {};
-  const kwRows = [];
-  if ((kw.url || []).length) kwRows.push(cfgRow(`URL (${kw.url.length})`, kw.url.map(escHtml).join(", ")));
-  if ((kw.content || []).length) kwRows.push(cfgRow(`Content (${kw.content.length})`, kw.content.map(escHtml).join(", ")));
-  if (kw.whitelistCount) kwRows.push(cfgRow("Whitelisted", `${kw.whitelistCount} domains`));
-  if (kwRows.length) sections.push(`<div class="cfg-section"><h4>Keywords</h4>${kwRows.join("")}</div>`);
-
-  // Forbidden programs.
-  const pr = cfg.programs || {};
-  const prRows = [];
-  if ((pr.alwaysKilled || []).length) prRows.push(cfgRow("Killed always", pr.alwaysKilled.map(escHtml).join(", ")));
-  for (const p of pr.windowed || []) {
-    let desc;
-    if ((p.kill || []).length && (p.allow || []).length) desc = `killed ${fmtWindows(p.kill)}; else allowed ${fmtWindows(p.allow)}, killed outside`;
-    else if ((p.allow || []).length) desc = `allowed ${fmtWindows(p.allow)}, killed otherwise`;
-    else desc = `killed ${fmtWindows(p.kill)}`;
-    prRows.push(cfgRow(escHtml(p.name) + (p.extendible ? " ⏳" : ""), desc));
-  }
-  if (prRows.length) sections.push(`<div class="cfg-section"><h4>Forbidden programs</h4>${prRows.join("")}</div>`);
-
-  // Domains.
-  const dm = cfg.domains || {};
-  const dmRows = [];
-  if (dm.blocked != null) dmRows.push(cfgRow("Blocked", `${dm.blocked}`));
-  if (dm.alwaysBlocked != null) dmRows.push(cfgRow("Always", `${dm.alwaysBlocked}`));
-  for (const d of dm.timeBased || []) dmRows.push(cfgRow(escHtml(d.name), `blocked ${fmtWindows(d.block)}`));
-  if (dmRows.length) sections.push(`<div class="cfg-section"><h4>Domains</h4>${dmRows.join("")}</div>`);
-
-  // Guardrails.
+  // Guardrails — compact label/value pairs.
   const g = cfg.guardrails || {};
   const gRows = [];
   if ((g.sudoAllow || []).length) gRows.push(cfgRow("Sudo allowed", fmtWindows(g.sudoAllow)));
   if (g.unblockMaxPerDay != null) gRows.push(cfgRow("Unblocks/day", g.unblockMaxPerDay > 0 ? `${g.unblockMaxPerDay}` : "no cap"));
-  if (g.violationMax != null) gRows.push(cfgRow("Violation limit", `${g.violationMax} in ${g.violationWindowMin ?? "?"}m`));
-  if (g.panicDurationMin != null) gRows.push(cfgRow("Panic duration", `${g.panicDurationMin}m`));
-  if (g.checkIntervalSec != null) gRows.push(cfgRow("Check interval", `${g.checkIntervalSec}s`));
-  if (gRows.length) sections.push(`<div class="cfg-section"><h4>Guardrails</h4>${gRows.join("")}</div>`);
+  if (g.violationMax != null) gRows.push(cfgRow("Violation limit", `${g.violationMax} in ${g.violationWindowMin ?? "?"} min`));
+  if (g.panicDurationMin != null) gRows.push(cfgRow("Panic duration", `${g.panicDurationMin} min`));
+  if (g.checkIntervalSec != null) gRows.push(cfgRow("Check interval", `${g.checkIntervalSec} s`));
+  if (gRows.length) side.push(cfgSection("Guardrails", gRows.join("")));
 
-  return `<div class="config-card">${head}<div class="cfg-body">${sections.join("")}</div></div>`;
+  // Keywords — the comma lists want the wide column.
+  const kw = cfg.keywords || {};
+  const kwRows = [];
+  if ((kw.url || []).length) kwRows.push(cfgRow(`URL · ${kw.url.length}`, kw.url.map(escHtml).join(", ")));
+  if ((kw.content || []).length) kwRows.push(cfgRow(`Content · ${kw.content.length}`, kw.content.map(escHtml).join(", ")));
+  if (kw.whitelistCount) kwRows.push(cfgRow("Whitelisted", `${kw.whitelistCount} domains`));
+  if (kwRows.length) main.push(cfgSection("Keywords", kwRows.join("")));
+
+  // Forbidden programs — name → schedule.
+  const pr = cfg.programs || {};
+  const prRows = [];
+  if ((pr.alwaysKilled || []).length) prRows.push(cfgRow(`Always · ${pr.alwaysKilled.length}`, pr.alwaysKilled.map(escHtml).join(", ")));
+  for (const p of pr.windowed || []) {
+    let desc;
+    if ((p.kill || []).length && (p.allow || []).length) desc = `killed ${fmtWindows(p.kill)}<br>else allowed ${fmtWindows(p.allow)}`;
+    else if ((p.allow || []).length) desc = `allowed ${fmtWindows(p.allow)}, killed otherwise`;
+    else desc = `killed ${fmtWindows(p.kill)}`;
+    prRows.push(cfgRow(escHtml(p.name) + (p.extendible ? ` <span class="cfg-ext" title="extendible">⏳</span>` : ""), desc));
+  }
+  if (prRows.length) main.push(cfgSection("Forbidden programs", prRows.join("")));
+
+  // Domains — counts, then the time-based ones.
+  const dm = cfg.domains || {};
+  const dmRows = [];
+  if (dm.blocked != null) {
+    const always = dm.alwaysBlocked != null ? ` <span class="cfg-days">${Number(dm.alwaysBlocked).toLocaleString()} always</span>` : "";
+    dmRows.push(cfgRow("Blocked", `${Number(dm.blocked).toLocaleString()}${always}`));
+  }
+  for (const d of dm.timeBased || []) dmRows.push(cfgRow(escHtml(d.name), fmtWindows(d.block)));
+  if (dmRows.length) main.push(cfgSection("Domains", dmRows.join("")));
+
+  return `<div class="config-card">${head}<div class="cfg-body">` +
+    `<div class="cfg-col cfg-col--side">${side.join("")}</div>` +
+    `<div class="cfg-col cfg-col--main">${main.join("")}</div>` +
+    `</div></div>`;
+}
+
+// cfgSection wraps a titled block of rows.
+function cfgSection(title, innerHtml) {
+  return `<div class="cfg-section"><h4>${escHtml(title)}</h4>${innerHtml}</div>`;
 }
 
 // cfgRow is a label/value line inside a config section. label and valueHtml are
