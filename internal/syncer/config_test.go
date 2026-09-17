@@ -313,3 +313,22 @@ func TestSyncConfigRetriesUntilItLands(t *testing.T) {
 		t.Fatalf("re-uploaded an unchanged config: count = %d, want 1", c.count())
 	}
 }
+
+// TestRunSyncsConfig guards the wiring, not the logic: every other config test
+// calls syncConfig directly, so deleting the call from Run would break config
+// sync in production with the whole suite still green.
+func TestRunSyncsConfig(t *testing.T) {
+	c := newConfigServer(t)
+	// A long interval so Run does its start-up work and then parks on the
+	// ticker rather than spinning for the rest of the test binary's life.
+	s := &Syncer{url: c.srv.URL, interval: time.Hour, client: c.srv.Client(), cursors: map[string]int64{}, cfg: sampleConfig()}
+	go s.Run()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) && c.count() == 0 {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if c.count() == 0 {
+		t.Fatal("Run() never uploaded a config snapshot — the syncConfig call is missing from Run")
+	}
+}
