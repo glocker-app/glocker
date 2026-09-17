@@ -407,10 +407,11 @@ func TestRulesGetPut(t *testing.T) {
 	mux, sdb := newMux(t)
 	_, cookie, _ := account(t, sdb, "alice")
 
+	// A fresh account comes seeded with the Glocker starter rules.
 	get := httptest.NewRequest("GET", "/api/rules", nil)
 	get.AddCookie(cookie)
-	if rec := do(mux, get); !strings.Contains(rec.Body.String(), `"rules":[]`) {
-		t.Fatalf("empty GET = %s", rec.Body.String())
+	if rec := do(mux, get); !strings.Contains(rec.Body.String(), `Glocker:entertainment`) {
+		t.Fatalf("expected seeded starter rules, got %s", rec.Body.String())
 	}
 
 	body := `{"rules":[{"program":"^Emacs$","title":"","tag":"Activity:work"},{"nope":true}],"colors":{"Activity:work":"#3aa0ff","x":"bad"}}`

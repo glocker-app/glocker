@@ -86,5 +86,6 @@ func (db *DB) VerifyEmail(token string) (*User, error) {
 		return nil, err
 	}
 	u.Verified = true
+	_ = db.SeedAccountRules(u.ID) // seed starter rules once, now that the account is active
 	return &u, nil
 }

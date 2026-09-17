@@ -104,6 +104,10 @@ func (db *DB) Migrate() error {
 	if err := db.backfillDeviceID(); err != nil {
 		return fmt.Errorf("store: device_id backfill: %w", err)
 	}
+	// Seed/refresh the shared Glocker:* tag taxonomy (idempotent).
+	if err := db.SeedSystemTags(); err != nil {
+		return fmt.Errorf("store: seed system tags: %w", err)
+	}
 	return nil
 }
 

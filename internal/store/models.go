@@ -37,6 +37,9 @@ type User struct {
 	// may hold. 0 (the zero value / free tier) means DefaultFreeDevices; a negative
 	// value means unlimited. Raised for paid accounts.
 	DeviceLimit int       `json:"deviceLimit"`
+	// RulesSeeded is set once the account has had the Glocker starter rules seeded
+	// (on activation/creation), so it never re-seeds and deleted starters stay gone.
+	RulesSeeded bool      `json:"-"`
 	CreatedAt   time.Time `json:"createdAt"`
 
 	// Subscription state for the hosted paid tier. The Merchant-of-Record
@@ -156,14 +159,48 @@ type Heartbeat struct {
 	Alive    bool  `json:"alive"`
 }
 
-// Rule is one usage-categorization rule (optional program/title regex -> tag).
-// Dashboard-local state (created on glockpeek, not synced from glocker).
+// Rule is one usage-categorization rule (optional program/title regex -> tags).
+// Dashboard-local state (created on glockpeek, not synced from glocker). Position
+// orders the rules for first-match-wins precedence (lower runs first). Tag is the
+// legacy single-tag column, kept for back-compat while the UI moves to the
+// namespaced registry (rule_tags); new rules populate both.
 type Rule struct {
-	ID      uint   `gorm:"primaryKey" json:"-"`
-	UserID  uint   `gorm:"index" json:"-"`
-	Program string `json:"program"`
-	Title   string `json:"title"`
-	Tag     string `json:"tag"`
+	ID       uint   `gorm:"primaryKey" json:"-"`
+	UserID   uint   `gorm:"index" json:"-"`
+	Position int    `json:"position"`
+	Program  string `json:"program"`
+	Title    string `json:"title"`
+	Tag      string `json:"tag"`
+}
+
+// Tag is one entry in the tag registry. Two scopes: "system" (the shared,
+// vendor-owned Glocker:* taxonomy, UserID 0, the same for every account) and
+// "user" (an account's own tags). See docs/tags-and-rules.md. Behavior is "" or
+// "hide" (a Glocker:hide tag whose windows are dropped from usage totals).
+type Tag struct {
+	ID          uint   `gorm:"primaryKey" json:"id"`
+	Scope       string `gorm:"uniqueIndex:ux_tag,priority:1" json:"scope"`
+	UserID      uint   `gorm:"index;uniqueIndex:ux_tag,priority:2" json:"-"`
+	Namespace   string `gorm:"uniqueIndex:ux_tag,priority:3" json:"namespace"`
+	Name        string `gorm:"uniqueIndex:ux_tag,priority:4" json:"name"`
+	Color       string `json:"color"`
+	Distraction bool   `json:"distraction"`
+	Behavior    string `json:"behavior,omitempty"`
+}
+
+// TagOverride records an account's distraction choice for a system tag, so a
+// user can flip a Glocker tag's distraction flag without forking the shared tag.
+type TagOverride struct {
+	UserID      uint `gorm:"uniqueIndex:ux_tagoverride,priority:1" json:"-"`
+	TagID       uint `gorm:"uniqueIndex:ux_tagoverride,priority:2" json:"tagId"`
+	Distraction bool `json:"distraction"`
+}
+
+// RuleTag links a rule to the tags it attaches (at most one per namespace,
+// enforced app-side). Many-to-many between rules and the registry.
+type RuleTag struct {
+	RuleID uint `gorm:"uniqueIndex:ux_ruletag,priority:1" json:"ruleId"`
+	TagID  uint `gorm:"uniqueIndex:ux_ruletag,priority:2" json:"tagId"`
 }
 
 // TagColor maps a tag to its display colour (#rrggbb), per account.
@@ -249,5 +286,6 @@ func AllModels() []any {
 		&Violation{}, &Unblock{}, &LifecycleEvent{}, &UsageSample{},
 		&Heartbeat{}, &Rule{}, &TagColor{}, &IgnoredViolation{},
 		&SyncStatus{}, &KeyVault{}, &DeviceConfig{},
+		&Tag{}, &TagOverride{}, &RuleTag{},
 	}
 }

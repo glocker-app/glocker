@@ -31,6 +31,7 @@ const (
 func (db *DB) EnsureDefaultUser() (*User, error) {
 	var u User
 	if err := db.Where("username = ?", DefaultUsername).First(&u).Error; err == nil {
+		_ = db.SeedAccountRules(u.ID) // once (guarded); catches an existing local account on upgrade
 		return &u, nil
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -47,6 +48,7 @@ func (db *DB) EnsureDefaultUser() (*User, error) {
 	if err := db.Create(nu).Error; err != nil {
 		return nil, err
 	}
+	_ = db.SeedAccountRules(nu.ID)
 	return nu, nil
 }
 
@@ -97,6 +99,11 @@ func (db *DB) createUser(email, password string, verified bool) (*User, error) {
 	u := &User{Email: email, Username: email, PasswordHash: hash, Verified: verified}
 	if err := db.Create(u).Error; err != nil {
 		return nil, err
+	}
+	// Accounts that are active on creation (admin-added, verified) get their
+	// starter rules now; self-serve accounts get them at verification instead.
+	if verified {
+		_ = db.SeedAccountRules(u.ID)
 	}
 	return u, nil
 }
