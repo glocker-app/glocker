@@ -19,6 +19,7 @@ const state = { data: null, winStart: null, winEnd: null, view: "overview", anal
 const VIEW_TITLES = {
   overview: "Overview",
   analytics: "Analytics",
+  insights: "Insights",
   config: "Config",
   devices: "Devices",
   users: "Admin",
@@ -527,6 +528,7 @@ async function bootDashboard(me) {
   // config in local mode, every device's in hosted). Shown always; it carries an
   // empty state until an agent has synced its config.
   document.getElementById("nav-config").hidden = false;
+  document.getElementById("nav-insights").hidden = false;
 
   restoreWindow(); // pick the window (saved cookie or default) now data is loaded
   setupRules();
@@ -560,6 +562,7 @@ function setView(view) {
   if (rr) rr.hidden = view !== "analytics"; // the range only applies to Analytics
   if (view === "analytics") setSubtab(state.analyticsTab || "history");
   if (view === "config") renderConfig();
+  if (view === "insights") renderInsights();
   if (view === "devices") renderDevices();
   if (view === "users") renderUsers();
   // Charts built while their view was display:none have zero size; fix on reveal.
@@ -3242,6 +3245,208 @@ function cfgList(items) {
 function cfgItem(name, detailHtml) {
   return `<li class="cfg-item"><span class="cfg-item-name">${name}</span>` +
     `<span class="cfg-item-detail">${detailHtml}</span></li>`;
+}
+
+// ── Insights ────────────────────────────────────────────
+// Suggestions derived, in the browser, from the account's own decrypted data
+// (violations / usage / unblocks / lifecycle) cross-checked against the synced
+// config snapshots. Each insight maps to a concrete config change; we never
+// surface a vague nudge, and never suggest something the config already does.
+
+const WORK_START = 9;   // work-hours window start (hour, local) — adjustable
+const WORK_END = 17;    // work-hours window end (exclusive)
+const INSIGHT = {
+  minViolations: 5,     // per-domain hits before we call it a pattern
+  minWorkSamples: 25,   // ~minutes of a work-hours app before it's worth blocking
+  workIdleMs: 5 * 60_000,
+  minUninstalls: 3,
+  minUnblocks: 3,
+};
+// Apps we treat as distractions without the user having to tag them. Tags (the
+// usage rules) extend this, but this keeps a fresh account useful.
+const DISTRACTION_APPS = new Set(["mpv", "vlc", "io.github.celluloid", "steam", "steam_app", "lutris", "spotify", "stremio", "kodi", "smplayer"]);
+const LEGIT_UNINSTALL = new Set(["maintenance", "testing", "update", "upgrade", "reinstall"]);
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const pad2 = (n) => String(n).padStart(2, "0");
+const hourBand = (h) => `${pad2(h)}:00–${pad2((h + 2) % 24)}:00`;
+
+// fetchDeviceConfigs returns the parsed config snapshot for each device (locked
+// ones skipped), so insights can cross-check what's already enforced.
+async function fetchDeviceConfigs() {
+  const out = [];
+  try {
+    const r = await fetch("api/config", { credentials: "same-origin" });
+    if (!r.ok) return out;
+    for (const c of (await r.json()).configs || []) {
+      const parsed = await decryptConfigBlob(c);
+      if (parsed !== CONFIG_LOCKED && parsed && typeof parsed === "object") out.push(parsed);
+    }
+  } catch { /* no configs -> insights just can't cross-check */ }
+  return out;
+}
+
+// configIndex unions what every device already enforces.
+function configIndex(configs) {
+  const tbDomains = new Set(), forbidden = new Set();
+  const sudoAllow = [];
+  for (const cfg of configs) {
+    for (const d of (cfg.domains && cfg.domains.timeBased) || []) if (d.name) tbDomains.add(d.name.toLowerCase());
+    for (const n of (cfg.programs && cfg.programs.alwaysKilled) || []) forbidden.add(String(n).toLowerCase());
+    for (const p of (cfg.programs && cfg.programs.windowed) || []) if (p.name) forbidden.add(String(p.name).toLowerCase());
+    for (const w of (cfg.guardrails && cfg.guardrails.sudoAllow) || []) sudoAllow.push(w);
+  }
+  return { tbDomains, forbidden, sudoAllow };
+}
+
+const argmax = (arr) => arr.reduce((best, v, i, a) => (v > a[best] ? i : best), 0);
+const daysList = (set) => [...set].sort((a, b) => a - b).map((i) => `"${DOW[i]}"`).join(", ");
+
+// 1. Vulnerable hours: domains that keep tripping the keyword monitor, clustered
+// in time, that aren't already on a scheduled block.
+function insightVulnerableHours(violations, idx) {
+  const byDom = new Map();
+  for (const v of violations || []) {
+    const dom = (v.domain || "").toLowerCase();
+    if (!dom || dom === "🔒") continue;
+    const d = new Date(v.ts);
+    const rec = byDom.get(dom) || { hours: new Array(24).fill(0), days: new Set(), count: 0 };
+    rec.hours[d.getHours()]++; rec.days.add(d.getDay()); rec.count++;
+    byDom.set(dom, rec);
+  }
+  const out = [];
+  for (const [dom, rec] of byDom) {
+    if (rec.count < INSIGHT.minViolations || idx.tbDomains.has(dom)) continue;
+    const ph = argmax(rec.hours);
+    const start = pad2(ph), end = pad2((ph + 2) % 24);
+    out.push({
+      kind: "vuln", tag: "Vulnerable hours",
+      title: `${escHtml(dom)} keeps slipping through around ${hourBand(ph)}`,
+      evidence: `${rec.count} keyword hits, concentrated near ${pad2(ph)}:00`,
+      action: `Add a scheduled block for ${escHtml(dom)} in that window:`,
+      config: `domains:\n  list:\n    - name: ${dom}\n      block_windows:\n        - { start: "${start}:00", end: "${end}:00", days: [${daysList(rec.days)}] }`,
+      weight: rec.count,
+    });
+  }
+  return out.sort((a, b) => b.weight - a.weight).slice(0, 6);
+}
+
+// 3. Entertainment apps during work hours that aren't forbidden programs yet.
+function insightWorkDistraction(usage, idx) {
+  const byApp = new Map();
+  for (const s of usage || []) {
+    const a = s.active;
+    if (!a || !a.class) continue;
+    if (s.idleMs && s.idleMs > INSIGHT.workIdleMs) continue;
+    const d = new Date(s.ts), wd = d.getDay(), hr = d.getHours();
+    if (wd === 0 || wd === 6 || hr < WORK_START || hr >= WORK_END) continue;
+    byApp.set(a.class, (byApp.get(a.class) || 0) + 1);
+  }
+  const out = [];
+  for (const [app, count] of byApp) {
+    if (count < INSIGHT.minWorkSamples) continue;
+    if (!DISTRACTION_APPS.has(app.toLowerCase())) continue;
+    if (idx.forbidden.has(app.toLowerCase())) continue;
+    out.push({
+      kind: "work", tag: "Work hours",
+      title: `${escHtml(app)} runs during work hours`,
+      evidence: `~${count} min of ${escHtml(app)} between ${pad2(WORK_START)}:00–${pad2(WORK_END)}:00 on weekdays`,
+      action: `Make ${escHtml(app)} a forbidden program during work hours:`,
+      config: `programs:\n  enabled: true\n  list:\n    - name: ${app}\n      kill_windows:\n        - { start: "${pad2(WORK_START)}:00", end: "${pad2(WORK_END)}:00", days: ["Mon", "Tue", "Wed", "Thu", "Fri"] }`,
+      weight: count,
+    });
+  }
+  return out.sort((a, b) => b.weight - a.weight);
+}
+
+// 5. Uninstalls clustered at a time of day (excluding legit reasons) → the sudo
+// window is open then.
+function insightUninstallWindow(lifecycle, idx) {
+  const uns = (lifecycle || []).filter((e) => e.type === "uninstall" && !LEGIT_UNINSTALL.has((e.reason || "").toLowerCase()));
+  if (uns.length < INSIGHT.minUninstalls) return [];
+  const hours = new Array(24).fill(0);
+  const reasons = new Map();
+  for (const e of uns) {
+    hours[new Date(e.ts).getHours()]++;
+    const r = e.reason || "unspecified";
+    reasons.set(r, (reasons.get(r) || 0) + 1);
+  }
+  const ph = argmax(hours);
+  const topReasons = [...reasons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([r]) => escHtml(r)).join(", ");
+  return [{
+    kind: "uninstall", tag: "Uninstalls",
+    title: `Uninstalls cluster around ${hourBand(ph)}`,
+    evidence: `${uns.length} uninstalls near ${pad2(ph)}:00 (reasons: ${topReasons})`,
+    action: `sudo is available then, so uninstall is possible. Narrow the sudo window to exclude ${hourBand(ph)}:`,
+    config: `sudoers:\n  enabled: true\n  allow_windows:\n    # keep sudo out of ${pad2(ph)}:00–${pad2((ph + 2) % 24)}:00\n    - { start: "09:00", end: "${pad2(ph)}:00", days: ["Mon", "Tue", "Wed", "Thu", "Fri"] }`,
+  }];
+}
+
+// (bonus) Repeated unblocks of the same domain — a recurring weak spot.
+function insightUnblockWeakSpots(unblocks) {
+  const byDom = new Map();
+  for (const u of unblocks || []) {
+    const dom = (u.domain || "").toLowerCase();
+    if (!dom || dom === "🔒") continue;
+    const rec = byDom.get(dom) || { count: 0, reasons: new Set() };
+    rec.count++; if (u.reason && u.reason !== "🔒") rec.reasons.add(u.reason);
+    byDom.set(dom, rec);
+  }
+  const out = [];
+  for (const [dom, rec] of byDom) {
+    if (rec.count < INSIGHT.minUnblocks) continue;
+    const rs = [...rec.reasons].slice(0, 3).map(escHtml).join(", ");
+    out.push({
+      kind: "unblock", tag: "Repeated unblocks",
+      title: `${escHtml(dom)} is unblocked over and over`,
+      evidence: `${rec.count} temporary unblocks${rs ? ` (reasons: ${rs})` : ""}`,
+      action: `It's a recurring weak spot. Make it un-unblockable, or lower the daily cap:`,
+      config: `# ${dom}: drop "unblockable: true" from its entry, or tighten\ndomains:\n  unblocking:\n    max_per_day: 1`,
+      weight: rec.count,
+    });
+  }
+  return out.sort((a, b) => b.weight - a.weight).slice(0, 4);
+}
+
+async function renderInsights() {
+  const listEl = document.getElementById("insights-list");
+  const emptyEl = document.getElementById("insights-empty");
+  const errEl = document.getElementById("insights-error");
+  const subEl = document.getElementById("insights-sub");
+  errEl.hidden = true;
+
+  const data = state.data;
+  if (!data) {
+    errEl.textContent = "No data loaded yet.";
+    errEl.hidden = false;
+    return;
+  }
+  const idx = configIndex(await fetchDeviceConfigs());
+  const insights = [
+    ...insightVulnerableHours(data.violations, idx),
+    ...insightWorkDistraction(data.usage, idx),
+    ...insightUninstallWindow(data.lifecycle, idx),
+    ...insightUnblockWeakSpots(data.unblocks),
+  ];
+
+  if (insights.length === 0) {
+    listEl.innerHTML = "";
+    if (subEl) subEl.textContent = "";
+    emptyEl.hidden = false;
+    return;
+  }
+  emptyEl.hidden = true;
+  if (subEl) subEl.textContent = `${insights.length} suggestion${insights.length === 1 ? "" : "s"}.`;
+  listEl.innerHTML = insights.map(renderInsightCard).join("");
+}
+
+function renderInsightCard(s) {
+  return `<div class="insight-card insight--${s.kind}">` +
+    `<div class="insight-head"><span class="insight-tag">${escHtml(s.tag)}</span><h3>${s.title}</h3></div>` +
+    `<p class="insight-evidence">${s.evidence}</p>` +
+    `<p class="insight-action">${s.action}</p>` +
+    `<pre class="insight-config">${escHtml(s.config)}</pre>` +
+    `</div>`;
 }
 
 // renderSync fills the Data-sync panel from /api/sync: when the daemon last

@@ -1147,3 +1147,17 @@ canvas { max-height: 260px; }
 .cfg-item { display: flex; flex-direction: column; gap: 2px; padding-left: 11px; border-left: 2px solid var(--line-2); }
 .cfg-item-name { font-family: var(--mono); font-size: 0.82rem; color: var(--ink); }
 .cfg-item-detail { font-size: 0.83rem; color: var(--ink-dim); line-height: 1.55; }
+
+/* ── Insights ─────────────────────────────────────────── */
+.insights-list { display: flex; flex-direction: column; gap: 14px; }
+.insight-card { border: 1px solid var(--line); border-left: 3px solid var(--signal); border-radius: var(--r); background: var(--panel-2); padding: 15px 18px; }
+.insight--vuln { border-left-color: var(--danger); }
+.insight--work { border-left-color: var(--signal); }
+.insight--uninstall { border-left-color: var(--exposed); }
+.insight--unblock { border-left-color: var(--exposed-dim); }
+.insight-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 7px; }
+.insight-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); }
+.insight-head h3 { margin: 0; font-family: var(--display); font-size: 1rem; font-weight: 600; color: var(--ink); }
+.insight-evidence { margin: 0 0 9px; font-size: 0.86rem; color: var(--ink-dim); }
+.insight-action { margin: 0 0 11px; font-size: 0.86rem; color: var(--ink); }
+.insight-config { margin: 0; padding: 12px 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 0.78rem; line-height: 1.55; color: var(--ink-dim); overflow-x: auto; white-space: pre; }

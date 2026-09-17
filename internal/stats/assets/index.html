@@ -29,6 +29,7 @@
       <ul class="nav" id="nav">
         <li><button data-view="overview" class="active">Overview</button></li>
         <li><button data-view="analytics">Analytics</button></li>
+        <li id="nav-insights" hidden><button data-view="insights">Insights</button></li>
         <li id="nav-config" hidden><button data-view="config">Config</button></li>
         <li id="nav-devices" hidden><button data-view="devices">Devices</button></li>
         <li id="nav-users" class="nav-admin" hidden><button data-view="users">Admin</button></li>
@@ -256,6 +257,18 @@
           </section>
           </div><!-- /subview usage -->
         </section><!-- /view analytics -->
+
+        <section class="view" data-view="insights">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Insights</h2>
+              <p class="panel-sub">Patterns across your machines, and a concrete config change for each. Computed in your browser from your own data. <span id="insights-sub"></span></p>
+            </div>
+            <div id="insights-list" class="insights-list"></div>
+            <p id="insights-empty" class="config-empty" hidden>Nothing to suggest right now — your enforcement is keeping up with the patterns in your data.</p>
+            <p id="insights-error" class="login-error" hidden></p>
+          </section>
+        </section>
 
         <section class="view" data-view="config">
           <section class="panel">
