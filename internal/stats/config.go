@@ -13,16 +13,21 @@ import (
 // stats rows, the snapshot is content-blind: Config is an opaque blob the server
 // stores and hands back without parsing.
 //
-//   - POST (agent, ingest token): upsert this device's snapshot.
-//   - GET ?mine=1 (agent, ingest token): return this device's stored hash, so the
-//     agent only re-uploads when its local config actually changed.
-//   - GET (browser, session): return every device's snapshot for the account.
+//   - POST (agent, ingest token): upsert this device's snapshot, and optionally
+//     the (large) blocklist blob when its own hash changed.
+//   - GET ?mine=1 (agent, ingest token): return this device's stored snapshot and
+//     blocklist hashes, so the agent re-uploads only what actually changed.
+//   - GET ?blocklist=1 (browser, session): return every device's blocklist blob
+//     (multi-MB) for membership checks + domain search.
+//   - GET (browser, session): return every device's snapshot (no blocklist).
 func handleConfig(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodPost:
 		requireToken(handleConfigPost)(w, r)
 	case r.Method == http.MethodGet && r.URL.Query().Get("mine") == "1":
 		requireToken(handleConfigMine)(w, r)
+	case r.Method == http.MethodGet && r.URL.Query().Get("blocklist") == "1":
+		requireUser(handleConfigBlocklists)(w, r)
 	case r.Method == http.MethodGet:
 		requireUser(handleConfigList)(w, r)
 	default:
@@ -30,18 +35,22 @@ func handleConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// configUpload is the snapshot the agent POSTs. Config is the opaque blob
-// (base64 nonce||ciphertext under E2E, or cleartext JSON in plaintext mode);
-// Hash fingerprints the plaintext subset.
+// configUpload is what the agent POSTs. Config is the opaque snapshot blob (base64
+// nonce||ciphertext under E2E, or cleartext JSON otherwise); Hash fingerprints the
+// plaintext subset. Blocklist (optional, only when it changed) is the gzip'd domain
+// list, likewise encrypted+base64; BlocklistHash fingerprints its plaintext.
 type configUpload struct {
-	TS        int64  `json:"ts"`
-	Encrypted bool   `json:"encrypted"`
-	Hash      string `json:"hash"`
-	Config    string `json:"config"`
+	TS            int64  `json:"ts"`
+	Encrypted     bool   `json:"encrypted"`
+	Hash          string `json:"hash"`
+	Config        string `json:"config"`
+	BlocklistHash string `json:"blocklistHash,omitempty"`
+	Blocklist     string `json:"blocklist,omitempty"`
 }
 
 func handleConfigPost(w http.ResponseWriter, r *http.Request) {
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)) // 1 MiB is ample for a curated subset
+	// Generous cap: the snapshot is tiny but the optional blocklist blob is a few MB.
+	body, err := io.ReadAll(io.LimitReader(r.Body, 32<<20))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -66,16 +75,45 @@ func handleConfigPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// The blocklist rides along only when it changed; save it separately so a
+	// snapshot-only upload never touches the multi-MB column.
+	if in.BlocklistHash != "" && in.Blocklist != "" {
+		if err := db.SaveDeviceBlocklist(uid, dev, in.BlocklistHash, in.Blocklist); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func handleConfigMine(w http.ResponseWriter, r *http.Request) {
-	hash, err := db.DeviceConfigHash(userFrom(r).ID, deviceFrom(r))
+	hash, blocklistHash, err := db.DeviceConfigHashes(userFrom(r).ID, deviceFrom(r))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, map[string]any{"hash": hash})
+	writeJSON(w, map[string]any{"hash": hash, "blocklistHash": blocklistHash})
+}
+
+// blocklistView is one device's blocklist blob as the dashboard consumes it.
+type blocklistView struct {
+	DeviceID  uint   `json:"deviceId"`
+	Encrypted bool   `json:"encrypted"`
+	Hash      string `json:"hash"`
+	Blocklist string `json:"blocklist"`
+}
+
+func handleConfigBlocklists(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.DeviceBlocklists(userFrom(r).ID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	out := make([]blocklistView, 0, len(rows))
+	for _, c := range rows {
+		out = append(out, blocklistView{DeviceID: c.DeviceID, Encrypted: c.Encrypted, Hash: c.BlocklistHash, Blocklist: c.Blocklist})
+	}
+	writeJSON(w, map[string]any{"blocklists": out})
 }
 
 // configView is one device's snapshot as the dashboard consumes it: the stored

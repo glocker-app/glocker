@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"time"
 
 	"glocker/internal/config"
@@ -94,10 +96,12 @@ type cfgGuardrails struct {
 // (base64 nonce||ciphertext under E2E, or the cleartext subset JSON otherwise);
 // Hash fingerprints the plaintext subset.
 type configUpload struct {
-	TS        int64  `json:"ts"`
-	Encrypted bool   `json:"encrypted"`
-	Hash      string `json:"hash"`
-	Config    string `json:"config"`
+	TS            int64  `json:"ts"`
+	Encrypted     bool   `json:"encrypted"`
+	Hash          string `json:"hash"`
+	Config        string `json:"config"`
+	BlocklistHash string `json:"blocklistHash,omitempty"`
+	Blocklist     string `json:"blocklist,omitempty"`
 }
 
 // buildConfigSnapshot derives the curated subset from the loaded config. It reads
@@ -205,8 +209,17 @@ func (s *Syncer) syncConfig() bool {
 	sum := sha256.Sum256(plaintext)
 	hash := hex.EncodeToString(sum[:])
 
-	if stored, ok := s.storedConfigHash(); ok && stored == hash {
-		slog.Debug("syncer: config unchanged, skipping upload", "hash", hash)
+	// The blocklist is reconciled independently — it's multi-MB and changes rarely
+	// (only when the blocklists are refreshed), so we only ship it when its own
+	// hash differs.
+	names := s.sortedDomains()
+	blHash := blocklistHashOf(names)
+
+	storedHash, storedBl, ok := s.storedConfigHashes()
+	snapshotFresh := ok && storedHash == hash
+	blocklistFresh := ok && storedBl == blHash
+	if snapshotFresh && blocklistFresh {
+		slog.Debug("syncer: config + blocklist unchanged, skipping upload", "hash", hash)
 		return true
 	}
 
@@ -223,12 +236,27 @@ func (s *Syncer) syncConfig() bool {
 		return false
 	}
 	up.Config, up.Encrypted = blob, encrypted
+
+	// Attach the blocklist only when it changed. A seal failure here doesn't sink
+	// the snapshot upload — the blocklist just retries next tick.
+	blocklistSent := false
+	if !blocklistFresh {
+		if blBlob, _, berr := s.encBlocklist(names, blHash); berr != nil {
+			slog.Error("syncer: blocklist seal failed; sending snapshot only", "err", berr)
+		} else {
+			up.Blocklist, up.BlocklistHash = blBlob, blHash
+			blocklistSent = true
+		}
+	}
+
 	if err := s.postConfig(up); err != nil {
 		slog.Warn("syncer: config upload failed; will retry next tick", "err", err)
 		return false
 	}
-	slog.Info("syncer: config snapshot synced", "hash", hash, "encrypted", up.Encrypted)
-	return true
+	slog.Info("syncer: config synced", "hash", hash, "blocklistSent", blocklistSent, "encrypted", up.Encrypted)
+	// Only "landed" once the blocklist is up too, so Run keeps retrying if only
+	// the blocklist is still missing.
+	return blocklistFresh || blocklistSent
 }
 
 // encConfig turns the plaintext subset into the stored blob. Under E2E it's the
@@ -254,32 +282,88 @@ func (s *Syncer) encConfig(plaintext []byte, ts int64) (string, bool, error) {
 	return base64.StdEncoding.EncodeToString(buf), true, nil
 }
 
-// storedConfigHash asks glockpeek for the config hash it currently holds for this
-// device. ok is false on any error (glockpeek down, no snapshot yet), which makes
-// syncConfig upload — safe, since the upload is an idempotent upsert.
-func (s *Syncer) storedConfigHash() (string, bool) {
+// storedConfigHashes asks glockpeek for the snapshot + blocklist hashes it holds
+// for this device. ok is false on any error (glockpeek down, nothing stored),
+// which makes syncConfig upload — safe, since the upload is an idempotent upsert.
+func (s *Syncer) storedConfigHashes() (hash, blocklistHash string, ok bool) {
 	req, err := http.NewRequest(http.MethodGet, s.url+"/api/config?mine=1", nil)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
 	if s.token != "" {
 		req.Header.Set("Authorization", "Bearer "+s.token)
 	}
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", false
+		return "", "", false
 	}
 	var body struct {
-		Hash string `json:"hash"`
+		Hash          string `json:"hash"`
+		BlocklistHash string `json:"blocklistHash"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return "", false
+		return "", "", false
 	}
-	return body.Hash, true
+	return body.Hash, body.BlocklistHash, true
+}
+
+// sortedDomains returns the unique blocked-domain names, sorted — the canonical
+// form the blocklist hash and gzip blob are both built from.
+func (s *Syncer) sortedDomains() []string {
+	set := make(map[string]struct{}, len(s.cfg.Domains.List))
+	for _, d := range s.cfg.Domains.List {
+		if d.Name != "" {
+			set[d.Name] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(set))
+	for n := range set {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// blocklistHashOf fingerprints the plaintext domain list (newline-joined) without
+// building the whole ~8MB string, so an unchanged blocklist is cheap to detect.
+func blocklistHashOf(names []string) string {
+	h := sha256.New()
+	for _, n := range names {
+		h.Write([]byte(n))
+		h.Write([]byte{'\n'})
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// encBlocklist gzips the domain list, then (under E2E) seals it as one AES-GCM box
+// bound to its content hash; base64 of nonce||ciphertext, or of the gzip bytes in
+// plaintext mode. The browser reverses this to a Set for membership checks.
+func (s *Syncer) encBlocklist(names []string, hash string) (string, bool, error) {
+	var buf bytes.Buffer
+	gz, _ := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	for _, n := range names {
+		gz.Write([]byte(n))
+		gz.Write([]byte{'\n'})
+	}
+	if err := gz.Close(); err != nil {
+		return "", s.e2e, err
+	}
+	raw := buf.Bytes()
+	if !s.e2e {
+		return base64.StdEncoding.EncodeToString(raw), false, nil
+	}
+	aad := fmt.Appendf(nil, "deviceblocklist|%s", hash)
+	box, err := e2e.EncryptRecord(s.mk, raw, aad)
+	if err != nil {
+		return "", true, err
+	}
+	b := make([]byte, 0, len(box.Nonce)+len(box.Ct))
+	b = append(append(b, box.Nonce...), box.Ct...)
+	return base64.StdEncoding.EncodeToString(b), true, nil
 }
 
 // postConfig uploads the snapshot to glockpeek.

@@ -22,7 +22,8 @@ import (
 // records every uploaded snapshot.
 type configServer struct {
 	mu       sync.Mutex
-	stored   string // hash it currently "holds"
+	stored   string // snapshot hash it currently "holds"
+	storedBl string // blocklist hash it currently "holds"
 	uploads  []configUpload
 	failPost bool // reject uploads, standing in for a glockpeek that's down
 	srv      *httptest.Server
@@ -36,11 +37,11 @@ func newConfigServer(t *testing.T) *configServer {
 			return
 		}
 		switch r.Method {
-		case http.MethodGet: // ?mine=1 -> stored hash
+		case http.MethodGet: // ?mine=1 -> stored hashes
 			c.mu.Lock()
-			h := c.stored
+			h, bl := c.stored, c.storedBl
 			c.mu.Unlock()
-			json.NewEncoder(w).Encode(map[string]string{"hash": h})
+			json.NewEncoder(w).Encode(map[string]string{"hash": h, "blocklistHash": bl})
 		case http.MethodPost:
 			c.mu.Lock()
 			reject := c.failPost
@@ -54,7 +55,10 @@ func newConfigServer(t *testing.T) *configServer {
 			json.Unmarshal(body, &up)
 			c.mu.Lock()
 			c.uploads = append(c.uploads, up)
-			c.stored = up.Hash // now glockpeek holds this hash
+			c.stored = up.Hash // now glockpeek holds this snapshot hash
+			if up.BlocklistHash != "" {
+				c.storedBl = up.BlocklistHash
+			}
 			c.mu.Unlock()
 			w.WriteHeader(http.StatusNoContent)
 		default:

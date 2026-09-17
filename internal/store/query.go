@@ -265,24 +265,47 @@ func (db *DB) SaveDeviceConfig(userID, deviceID uint, c DeviceConfig) error {
 	}).Create(&c).Error
 }
 
-// DeviceConfigHash returns the stored config hash for one device, or "" when the
-// device has no snapshot yet. The agent compares it to its local hash to decide
-// whether to re-upload.
-func (db *DB) DeviceConfigHash(userID, deviceID uint) (string, error) {
+// SaveDeviceBlocklist upserts just the (large) blocklist blob + its hash for one
+// device, leaving the snapshot columns untouched. Split from SaveDeviceConfig so
+// a snapshot-only update never has to carry the multi-MB blob.
+func (db *DB) SaveDeviceBlocklist(userID, deviceID uint, hash, blob string) error {
+	c := DeviceConfig{UserID: userID, DeviceID: deviceID, BlocklistHash: hash, Blocklist: blob}
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"blocklist", "blocklist_hash"}),
+	}).Create(&c).Error
+}
+
+// DeviceConfigHashes returns the stored snapshot hash and blocklist hash for one
+// device (either "" when absent). The agent compares them to decide what to
+// re-upload.
+func (db *DB) DeviceConfigHashes(userID, deviceID uint) (hash, blocklistHash string, err error) {
 	var c DeviceConfig
-	err := db.Where("user_id = ? AND device_id = ?", userID, deviceID).
-		Select("hash").First(&c).Error
+	err = db.Where("user_id = ? AND device_id = ?", userID, deviceID).
+		Select("hash", "blocklist_hash").First(&c).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return "", nil
+		return "", "", nil
 	}
-	return c.Hash, err
+	return c.Hash, c.BlocklistHash, err
 }
 
 // DeviceConfigs returns every device's latest config snapshot for an account,
-// ordered by device id.
+// ordered by device id. It omits the multi-MB Blocklist column (fetch that
+// separately with DeviceBlocklists).
 func (db *DB) DeviceConfigs(userID uint) ([]DeviceConfig, error) {
 	var rows []DeviceConfig
-	err := db.Where("user_id = ?", userID).Order("device_id").Find(&rows).Error
+	err := db.Where("user_id = ?", userID).Order("device_id").
+		Select("user_id", "device_id", "ts", "encrypted", "hash", "config").Find(&rows).Error
+	return rows, err
+}
+
+// DeviceBlocklists returns each device's blocklist blob (+ encrypted flag + hash)
+// for the dashboard's membership checks and domain search. Large — fetched on
+// demand, never in the default config list.
+func (db *DB) DeviceBlocklists(userID uint) ([]DeviceConfig, error) {
+	var rows []DeviceConfig
+	err := db.Where("user_id = ? AND blocklist <> ''", userID).Order("device_id").
+		Select("device_id", "encrypted", "blocklist_hash", "blocklist").Find(&rows).Error
 	return rows, err
 }
 

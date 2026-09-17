@@ -141,23 +141,29 @@ paths:
     get:
       summary: Read device configuration snapshot(s)
       description: >
-        Two modes, by credential. With a browser session (no query): returns
-        every device's latest config snapshot for the account, for the dashboard
-        Config tab. With an ingest bearer token and ?mine=1: returns just the
-        stored hash for that device, so the agent can skip re-uploading an
-        unchanged config. The snapshot is content-blind — `config` is an opaque
-        blob (base64 nonce||ciphertext under E2E, or cleartext JSON in plaintext
-        mode) the server never parses.
+        Modes by credential + query. Browser session, no query: every device's
+        latest config snapshot (no blocklist), for the Config tab. Browser
+        session, ?blocklist=1: every device's gzip'd blocklist blob (multi-MB),
+        for the dashboard's membership checks + domain search. Ingest bearer
+        token, ?mine=1: the stored snapshot + blocklist hashes for that device, so
+        the agent re-uploads only what changed. All blobs are content-blind —
+        opaque (base64 nonce||ciphertext under E2E, or cleartext/base64 gzip in
+        plaintext mode) and the server never parses them.
       operationId: getDeviceConfig
       parameters:
         - in: query
           name: mine
           required: false
           schema: { type: string, enum: ["1"] }
-          description: With an ingest token, return only this device's stored hash.
+          description: With an ingest token, return this device's snapshot + blocklist hashes.
+        - in: query
+          name: blocklist
+          required: false
+          schema: { type: string, enum: ["1"] }
+          description: With a session, return every device's blocklist blob instead of snapshots.
       responses:
         "200":
-          description: Snapshot list (session) or stored hash (token + mine=1)
+          description: Snapshot list, blocklist list, or hashes (by mode)
           content:
             application/json:
               schema:
@@ -173,10 +179,22 @@ paths:
                             name: { type: string, description: Device label (API-token name; empty for local/single-device). }
                             ts: { type: integer, format: int64, description: Snapshot capture time (epoch ms). }
                             encrypted: { type: boolean }
-                            config: { type: string, description: Opaque blob; decrypted client-side. }
+                            config: { type: string, description: Opaque snapshot blob; decrypted client-side. }
                   - type: object
                     properties:
-                      hash: { type: string, description: Stored config hash for this device; empty if none. }
+                      blocklists:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            deviceId: { type: integer }
+                            encrypted: { type: boolean }
+                            hash: { type: string, description: Blocklist fingerprint (aad for decryption). }
+                            blocklist: { type: string, description: gzip'd domain list, encrypted+base64 or base64; gunzipped client-side. }
+                  - type: object
+                    properties:
+                      hash: { type: string, description: Stored snapshot hash; empty if none. }
+                      blocklistHash: { type: string, description: Stored blocklist hash; empty if none. }
         "401":
           description: Not authenticated
     post:
@@ -199,6 +217,8 @@ paths:
                 encrypted: { type: boolean }
                 hash: { type: string, description: Stable fingerprint of the plaintext subset. }
                 config: { type: string, description: Opaque blob (base64 nonce||ciphertext under E2E, or cleartext JSON). }
+                blocklistHash: { type: string, description: Optional; fingerprint of the plaintext domain list. Present only when the blocklist changed. }
+                blocklist: { type: string, description: Optional; gzip'd domain list, encrypted+base64 or base64. Sent only when blocklistHash changed. }
       responses:
         "204":
           description: Snapshot stored

@@ -222,6 +222,14 @@ type DeviceConfig struct {
 	Encrypted bool   `json:"encrypted"`
 	Hash      string `json:"hash"`
 	Config    string `json:"config"`
+	// Blocklist is the device's full blocked-domain list — gzip'd, then encrypted
+	// (base64 nonce||ciphertext) or plain base64 in plaintext mode — kept opaque
+	// like Config. It's large (~MBs), so it is NEVER returned by the default config
+	// list; a separate request fetches it for the dashboard's membership checks and
+	// domain search. BlocklistHash fingerprints the plaintext domain list so the
+	// agent re-uploads it only when the blocklist actually changes (rarely).
+	Blocklist     string `json:"-"`
+	BlocklistHash string `json:"-"`
 }
 
 // KeyVault holds the account's passphrase-wrapped master key for end-to-end
