@@ -1197,7 +1197,7 @@ function wireBrush(canvas) {
   const HANDLE = 8;
   let drag = null;
 
-  const chart = () => state.charts["chart-timeline"];
+  const chart = () => state.charts[canvas.id]; // this canvas's own strip chart
   const area = () => { const c = chart(); return c && c.chartArea; };
   const relX = (e) => e.clientX - canvas.getBoundingClientRect().left;
   const pxToTs = (a, px) => {
