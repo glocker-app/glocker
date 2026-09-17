@@ -21,10 +21,11 @@ import (
 // configServer stands in for glockpeek's /api/config: it stores one hash and
 // records every uploaded snapshot.
 type configServer struct {
-	mu      sync.Mutex
-	stored  string // hash it currently "holds"
-	uploads []configUpload
-	srv     *httptest.Server
+	mu       sync.Mutex
+	stored   string // hash it currently "holds"
+	uploads  []configUpload
+	failPost bool // reject uploads, standing in for a glockpeek that's down
+	srv      *httptest.Server
 }
 
 func newConfigServer(t *testing.T) *configServer {
@@ -41,6 +42,13 @@ func newConfigServer(t *testing.T) *configServer {
 			c.mu.Unlock()
 			json.NewEncoder(w).Encode(map[string]string{"hash": h})
 		case http.MethodPost:
+			c.mu.Lock()
+			reject := c.failPost
+			c.mu.Unlock()
+			if reject {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
 			body, _ := io.ReadAll(r.Body)
 			var up configUpload
 			json.Unmarshal(body, &up)
@@ -61,6 +69,12 @@ func (c *configServer) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.uploads)
+}
+
+func (c *configServer) fail(v bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.failPost = v
 }
 
 func (c *configServer) storedHash() string {
@@ -263,5 +277,39 @@ func TestSyncConfigDoesNotUploadUnsealable(t *testing.T) {
 	}
 	if up := c.uploads[0]; !up.Encrypted || up.Config == "" {
 		t.Errorf("expected a sealed, non-empty snapshot, got %+v", up)
+	}
+}
+
+// TestSyncConfigRetriesUntilItLands covers the case where glockpeek is down at
+// daemon start. syncConfig must report failure so Run keeps retrying, and must
+// succeed once glockpeek answers — otherwise the Config tab stays empty until
+// someone restarts the daemon, which could be days.
+func TestSyncConfigRetriesUntilItLands(t *testing.T) {
+	c := newConfigServer(t)
+	c.fail(true) // glockpeek is up but rejecting (or, to the agent, may as well be down)
+	s := &Syncer{url: c.srv.URL, interval: time.Hour, client: c.srv.Client(), cursors: map[string]int64{}, cfg: sampleConfig()}
+
+	if s.syncConfig() {
+		t.Fatal("syncConfig reported success while the server was rejecting uploads")
+	}
+	if c.storedHash() != "" {
+		t.Fatalf("server holds a hash after a rejected upload: %q", c.storedHash())
+	}
+
+	c.fail(false)
+	if !s.syncConfig() {
+		t.Fatal("syncConfig still reporting failure after the server recovered")
+	}
+	if c.count() != 1 {
+		t.Fatalf("uploads after recovery = %d, want 1", c.count())
+	}
+
+	// Having landed, an unchanged config reports success without re-uploading,
+	// which is what lets Run stop calling it.
+	if !s.syncConfig() {
+		t.Fatal("unchanged config should report success")
+	}
+	if c.count() != 1 {
+		t.Fatalf("re-uploaded an unchanged config: count = %d, want 1", c.count())
 	}
 }

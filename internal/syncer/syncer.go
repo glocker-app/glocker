@@ -18,8 +18,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -254,9 +254,10 @@ func PendingCounts(cfg *config.Config, cursors map[string]int64) map[string]int 
 	return out
 }
 
-// Run seeds cursors from glockpeek's high-water marks, does the initial sync,
-// then syncs on the interval. Blocks; run in a goroutine. Every error is logged
-// and retried next tick — enforcement is never affected.
+// Run seeds cursors from glockpeek's high-water marks, reconciles the config
+// snapshot, does the initial sync, then syncs on the interval. Blocks; run in
+// a goroutine. Every error is logged and retried next tick — enforcement is
+// never affected.
 func (s *Syncer) Run() {
 	if s.e2eBroken {
 		slog.Error("syncer: not starting — e2e was enabled but the master key is unusable")
@@ -264,11 +265,18 @@ func (s *Syncer) Run() {
 	}
 	slog.Info("syncer starting", "target", s.url, "interval", s.interval, "e2e", s.e2e)
 	s.seedCursors() // ask glockpeek what it already has, so we only send the gap
-	s.syncConfig()  // one-shot: reconcile this device's config snapshot on connect
+	// Reconcile this device's config snapshot. Retried each tick until it
+	// lands: if glockpeek is down at daemon start, a one-shot attempt would
+	// leave the Config tab empty until the next restart, which could be days.
+	// Once it lands we stop — the config can't change without a restart.
+	configSynced := s.syncConfig()
 	s.syncOnce()
 	t := time.NewTicker(s.interval)
 	defer t.Stop()
 	for range t.C {
+		if !configSynced {
+			configSynced = s.syncConfig()
+		}
 		s.syncOnce()
 	}
 }

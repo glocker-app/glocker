@@ -407,7 +407,14 @@ async function bootDashboard(me) {
   };
   const runRefresh = async () => {
     if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.classList.add("refreshing"); }
-    try { await reloadData(); renderSync(); } finally { if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.classList.remove("refreshing"); } }
+    try {
+      await reloadData();
+      renderSync();
+      // Config comes from its own endpoint, so reloadData() doesn't touch it.
+      // Only re-fetch when the tab is actually showing: elsewhere the view
+      // switch already re-renders it.
+      if (state.view === "config") await renderConfig();
+    } finally { if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.classList.remove("refreshing"); } }
   };
 
   if (refreshBtn) {

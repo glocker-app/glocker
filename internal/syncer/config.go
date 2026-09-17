@@ -179,12 +179,19 @@ func buildConfigSnapshot(cfg *config.Config) cfgSnapshot {
 
 // syncConfig reconciles this device's config snapshot with glockpeek: it hashes
 // the local subset, asks glockpeek for the hash it holds, and uploads only when
-// they differ (or glockpeek has none). Called once on connect — config changes
-// land on the next daemon start/reload, not on every tick. Any error is logged
-// and left for the next connect; enforcement never depends on this.
-func (s *Syncer) syncConfig() {
+// they differ (or glockpeek has none). Enforcement never depends on this.
+//
+// It reports whether glockpeek is now known to hold the current snapshot —
+// either because we just uploaded it, or because its stored hash already
+// matched. False means "try again on the next tick": glockpeek down, upload
+// rejected, or the snapshot couldn't be sealed. Run retries on that basis until
+// it lands, so a glockpeek that was unreachable at daemon start doesn't leave
+// the Config tab empty until the next restart. Once it lands Run stops calling
+// it — changing the config needs a daemon restart anyway, since there is no
+// reload path.
+func (s *Syncer) syncConfig() bool {
 	if s.cfg == nil {
-		return
+		return true // nothing to sync, and nothing a retry would change
 	}
 	snap := buildConfigSnapshot(s.cfg)
 	// Marshal is deterministic here (no maps), so the hash is stable across runs
@@ -193,14 +200,14 @@ func (s *Syncer) syncConfig() {
 	plaintext, err := json.Marshal(snap)
 	if err != nil {
 		slog.Error("syncer: marshal config snapshot failed", "err", err)
-		return
+		return true // deterministic: retrying the same snapshot can't help
 	}
 	sum := sha256.Sum256(plaintext)
 	hash := hex.EncodeToString(sum[:])
 
 	if stored, ok := s.storedConfigHash(); ok && stored == hash {
 		slog.Debug("syncer: config unchanged, skipping upload", "hash", hash)
-		return
+		return true
 	}
 
 	ts := time.Now().UnixMilli()
@@ -213,14 +220,15 @@ func (s *Syncer) syncConfig() {
 		// after which the hash check below short-circuits every later connect
 		// and the dashboard shows "Unreadable snapshot" for good.
 		slog.Error("syncer: config encryption failed; not uploading", "err", err)
-		return
+		return false
 	}
 	up.Config, up.Encrypted = blob, encrypted
 	if err := s.postConfig(up); err != nil {
-		slog.Warn("syncer: config upload failed; will retry next connect", "err", err)
-		return
+		slog.Warn("syncer: config upload failed; will retry next tick", "err", err)
+		return false
 	}
 	slog.Info("syncer: config snapshot synced", "hash", hash, "encrypted", up.Encrypted)
+	return true
 }
 
 // encConfig turns the plaintext subset into the stored blob. Under E2E it's the
