@@ -259,14 +259,18 @@
         </section><!-- /view analytics -->
 
         <section class="view" data-view="insights">
-          <section class="panel">
+          <section class="panel strip-panel">
             <div class="panel-head">
               <h2>Insights</h2>
-              <p class="panel-sub">Patterns across your machines, and a concrete config change for each. Computed in your browser from your own data. <span id="insights-sub"></span></p>
+              <p class="panel-sub">Patterns in the selected window, each with a concrete config change. Computed in your browser from your own data. <span id="insights-sub"></span></p>
             </div>
+            <div class="spark-wrap"><canvas id="insights-timeline"></canvas></div>
+          </section>
+          <section class="panel">
             <div id="insights-controls" class="insights-controls"></div>
+            <nav class="subtabs" id="insights-tabs"></nav>
             <div id="insights-list" class="insights-list"></div>
-            <p id="insights-empty" class="config-empty" hidden>Nothing to suggest right now — your enforcement is keeping up with the patterns in your data.</p>
+            <p id="insights-empty" class="config-empty" hidden>Nothing to suggest in this window — your enforcement is keeping up with the patterns in your data.</p>
             <p id="insights-error" class="login-error" hidden></p>
           </section>
         </section>

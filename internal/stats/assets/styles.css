@@ -1149,37 +1149,49 @@ canvas { max-height: 260px; }
 .cfg-item-detail { font-size: 0.83rem; color: var(--ink-dim); line-height: 1.55; }
 
 /* ── Insights ─────────────────────────────────────────── */
-.insights-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
-.ins-ctl-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); }
-.ins-ctl-sep { color: var(--ink-faint); font-size: 0.85rem; }
-.insights-controls input[type="time"] {
-  background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 7px; color: var(--ink);
-  font-family: var(--mono); font-size: 0.82rem; padding: 4px 8px;
+/* Work-hours dual-range slider. */
+.insights-controls { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.ins-ctl-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); white-space: nowrap; }
+.wh-readout { font-family: var(--mono); font-size: 0.82rem; color: var(--ink-dim); white-space: nowrap; }
+.wh-slider { position: relative; width: 220px; height: 22px; }
+.wh-track { position: absolute; top: 50%; left: 0; right: 0; height: 4px; transform: translateY(-50%); background: var(--line-2); border-radius: 999px; }
+.wh-fill { position: absolute; top: 0; bottom: 0; background: var(--signal); border-radius: 999px; }
+.wh-slider input[type="range"] {
+  position: absolute; top: 0; left: 0; width: 100%; height: 22px; margin: 0; background: none;
+  -webkit-appearance: none; appearance: none; pointer-events: none;
+}
+.wh-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; pointer-events: auto; cursor: pointer;
+  width: 14px; height: 14px; border-radius: 50%; background: var(--ink); border: 2px solid var(--signal);
+}
+.wh-slider input[type="range"]::-moz-range-thumb {
+  pointer-events: auto; cursor: pointer;
+  width: 14px; height: 14px; border-radius: 50%; background: var(--ink); border: 2px solid var(--signal);
 }
 
-/* One section per violation kind: a coloured dot + title + count, a blurb, cards. */
-.insights-list { display: flex; flex-direction: column; gap: 26px; }
-.insight-group-head { display: flex; align-items: center; gap: 9px; }
-.insight-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--signal); }
-.insight--vuln .insight-dot { background: var(--danger); }
-.insight--work .insight-dot { background: var(--signal); }
-.insight--uninstall .insight-dot { background: var(--exposed); }
-.insight--unblock .insight-dot { background: var(--exposed-dim); }
-.insight-group-head h3 { margin: 0; font-family: var(--display); font-size: 1.05rem; font-weight: 600; color: var(--ink); }
-.insight-count {
-  font-family: var(--mono); font-size: 11px; color: var(--ink-faint);
-  border: 1px solid var(--line-2); border-radius: 999px; padding: 1px 8px;
-}
-.insight-blurb { margin: 5px 0 12px 18px; font-size: 0.84rem; color: var(--ink-faint); }
-.insight-cards { display: flex; flex-direction: column; gap: 10px; margin-left: 18px; }
+/* Tabs — one per violation kind, with a count. */
+.subtab-count { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
+.subtabs button.active .subtab-count { color: inherit; }
+.subtabs button:disabled { opacity: 0.4; cursor: default; }
 
-.insight-card { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); padding: 14px 16px; }
-.insight-group.insight--vuln .insight-card { border-left: 3px solid var(--danger); }
-.insight-group.insight--work .insight-card { border-left: 3px solid var(--signal); }
-.insight-group.insight--uninstall .insight-card { border-left: 3px solid var(--exposed); }
-.insight-group.insight--unblock .insight-card { border-left: 3px solid var(--exposed-dim); }
-.insight-title { font-size: 0.94rem; color: var(--ink); margin-bottom: 6px; }
-.insight-evidence { margin: 0 0 8px; font-size: 0.85rem; color: var(--ink-dim); }
-.insight-action { margin: 0 0 10px; font-size: 0.85rem; color: var(--ink); }
-.insight-config { margin: 0; padding: 11px 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 0.77rem; line-height: 1.55; color: var(--ink-dim); overflow-x: auto; white-space: pre; }
-.insight-more { margin: 2px 0 0; font-size: 0.82rem; color: var(--ink-faint); }
+.insights-list { display: flex; flex-direction: column; }
+.insight-blurb { margin: 4px 0 14px; font-size: 0.85rem; color: var(--ink-faint); }
+.insight-cards { display: flex; flex-direction: column; gap: 10px; }
+
+/* Card: problem headline → details → suggestion → the config to paste. The left
+   rail is coloured by the active kind. */
+.insight-card { border: 1px solid var(--line); border-left: 3px solid var(--line-2); border-radius: var(--r); background: var(--panel-2); padding: 14px 16px; }
+.insight-cards.insight--vuln .insight-card { border-left-color: var(--danger); }
+.insight-cards.insight--work .insight-card { border-left-color: var(--signal); }
+.insight-cards.insight--uninstall .insight-card { border-left-color: var(--exposed); }
+.insight-cards.insight--unblock .insight-card { border-left-color: var(--exposed-dim); }
+.ic-problem { margin: 0 0 9px; font-family: var(--display); font-size: 0.98rem; font-weight: 600; color: var(--ink); }
+.ic-line { display: flex; gap: 10px; margin-bottom: 7px; font-size: 0.85rem; line-height: 1.5; }
+.ic-tag {
+  flex: 0 0 auto; width: 74px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--ink-faint); padding-top: 2px;
+}
+.ic-tag--fix { color: var(--safe); }
+.ic-text { flex: 1 1 auto; min-width: 0; color: var(--ink-dim); }
+.insight-config { margin: 9px 0 0; padding: 11px 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 0.77rem; line-height: 1.55; color: var(--ink-dim); overflow-x: auto; white-space: pre; }
+.insight-more { margin: 4px 0 0; font-size: 0.82rem; color: var(--ink-faint); }

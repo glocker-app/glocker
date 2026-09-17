@@ -14,7 +14,7 @@ const HOUR = 3600000;
 // all-history timeline strip at the top (no more fixed presets). Null until the
 // first data load picks a default (see defaultWindow).
 const DEFAULT_WINDOW_DAYS = 30;
-const state = { data: null, winStart: null, winEnd: null, view: "overview", analyticsTab: "history", charts: {}, rules: [], tagColors: {}, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null };
+const state = { data: null, winStart: null, winEnd: null, view: "overview", analyticsTab: "history", insightsTab: null, charts: {}, rules: [], tagColors: {}, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null };
 
 const VIEW_TITLES = {
   overview: "Overview",
@@ -559,7 +559,7 @@ function setView(view) {
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   document.getElementById("view-title").textContent = VIEW_TITLES[view] || view;
   const rr = document.getElementById("range-readout");
-  if (rr) rr.hidden = view !== "analytics"; // the range only applies to Analytics
+  if (rr) rr.hidden = view !== "analytics" && view !== "insights"; // Analytics + Insights use the window
   if (view === "analytics") setSubtab(state.analyticsTab || "history");
   if (view === "config") renderConfig();
   if (view === "insights") renderInsights();
@@ -722,6 +722,8 @@ function render() {
   renderUnblockList(unblocks);
   renderUsage(b);
   renderIgnored();
+  // Insights read the same window; re-run them when it moves (brush release).
+  if (state.view === "insights") renderInsights();
 }
 
 // ── Aggregation ─────────────────────────────────────────
@@ -1089,7 +1091,8 @@ function renderHeatmap(heat) {
 // (violations + unblocks per day), the unmanaged stretches as a pink shaded
 // background, and the current window as a brush selection (the rest dimmed).
 // Dragging the selection — create / move / resize its edges — sets the window.
-function renderTimeline() {
+function renderTimeline(canvasId = "chart-timeline") {
+  if (!document.getElementById(canvasId)) return;
   const all = allBounds();
   const start = all.start, end = all.end, now = state.data.now;
   const days = Math.max(1, Math.round((end - start) / DAY) + 1);
@@ -1144,12 +1147,12 @@ function renderTimeline() {
     ctx.restore();
   };
 
-  stripChart("chart-timeline", labels, [
+  stripChart(canvasId, labels, [
     { label: "violations", data: vday, color: cssVar("var(--danger)"), fill: true },
     { label: "unblocks", data: uday, color: cssVar("var(--safe)"), fill: false },
   ], { underlay, overlay });
 
-  wireBrush(document.getElementById("chart-timeline"));
+  wireBrush(document.getElementById(canvasId));
 }
 
 // stripChart: a compact multi-line sparkline (shared Y, integer axis) with the
@@ -3275,6 +3278,24 @@ const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const pad2 = (n) => String(n).padStart(2, "0");
 const hourBand = (h) => `${pad2(h)}:00–${pad2((h + 2) % 24)}:00`;
 
+// peakBand finds the busiest 3-hour stretch in an hour histogram (wrapping past
+// midnight) and returns its bounds, label, and what share of all hits fall in it —
+// so "concentrated near X" becomes a real window with a percentage.
+function peakBand(hours) {
+  const total = hours.reduce((a, b) => a + b, 0) || 1;
+  let bestStart = 0, bestSum = -1;
+  for (let i = 0; i < 24; i++) {
+    const s = hours[i] + hours[(i + 1) % 24] + hours[(i + 2) % 24];
+    if (s > bestSum) { bestSum = s; bestStart = i; }
+  }
+  const end = (bestStart + 3) % 24;
+  return {
+    start: `${pad2(bestStart)}:00`, end: `${pad2(end)}:00`,
+    label: `${pad2(bestStart)}:00–${pad2(end)}:00`,
+    share: Math.round((bestSum / total) * 100), count: bestSum,
+  };
+}
+
 // fetchDeviceConfigs returns the parsed config snapshot for each device (locked
 // ones skipped), so insights can cross-check what's already enforced.
 async function fetchDeviceConfigs() {
@@ -3324,14 +3345,13 @@ function insightVulnerableHours(violations, idx, blocked) {
     // Skip anything the config already handles: a scheduled block, or membership
     // in the full blocklist (checked against the domain and its parents).
     if (idx.tbDomains.has(dom) || isBlocked(dom, blocked)) continue;
-    const ph = argmax(rec.hours);
-    const start = pad2(ph), end = pad2((ph + 2) % 24);
+    const band = peakBand(rec.hours);
     out.push({
-      kind: "vuln", tag: "Vulnerable hours",
-      title: `${escHtml(dom)} keeps slipping through around ${hourBand(ph)}`,
-      evidence: `${rec.count} keyword hits, concentrated near ${pad2(ph)}:00`,
-      action: `Add a scheduled block for ${escHtml(dom)} in that window:`,
-      config: `domains:\n  list:\n    - name: ${dom}\n      block_windows:\n        - { start: "${start}:00", end: "${end}:00", days: [${daysList(rec.days)}] }`,
+      kind: "vuln",
+      title: `${escHtml(dom)} keeps slipping through`,
+      evidence: `The content monitor flagged it ${rec.count}× here — ${band.share}% of those between ${band.label}. It isn't blocked yet.`,
+      action: `Block ${escHtml(dom)} during ${band.label}:`,
+      config: `domains:\n  list:\n    - name: ${dom}\n      block_windows:\n        - { start: "${band.start}", end: "${band.end}", days: [${daysList(rec.days)}] }`,
       weight: rec.count,
     });
   }
@@ -3355,10 +3375,10 @@ function insightWorkDistraction(usage, idx) {
     if (!DISTRACTION_APPS.has(app.toLowerCase())) continue;
     if (idx.forbidden.has(app.toLowerCase())) continue;
     out.push({
-      kind: "work", tag: "Work hours",
+      kind: "work",
       title: `${escHtml(app)} runs during work hours`,
-      evidence: `~${count} min of ${escHtml(app)} between ${pad2(workStart)}:00–${pad2(workEnd)}:00 on weekdays`,
-      action: `Make ${escHtml(app)} a forbidden program during work hours:`,
+      evidence: `Active about ${count} min during work hours (${pad2(workStart)}:00–${pad2(workEnd)}:00, weekdays). It isn't a forbidden program.`,
+      action: `Kill ${escHtml(app)} during work hours:`,
       config: `programs:\n  enabled: true\n  list:\n    - name: ${app}\n      kill_windows:\n        - { start: "${pad2(workStart)}:00", end: "${pad2(workEnd)}:00", days: ["Mon", "Tue", "Wed", "Thu", "Fri"] }`,
       weight: count,
     });
@@ -3378,14 +3398,14 @@ function insightUninstallWindow(lifecycle, idx) {
     const r = e.reason || "unspecified";
     reasons.set(r, (reasons.get(r) || 0) + 1);
   }
-  const ph = argmax(hours);
+  const band = peakBand(hours);
   const topReasons = [...reasons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([r]) => escHtml(r)).join(", ");
   return [{
-    kind: "uninstall", tag: "Uninstalls",
-    title: `Uninstalls cluster around ${hourBand(ph)}`,
-    evidence: `${uns.length} uninstalls near ${pad2(ph)}:00 (reasons: ${topReasons})`,
-    action: `sudo is available then, so uninstall is possible. Narrow the sudo window to exclude ${hourBand(ph)}:`,
-    config: `sudoers:\n  enabled: true\n  allow_windows:\n    # keep sudo out of ${pad2(ph)}:00–${pad2((ph + 2) % 24)}:00\n    - { start: "09:00", end: "${pad2(ph)}:00", days: ["Mon", "Tue", "Wed", "Thu", "Fri"] }`,
+    kind: "uninstall",
+    title: `Uninstalls cluster around ${band.label}`,
+    evidence: `${uns.length} uninstalls here, ${band.share}% around ${band.label} (reasons: ${topReasons}). sudo is available then, so uninstall is possible.`,
+    action: `Close the sudo window over ${band.label}:`,
+    config: `sudoers:\n  enabled: true\n  allow_windows:\n    # sudo must not be open across ${band.label}\n    - { start: "09:00", end: "${band.start}", days: ["Mon", "Tue", "Wed", "Thu", "Fri"] }`,
   }];
 }
 
@@ -3404,10 +3424,10 @@ function insightUnblockWeakSpots(unblocks) {
     if (rec.count < INSIGHT.minUnblocks) continue;
     const rs = [...rec.reasons].slice(0, 3).map(escHtml).join(", ");
     out.push({
-      kind: "unblock", tag: "Repeated unblocks",
+      kind: "unblock",
       title: `${escHtml(dom)} is unblocked over and over`,
-      evidence: `${rec.count} temporary unblocks${rs ? ` (reasons: ${rs})` : ""}`,
-      action: `It's a recurring weak spot. Make it un-unblockable, or lower the daily cap:`,
+      evidence: `Temporarily unblocked ${rec.count}× in this window${rs ? ` (reasons: ${rs})` : ""}. A recurring weak spot.`,
+      action: `Make it un-unblockable, or lower the daily cap:`,
       config: `# ${dom}: drop "unblockable: true" from its entry, or tighten\ndomains:\n  unblocking:\n    max_per_day: 1`,
       weight: rec.count,
     });
@@ -3415,13 +3435,14 @@ function insightUnblockWeakSpots(unblocks) {
   return out.sort((a, b) => b.weight - a.weight).slice(0, 4);
 }
 
-const GROUP_CAP = 6; // cards shown per group before "+N more"
+const GROUP_CAP = 25; // cards shown in a tab before "+N more"
 
 async function renderInsights() {
   const listEl = document.getElementById("insights-list");
   const emptyEl = document.getElementById("insights-empty");
   const errEl = document.getElementById("insights-error");
   const subEl = document.getElementById("insights-sub");
+  const tabsEl = document.getElementById("insights-tabs");
   errEl.hidden = true;
   renderInsightsControls();
 
@@ -3431,6 +3452,15 @@ async function renderInsights() {
     errEl.hidden = false;
     return;
   }
+  renderTimeline("insights-timeline"); // the shared window strip at the top
+
+  // Everything is scoped to the brushed window.
+  const b = windowBounds();
+  const inWin = (ts) => within(ts, b);
+  const violations = (data.violations || []).filter((v) => inWin(v.ts));
+  const usage = (data.usage || []).filter((s) => inWin(s.ts));
+  const lifecycle = (data.lifecycle || []).filter((e) => inWin(e.ts));
+  const unblocks = (data.unblocks || []).filter((u) => inWin(u.ts));
 
   // The blocklist Set is what lets us drop suggestions the config already covers
   // (e.g. civitai is already blocked). configs give the time-based + program view.
@@ -3438,66 +3468,108 @@ async function renderInsights() {
   const idx = configIndex(configs);
 
   const groups = [
-    { kind: "vuln", label: "Vulnerable hours", blurb: "Domains slipping through the keyword monitor that aren't blocked yet", items: insightVulnerableHours(data.violations, idx, blocked) },
-    { kind: "work", label: "Work-hours distractions", blurb: `Apps used during ${pad2(workStart)}:00–${pad2(workEnd)}:00 that aren't forbidden then`, items: insightWorkDistraction(data.usage, idx) },
-    { kind: "uninstall", label: "Uninstall pattern", blurb: "Uninstalls clustering while sudo is available", items: insightUninstallWindow(data.lifecycle, idx) },
-    { kind: "unblock", label: "Repeated unblocks", blurb: "Domains you keep temporarily unblocking", items: insightUnblockWeakSpots(data.unblocks) },
-  ].filter((g) => g.items.length);
+    { kind: "vuln", label: "Vulnerable hours", blurb: "Domains slipping through the content monitor that aren't blocked yet.", items: insightVulnerableHours(violations, idx, blocked) },
+    { kind: "work", label: "Work-hours apps", blurb: `Apps used ${pad2(workStart)}:00–${pad2(workEnd)}:00 on weekdays that aren't forbidden then.`, items: insightWorkDistraction(usage, idx) },
+    { kind: "uninstall", label: "Uninstalls", blurb: "Uninstalls clustering while sudo is available.", items: insightUninstallWindow(lifecycle, idx) },
+    { kind: "unblock", label: "Repeated unblocks", blurb: "Domains you keep temporarily unblocking.", items: insightUnblockWeakSpots(unblocks) },
+  ];
 
   const total = groups.reduce((n, g) => n + g.items.length, 0);
+  if (subEl) subEl.textContent = total ? `${total} suggestion${total === 1 ? "" : "s"} in this window.` : "";
   if (total === 0) {
+    tabsEl.innerHTML = "";
     listEl.innerHTML = "";
-    if (subEl) subEl.textContent = "";
     emptyEl.hidden = false;
     return;
   }
   emptyEl.hidden = true;
-  if (subEl) subEl.textContent = `${total} suggestion${total === 1 ? "" : "s"} across ${groups.length} area${groups.length === 1 ? "" : "s"}.`;
-  listEl.innerHTML = groups.map(renderInsightGroup).join("");
-}
 
-// renderInsightGroup renders one violation-kind section: a coloured header with a
-// count, a one-line blurb, then its cards (capped, with a "+N more" tail).
-function renderInsightGroup(g) {
+  // Keep the current tab if it still has items; otherwise fall to the first
+  // non-empty group.
+  let active = state.insightsTab;
+  if (!groups.some((g) => g.kind === active && g.items.length)) {
+    active = (groups.find((g) => g.items.length) || {}).kind;
+  }
+  state.insightsTab = active;
+
+  // Tabs — one per kind, with its count; empty kinds are shown but disabled.
+  tabsEl.innerHTML = groups.map((g) =>
+    `<button data-instab="${g.kind}" class="insight-tab insight--${g.kind}${g.kind === active ? " active" : ""}"${g.items.length ? "" : " disabled"}>` +
+    `${escHtml(g.label)} <span class="subtab-count">${g.items.length}</span></button>`).join("");
+  wireInsightsTabs();
+
+  const g = groups.find((x) => x.kind === active);
   const shown = g.items.slice(0, GROUP_CAP);
   const more = g.items.length - shown.length;
-  const moreNote = more > 0 ? `<p class="insight-more">+${more} more</p>` : "";
-  return `<section class="insight-group insight--${g.kind}">` +
-    `<div class="insight-group-head"><span class="insight-dot"></span>` +
-    `<h3>${escHtml(g.label)}</h3><span class="insight-count">${g.items.length}</span></div>` +
+  listEl.innerHTML =
     `<p class="insight-blurb">${escHtml(g.blurb)}</p>` +
-    `<div class="insight-cards">${shown.map(renderInsightCard).join("")}${moreNote}</div>` +
-    `</section>`;
+    `<div class="insight-cards insight--${g.kind}">${shown.map(renderInsightCard).join("")}` +
+    (more > 0 ? `<p class="insight-more">+${more} more</p>` : "") +
+    `</div>`;
 }
 
+// wireInsightsTabs attaches the tab click handler once (delegated).
+function wireInsightsTabs() {
+  const el = document.getElementById("insights-tabs");
+  if (!el || el.dataset.wired) return;
+  el.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-instab]");
+    if (!btn || btn.disabled) return;
+    state.insightsTab = btn.dataset.instab;
+    renderInsights();
+  });
+  el.dataset.wired = "1";
+}
+
+// renderInsightCard lays out one suggestion as problem → details → suggestion,
+// then the exact config stanza to paste.
 function renderInsightCard(s) {
   return `<div class="insight-card">` +
-    `<div class="insight-title">${s.title}</div>` +
-    `<p class="insight-evidence">${s.evidence}</p>` +
-    `<p class="insight-action">${s.action}</p>` +
+    `<p class="ic-problem">${s.title}</p>` +
+    `<div class="ic-line"><span class="ic-tag">Details</span><span class="ic-text">${s.evidence}</span></div>` +
+    `<div class="ic-line"><span class="ic-tag ic-tag--fix">Suggestion</span><span class="ic-text">${s.action}</span></div>` +
     `<pre class="insight-config">${escHtml(s.config)}</pre>` +
     `</div>`;
 }
 
-// renderInsightsControls builds the work-hours control once and wires it to re-run
-// the analysis. Dynamic only — persisted in localStorage per browser, never the DB.
+// renderInsightsControls builds the work-hours dual-range slider once and wires it
+// to re-run the analysis. Dynamic only — persisted in localStorage, never the DB.
 function renderInsightsControls() {
   const el = document.getElementById("insights-controls");
   if (!el || el.dataset.ready) return;
   el.innerHTML = `<span class="ins-ctl-label">Work hours</span>` +
-    `<input type="time" id="wh-start" value="${pad2(workStart)}:00">` +
-    `<span class="ins-ctl-sep">to</span>` +
-    `<input type="time" id="wh-end" value="${pad2(workEnd)}:00">`;
-  const onChange = () => {
-    const a = parseInt((document.getElementById("wh-start").value || "").split(":")[0], 10);
-    const b = parseInt((document.getElementById("wh-end").value || "").split(":")[0], 10);
-    if (Number.isInteger(a)) workStart = a;
-    if (Number.isInteger(b)) workEnd = b;
+    `<div class="wh-slider">` +
+    `<div class="wh-track"><div class="wh-fill"></div></div>` +
+    `<input type="range" id="wh-start" min="0" max="24" step="1" value="${workStart}">` +
+    `<input type="range" id="wh-end" min="0" max="24" step="1" value="${workEnd}">` +
+    `</div>` +
+    `<span class="wh-readout" id="wh-readout"></span>`;
+  const startEl = el.querySelector("#wh-start");
+  const endEl = el.querySelector("#wh-end");
+  const fill = el.querySelector(".wh-fill");
+  const readout = el.querySelector("#wh-readout");
+  const bounds = () => {
+    let a = +startEl.value, e = +endEl.value;
+    return a <= e ? [a, e] : [e, a];
+  };
+  const paint = () => {
+    const [a, e] = bounds();
+    fill.style.left = `${(a / 24) * 100}%`;
+    fill.style.right = `${100 - (e / 24) * 100}%`;
+    readout.textContent = `${pad2(a)}:00 – ${pad2(e)}:00`;
+  };
+  const commit = () => {
+    const [a, e] = bounds();
+    if (a === e) { paint(); return; } // ignore a zero-width window
+    workStart = a; workEnd = e;
     try { localStorage.setItem("gp_work_hours", `${workStart}-${workEnd}`); } catch { /* ignore */ }
     renderInsights();
   };
-  el.querySelector("#wh-start").addEventListener("change", onChange);
-  el.querySelector("#wh-end").addEventListener("change", onChange);
+  startEl.addEventListener("input", paint);
+  endEl.addEventListener("input", paint);
+  startEl.addEventListener("change", commit);
+  endEl.addEventListener("change", commit);
+  paint();
   el.dataset.ready = "1";
 }
 
