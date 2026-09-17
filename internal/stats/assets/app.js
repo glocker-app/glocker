@@ -3166,7 +3166,7 @@ function renderConfigCard(c, cfg, locked) {
   if (g.violationMax != null) gRows.push(cfgRow("Violation limit", `${g.violationMax} in ${g.violationWindowMin ?? "?"} min`));
   if (g.panicDurationMin != null) gRows.push(cfgRow("Panic duration", `${g.panicDurationMin} min`));
   if (g.checkIntervalSec != null) gRows.push(cfgRow("Check interval", `${g.checkIntervalSec} s`));
-  if (gRows.length) side.push(cfgSection("Guardrails", gRows.join("")));
+  if (gRows.length) side.push(cfgSection("Guardrails", cfgRows(gRows)));
 
   // Keywords — the comma lists want the wide column.
   const kw = cfg.keywords || {};
@@ -3174,30 +3174,39 @@ function renderConfigCard(c, cfg, locked) {
   if ((kw.url || []).length) kwRows.push(cfgRow(`URL · ${kw.url.length}`, kw.url.map(escHtml).join(", ")));
   if ((kw.content || []).length) kwRows.push(cfgRow(`Content · ${kw.content.length}`, kw.content.map(escHtml).join(", ")));
   if (kw.whitelistCount) kwRows.push(cfgRow("Whitelisted", `${kw.whitelistCount} domains`));
-  if (kwRows.length) main.push(cfgSection("Keywords", kwRows.join("")));
+  if (kwRows.length) main.push(cfgSection("Keywords", cfgRows(kwRows)));
 
-  // Forbidden programs — name → schedule.
+  // Forbidden programs — a growing list. Always-killed names as one wrapped
+  // line; each windowed program as a list item (name over its schedule).
   const pr = cfg.programs || {};
-  const prRows = [];
-  if ((pr.alwaysKilled || []).length) prRows.push(cfgRow(`Always · ${pr.alwaysKilled.length}`, pr.alwaysKilled.map(escHtml).join(", ")));
-  for (const p of pr.windowed || []) {
-    let desc;
-    if ((p.kill || []).length && (p.allow || []).length) desc = `killed ${fmtWindows(p.kill)}<br>else allowed ${fmtWindows(p.allow)}`;
-    else if ((p.allow || []).length) desc = `allowed ${fmtWindows(p.allow)}, killed otherwise`;
-    else desc = `killed ${fmtWindows(p.kill)}`;
-    prRows.push(cfgRow(escHtml(p.name) + (p.extendible ? ` <span class="cfg-ext" title="extendible">⏳</span>` : ""), desc));
+  const prParts = [];
+  if ((pr.alwaysKilled || []).length) {
+    prParts.push(`<div class="cfg-note"><span class="cfg-note-k">Always killed · ${pr.alwaysKilled.length}</span>${pr.alwaysKilled.map(escHtml).join(", ")}</div>`);
   }
-  if (prRows.length) main.push(cfgSection("Forbidden programs", prRows.join("")));
+  const prItems = (pr.windowed || []).map((p) => {
+    let detail;
+    if ((p.kill || []).length && (p.allow || []).length) detail = `killed ${fmtWindows(p.kill)}<br>else allowed ${fmtWindows(p.allow)}`;
+    else if ((p.allow || []).length) detail = `allowed ${fmtWindows(p.allow)}, killed otherwise`;
+    else detail = `killed ${fmtWindows(p.kill)}`;
+    return cfgItem(escHtml(p.name) + (p.extendible ? ` <span class="cfg-ext" title="extendible">⏳</span>` : ""), detail);
+  });
+  if (prParts.length || prItems.length) {
+    main.push(cfgSection("Forbidden programs", prParts.join("") + cfgList(prItems)));
+  }
 
-  // Domains — counts, then the time-based ones.
+  // Domains — a count summary, then a growing list of the time-based ones.
   const dm = cfg.domains || {};
-  const dmRows = [];
+  const dParts = [];
   if (dm.blocked != null) {
-    const always = dm.alwaysBlocked != null ? ` <span class="cfg-days">${Number(dm.alwaysBlocked).toLocaleString()} always</span>` : "";
-    dmRows.push(cfgRow("Blocked", `${Number(dm.blocked).toLocaleString()}${always}`));
+    const bits = [`${Number(dm.blocked).toLocaleString()} blocked`];
+    if (dm.alwaysBlocked != null) bits.push(`${Number(dm.alwaysBlocked).toLocaleString()} always`);
+    if ((dm.timeBased || []).length) bits.push(`${dm.timeBased.length} scheduled`);
+    dParts.push(`<div class="cfg-summary">${bits.join(" · ")}</div>`);
   }
-  for (const d of dm.timeBased || []) dmRows.push(cfgRow(escHtml(d.name), fmtWindows(d.block)));
-  if (dmRows.length) main.push(cfgSection("Domains", dmRows.join("")));
+  const dItems = (dm.timeBased || []).map((d) => cfgItem(escHtml(d.name), `blocked ${fmtWindows(d.block)}`));
+  if (dParts.length || dItems.length) {
+    main.push(cfgSection("Domains", dParts.join("") + cfgList(dItems)));
+  }
 
   return `<div class="config-card">${head}<div class="cfg-body">` +
     `<div class="cfg-col cfg-col--side">${side.join("")}</div>` +
@@ -3205,15 +3214,34 @@ function renderConfigCard(c, cfg, locked) {
     `</div></div>`;
 }
 
-// cfgSection wraps a titled block of rows.
+// cfgSection wraps a titled block.
 function cfgSection(title, innerHtml) {
   return `<div class="cfg-section"><h4>${escHtml(title)}</h4>${innerHtml}</div>`;
 }
 
-// cfgRow is a label/value line inside a config section. label and valueHtml are
-// expected to be already-escaped or literal-safe.
+// cfgRows lays a set of label/value pairs in a two-track grid so every value
+// aligns in one column (the label track sizes to the widest label).
+function cfgRows(rows) {
+  return `<div class="cfg-rows">${rows.join("")}</div>`;
+}
+
+// cfgRow is one label/value pair: two grid cells (label, then value). label and
+// valueHtml are expected to be already-escaped or literal-safe.
 function cfgRow(label, valueHtml) {
-  return `<div class="cfg-row"><span class="cfg-k">${label}</span><span class="cfg-v">${valueHtml}</span></div>`;
+  return `<span class="cfg-k">${label}</span><span class="cfg-v">${valueHtml}</span>`;
+}
+
+// cfgList wraps list items (from cfgItem) into a growing vertical list, or ""
+// when empty.
+function cfgList(items) {
+  return items.length ? `<ul class="cfg-items">${items.join("")}</ul>` : "";
+}
+
+// cfgItem is one entry in a growing list: a name over its detail line(s). name
+// and detailHtml are expected to be already-escaped or literal-safe.
+function cfgItem(name, detailHtml) {
+  return `<li class="cfg-item"><span class="cfg-item-name">${name}</span>` +
+    `<span class="cfg-item-detail">${detailHtml}</span></li>`;
 }
 
 // renderSync fills the Data-sync panel from /api/sync: when the daemon last

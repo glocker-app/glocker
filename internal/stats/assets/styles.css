@@ -1129,11 +1129,21 @@ canvas { max-height: 260px; }
 .svc-item.on .svc-dot { background: var(--safe); box-shadow: 0 0 0 3px color-mix(in srgb, var(--safe) 16%, transparent); }
 .svc-tag { color: var(--ink-faint); font-size: 0.72rem; }
 
-/* label → value rows, hairline-separated. */
-.cfg-row { display: flex; gap: 16px; padding: 6px 0; font-size: 0.86rem; line-height: 1.5; }
-.cfg-row + .cfg-row { border-top: 1px solid color-mix(in srgb, var(--line) 55%, transparent); }
-.cfg-k { flex: 0 0 auto; min-width: 88px; max-width: 46%; color: var(--ink-faint); font-family: var(--mono); font-size: 0.78rem; }
-.cfg-v { flex: 1 1 auto; min-width: 0; color: var(--ink-dim); word-break: break-word; }
+/* label → value pairs in a two-track grid so every value aligns in one column
+   (the label track sizes to the widest label in the section). */
+.cfg-rows { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 20px; row-gap: 9px; align-items: baseline; font-size: 0.86rem; line-height: 1.5; }
+.cfg-k { color: var(--ink-faint); font-family: var(--mono); font-size: 0.76rem; white-space: nowrap; }
+.cfg-v { color: var(--ink-dim); min-width: 0; word-break: break-word; font-variant-numeric: tabular-nums; }
 .cfg-days { color: var(--ink-faint); }
 .cfg-lock { font-size: 0.92em; }
 .cfg-ext { cursor: help; }
+
+/* Growing lists (programs, domains): each entry is a name over its detail. */
+.cfg-summary { font-size: 0.8rem; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.cfg-note { font-size: 0.84rem; color: var(--ink-dim); line-height: 1.55; }
+.cfg-note-k { display: block; color: var(--ink-faint); font-family: var(--mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 3px; }
+.cfg-items { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+.cfg-summary + .cfg-items, .cfg-note + .cfg-items { margin-top: 12px; }
+.cfg-item { display: flex; flex-direction: column; gap: 2px; padding-left: 11px; border-left: 2px solid var(--line-2); }
+.cfg-item-name { font-family: var(--mono); font-size: 0.82rem; color: var(--ink); }
+.cfg-item-detail { font-size: 0.83rem; color: var(--ink-dim); line-height: 1.55; }
