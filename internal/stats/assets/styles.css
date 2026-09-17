@@ -1185,6 +1185,7 @@ canvas { max-height: 260px; }
 .insight-cards.insight--work .insight-card { border-left-color: var(--signal); }
 .insight-cards.insight--uninstall .insight-card { border-left-color: var(--exposed); }
 .insight-cards.insight--unblock .insight-card { border-left-color: var(--exposed-dim); }
+.insight-cards.insight--extend .insight-card { border-left-color: var(--signal); }
 .ic-problem { margin: 0 0 9px; font-family: var(--display); font-size: 0.98rem; font-weight: 600; color: var(--ink); }
 .ic-line { display: flex; gap: 10px; margin-bottom: 7px; font-size: 0.85rem; line-height: 1.5; }
 .ic-tag {

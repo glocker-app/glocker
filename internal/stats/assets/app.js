@@ -3414,7 +3414,9 @@ function insightUnblockWeakSpots(unblocks) {
   const byDom = new Map();
   for (const u of unblocks || []) {
     const dom = (u.domain || "").toLowerCase();
-    if (!dom || dom === "🔒") continue;
+    // program:<name> entries are `-extend` program grants, not domain unblocks —
+    // handled by insightRepeatedExtensions.
+    if (!dom || dom === "🔒" || dom.startsWith("program:")) continue;
     const rec = byDom.get(dom) || { count: 0, reasons: new Set() };
     rec.count++; if (u.reason && u.reason !== "🔒") rec.reasons.add(u.reason);
     byDom.set(dom, rec);
@@ -3429,6 +3431,36 @@ function insightUnblockWeakSpots(unblocks) {
       evidence: `Temporarily unblocked ${rec.count}× in this window${rs ? ` (reasons: ${rs})` : ""}. A recurring weak spot.`,
       action: `Make it un-unblockable, or lower the daily cap:`,
       config: `# ${dom}: drop "unblockable: true" from its entry, or tighten\ndomains:\n  unblocking:\n    max_per_day: 1`,
+      weight: rec.count,
+    });
+  }
+  return out.sort((a, b) => b.weight - a.weight).slice(0, 4);
+}
+
+// (bonus) Forbidden programs granted one-hour `-extend` runs over and over. These
+// arrive in the unblocks stream as domain "program:<name>"; the lever is the
+// program's `extendible` flag, not domain unblocking.
+function insightRepeatedExtensions(unblocks) {
+  const byProg = new Map();
+  for (const u of unblocks || []) {
+    const dom = (u.domain || "").toLowerCase();
+    if (!dom.startsWith("program:")) continue;
+    const prog = dom.slice("program:".length);
+    if (!prog || prog === "🔒") continue;
+    const rec = byProg.get(prog) || { count: 0, reasons: new Set() };
+    rec.count++; if (u.reason && u.reason !== "🔒") rec.reasons.add(u.reason);
+    byProg.set(prog, rec);
+  }
+  const out = [];
+  for (const [prog, rec] of byProg) {
+    if (rec.count < INSIGHT.minUnblocks) continue;
+    const rs = [...rec.reasons].slice(0, 3).map(escHtml).join(", ");
+    out.push({
+      kind: "extend",
+      title: `${escHtml(prog)} keeps getting extended`,
+      evidence: `Granted a one-hour extension ${rec.count}× in this window${rs ? ` (reasons: ${rs})` : ""}. A recurring bypass.`,
+      action: `Stop the grant — make ${escHtml(prog)} non-extendible:`,
+      config: `programs:\n  list:\n    - name: ${prog}\n      extendible: false`,
       weight: rec.count,
     });
   }
@@ -3472,6 +3504,7 @@ async function renderInsights() {
     { kind: "work", label: "Work-hours apps", blurb: `Apps used ${pad2(workStart)}:00–${pad2(workEnd)}:00 on weekdays that aren't forbidden then.`, items: insightWorkDistraction(usage, idx) },
     { kind: "uninstall", label: "Uninstalls", blurb: "Uninstalls clustering while sudo is available.", items: insightUninstallWindow(lifecycle, idx) },
     { kind: "unblock", label: "Repeated unblocks", blurb: "Domains you keep temporarily unblocking.", items: insightUnblockWeakSpots(unblocks) },
+    { kind: "extend", label: "Repeated extensions", blurb: "Forbidden programs you keep granting one-hour runs to.", items: insightRepeatedExtensions(unblocks) },
   ];
 
   const total = groups.reduce((n, g) => n + g.items.length, 0);
