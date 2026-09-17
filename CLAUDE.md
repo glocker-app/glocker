@@ -11,30 +11,35 @@ Glocker is a Linux-based distraction blocking system written in Go. It blocks di
 ## Build and Test Commands
 
 ```bash
-# Build the binary
-go build .
-
-# Run a single enforcement cycle (requires sudo)
-glocker -once
+# Build all binaries (glocker, glockpeek, glocklock, glockdoc, ...)
+make build-all
+# or just the agent:
+go build ./cmd/glocker
 
 # Check current status (blocking state, active domains, violations)
 glocker -status
 
+# Show configuration info (domains, programs, keywords)
+glocker -info
+
 # Install as systemd service with setuid privileges
 glocker -install
 
-# Uninstall and cleanup all protections
-glocker -uninstall
+# Uninstall and cleanup all protections (a reason is required)
+glocker -uninstall "reason"
 ```
 
 ## File Map - Where to Find What
 
 ### Entry Point
-- **`main.go`** (377 lines) - CLI entry point
-  - All 12 command-line flag definitions (lines 26-37)
-  - Flag handlers with socket communication (lines 48-234)
-  - Default behavior: show status or help (lines 236-266)
-  - Daemon startup logic (lines 322-376)
+- **`cmd/glocker/main.go`** - CLI entry point
+  - Command-line flag definitions (`-status`, `-watch`, `-info`, `-version`, `-connect`,
+    `-extend`, `-purge`, `-security-check`, `-install`, `-uninstall`, `-note`, `-daemon`,
+    `-block`, `-block-app`, `-unblock`, `-add-keyword`, `-panic`, `-lock`, `-force`)
+  - Flag handlers with socket communication
+  - Default behavior: show status or help
+  - Daemon startup logic
+- **`cmd/glocker/watch.go`** - `-watch` live-refreshing status view (TTY only)
 
 ### Configuration (`internal/config/`)
 - **`types.go`** - Configuration structs and constants
@@ -45,44 +50,49 @@ glocker -uninstall
   - `SetupLogging()` - Configures log output
 - **`persist.go`** - Input validators for names accepted over the socket
   - `ValidateDomainName()` / `ValidateProgramName()` - used by `-block` / `-block-app`
-  - Note: runtime commands (`-block`, `-block-app`, `-add-keyword`) apply **in memory only**; they do NOT write the config file. `conf/conf.yaml` is the single source of truth (regenerated onto `/etc/glocker/config.yaml` by `make full-install`).
+  - Note: runtime commands (`-block`, `-block-app`, `-add-keyword`) apply **in memory only**; they do NOT write the config file. `conf/conf.yaml` (plus the includes under `conf/conf.d/`) is the source of truth, reinstalled onto `/etc/glocker/config.yaml` by `make install` / `make full-install`.
+- **`include.go`** - Include mechanism: `conf/conf.yaml` pulls in blocklist files from `conf/conf.d/*.yaml`
+- **`glockpeek.go`** - Loads glockpeek's separate server config (`GlockpeekConfig`)
 - **`validator.go`** - `ValidateConfig()` - validates time windows and required fields
 
 ### CLI Commands (`internal/cli/`)
 - **`commands.go`** - Command processors for socket requests
-  - `GetStatusResponse()` - Generates formatted status output (lines 15-145)
-  - `ProcessReloadRequest()` - Handles config reload (lines 148-173)
-  - `ProcessUnblockRequest()` - Temporary domain unblocking (lines 76-100)
-  - `ProcessBlockRequest()` - In-memory domain blocking (not persisted; via enforcement.AddRuntimeDomains)
-  - `ProcessPanicRequest()` - Panic mode activation (lines 127-140)
+  - `GetStatusResponse()` - Generates formatted runtime status output
+  - `GetInfoResponse()` - Formatted configuration info (domains, programs, keywords)
+  - `ProcessUnblockRequest()` - Temporary domain unblocking
+  - `ProcessBlockRequest()` - In-memory domain blocking (not persisted)
+  - `ProcessBlockAppRequest()` - In-memory forbidden-program add
+  - `ProcessExtendRequest()` - One-hour runtime grant for an extendible program
+  - `ProcessPanicRequest()` - Panic mode activation
   - `formatTimeWindows()` - Helper for time window display
 - **`commands_test.go`** - Unit tests for CLI commands
 
 ### Enforcement (`internal/enforcement/`)
-- **`enforcement.go`** - Core blocking logic
-  - `RunOnce()` - Main enforcement cycle
-  - `UpdateHosts()` - Modifies `/etc/hosts` file
-  - `UpdateSudoers()` - Controls sudo access
-  - Time window evaluation logic
-  - Immutable file protection (chattr)
+- **`enforcement.go`** - `RunOnce()` main enforcement cycle
+- **`hosts.go`** - `UpdateHosts()` modifies `/etc/hosts`, immutable file protection (chattr)
+- **`sudoers.go`** - `UpdateSudoers()` controls sudo access
+- **`domains.go`** - Domain block-window evaluation and runtime domain merging
+- **`state.go`** - Enforcement-local runtime state (in-memory `-block` / `-block-app` additions)
 
 ### IPC / Socket Communication (`internal/ipc/`)
 - **`server.go`** - Unix socket server for daemon communication
   - `SetupCommunication()` - Creates socket at `/var/glocker/glocker.sock`
-  - `HandleConnection()` - Processes socket commands (lines 33-146)
-  - Socket command handlers:
-    - `status` - Live status query (lines 75-77)
-    - `reload` - Config reload (lines 78-80)
-    - `unblock` - Temporary unblock (lines 81-99)
-    - `block` - Domain block, in memory only (lines 100-107)
+  - `HandleConnection()` - Processes socket commands
+  - Socket command handlers (the `case` list in `HandleConnection`):
+    - `ping` - Liveness check
+    - `status` - Live runtime status query
+    - `info` - Configuration info
+    - `unblock` - Temporary unblock
+    - `block` - Domain block, in memory only
     - `block-app` - Add program to forbidden-programs list (killed on sight, 24/7)
-    - `panic` - Panic mode (lines 111-123)
-    - `lock` - Force sudoers lock (lines 124-126)
-    - `add-keyword` - Add monitoring keywords (lines 127-134)
-    - `uninstall` - Uninstall glocker (lines 135-146)
-  - `processLockRequest()` - Lock processor (lines 189-200)
-  - `processAddKeywordRequest()` - Keyword processor (lines 202-221)
-  - `processUninstallRequest()` - Uninstall processor (lines 223-244)
+    - `panic` - Panic mode
+    - `extend` - One-hour grant for an extendible forbidden program
+    - `lock` - Force sudoers lock
+    - `add-keyword` - Add monitoring keywords
+    - `uninstall` - Uninstall glocker
+  - `processLockRequest()` - Lock processor
+  - `processAddKeywordRequest()` - Keyword processor
+  - `processUninstallRequest()` - Uninstall processor
 - **`server_test.go`** - Socket server tests
 
 ### Installation (`internal/install/`)
@@ -101,13 +111,11 @@ glocker -uninstall
 - **`violations.go`** - Violation tracking
   - `MonitorViolations()` - Counts access attempts
   - Threshold-based action triggering
-- **`tampering.go`** - Tamper detection
-  - File checksum monitoring
-  - Self-healing mechanisms
-  - Alarm command execution
 - **`panic.go`** - Panic mode monitoring
   - System suspend/resume detection
   - Re-suspension on early wake
+
+(There is no tamper-detection module — the `tamper_detection` config key was removed and is now rejected by the loader. The heartbeat gap seen on glockpeek is the real tamper signal.)
 
 ### Web Server (`internal/web/`)
 - **`server.go`** - HTTP/HTTPS server for browser extension
@@ -115,7 +123,7 @@ glocker -uninstall
 - **`handlers.go`** - HTTP endpoint handlers
   - `GET /keywords` - Returns monitoring keywords
   - `POST /report` - Content violation reports
-  - `GET /sse` - Server-sent events for real-time updates
+  - `GET /keywords-stream` - Server-sent events (`HandleSSERequest`) for real-time keyword updates
   - `GET /blocked` - Blocked page display
 
 ### Notifications
@@ -124,7 +132,7 @@ glocker -uninstall
   notifications and the daily report are glockpeek's job (`internal/mailer`,
   server-side; `internal/report` builds the DB-backed daily report). Local
   feedback on events comes from per-feature commands instead
-  (`tamper_detection.alarm_command`, the violation-tracking lock command, etc.).
+  (`domains.blocked_access_command`, the violation-tracking lock command, etc.).
 
 ### State Management (`internal/state/`)
 - **`state.go`** - Thread-safe global state
@@ -145,21 +153,24 @@ glocker -uninstall
 - **`blocked.html`** - Blocked page template
 
 ### Configuration & Resources
-- **`conf/conf.yaml`** - Sample configuration (~60MB with domain lists)
-- **`extras/glocker.service`** - Systemd service definition
+- **`conf/conf.yaml`** - Working configuration (small; pulls in blocklists via includes)
+- **`conf/conf.yaml.sample`** - Sample config committed alongside `conf.yaml`; "the sample" means BOTH
+- **`conf/conf.d/*.yaml`** - Included blocklist files (~16MB of domain lists: hagezi, stevenblack, shadowwhisperer, etc.)
+- **`conf/glockpeek.yaml.sample`** / **`conf/usage-rules.sample.json`** - Sample glockpeek + usage-rule configs
+- **`extras/glocker.service`** / **`extras/glockpeek.service`** - Systemd service definitions
 
 ### Documentation
 - **`CLAUDE.md`** - This file - developer guidance
-- **`GAP_ANALYSIS.md`** - Detailed gap analysis from refactoring
-- **`IMPLEMENTATION_STATUS.md`** - Implementation completion report
+- **`docs/`** - `architecture.md`, `installation.md`, `bypasses.md`, `e2e-design.md`, and
+  **`docs/openapi.yaml`** (the OpenAPI spec for the HTTP APIs)
 
 ## Quick Reference: Common Tasks
 
 | Task | Primary File | Key Function |
 |------|-------------|--------------|
-| Add new CLI flag | `main.go` | Add flag definition + handler |
+| Add new CLI flag | `cmd/glocker/main.go` | Add flag definition + handler |
 | Modify status output | `internal/cli/commands.go` | `GetStatusResponse()` |
-| Change blocking logic | `internal/enforcement/enforcement.go` | `UpdateHosts()` |
+| Change blocking logic | `internal/enforcement/hosts.go` | `UpdateHosts()` |
 | Add socket command | `internal/ipc/server.go` | Add case in `HandleConnection()` |
 | Modify installation | `internal/install/install.go` | `InstallGlocker()` |
 | Add web endpoint | `internal/web/handlers.go` | Add handler function |
@@ -170,9 +181,6 @@ glocker -uninstall
 
 ### Running Commands
 ```bash
-# Reload configuration from /etc/glocker/config.yaml
-sudo glocker -reload
-
 # Temporarily unblock domains with reason
 sudo glocker -unblock "reddit.com,youtube.com:work"
 
@@ -183,10 +191,13 @@ sudo glocker -block "example.com,another.com"
 sudo glocker -add-keyword "keyword1,keyword2"
 
 ```
+There is no runtime config-reload command; config changes take effect on
+reinstall (`make install` / `make full-install`, which restarts the daemon).
+
 ### To test the program, 
 #### Install new version
 1. `sudo glocker -uninstall "testing"`
-2. `go build .`
+2. `make build-all` (or `go build ./cmd/glocker`)
 3. `sudo ./glocker -install`
 4. Run `glocker` to get status.
 
@@ -229,21 +240,32 @@ The Firefox extension lives in `extensions/firefox/`. After making changes:
 
 All configuration is in YAML with these main structs (internal/config/types.go):
 
+The real `Config` is **nested** (blocking mechanisms grouped into sub-structs),
+not flat:
+
 ```go
 type Config struct {
-    EnableHosts             bool
-    EnableForbiddenPrograms bool
-    Domains                 []Domain
-    KillOnBlock             []string                // process names killed after `glocker -block` (DNS-cache flush)
-    Sudoers                 SudoersConfig
-    TamperDetection         TamperConfig
-    ContentMonitoring       ContentMonitoringConfig
-    ForbiddenPrograms       ForbiddenProgramsConfig
-    ExtensionKeywords       ExtensionKeywordsConfig
-    ViolationTracking       ViolationTrackingConfig
-    Unblocking              UnblockingConfig
-    Lifecycle               LifecycleConfig         // install/uninstall logging + valid -uninstall reasons
-    // ... more fields
+    LogLevel string
+    User     string // machine-wide account: whose sudo to restrict, whose desktop to track
+
+    // Blocking mechanisms.
+    Domains  DomainsConfig  // .Enabled, .HostsPath, .KillOnBlock, .BlockedAccessCommand, .Unblocking, .List []Domain
+    Programs ProgramsConfig // .Enabled, .CheckInterval, .List []ForbiddenProgram
+    Content  ContentConfig  // .Monitoring (ContentMonitoringConfig), .Keywords (ExtensionKeywordsConfig)
+    Sudoers  SudoersConfig
+
+    // Uninstall friction & accountability.
+    MindfulUninstall MindfulUninstallConfig
+    Lifecycle        LifecycleConfig // install/uninstall logging + valid -uninstall reasons
+
+    // Accountability & telemetry.
+    ViolationTracking ViolationTrackingConfig
+    UsageMonitor      UsageMonitorConfig
+    Heartbeat         HeartbeatConfig
+    Sync              SyncConfig // ship local /var records to a glockpeek instance
+
+    // Panic mode.
+    Panic PanicConfig
 }
 
 type Domain struct {
@@ -255,10 +277,10 @@ type Domain struct {
 
 type SudoersConfig struct {
     Enabled            bool
-    User               string
     AllowedSudoersLine string
     BlockedSudoersLine string
     AllowWindows       []TimeWindow // sudo ALLOWED during these windows, blocked outside (empty = always blocked)
+    // Note: the sudo user is Config.User (top-level), not a field here.
 }
 
 type ForbiddenProgram struct {
@@ -286,25 +308,25 @@ type ForbiddenProgram struct {
 2. Copies `conf/conf.yaml` to `/etc/glocker/config.yaml`
 3. Installs systemd service from `extras/glocker.service`
 
-**Enforcement Loop** (main.go:322-376):
+**Enforcement Loop** (cmd/glocker/main.go, daemon path):
 1. Loads config from `/etc/glocker/config.yaml` (internal/config/loader.go)
 2. Starts Unix socket server for IPC (internal/ipc/server.go)
-3. Launches monitoring goroutines:
-   - Tamper detection (internal/monitoring/tampering.go)
+3. Launches background goroutines:
    - Forbidden programs (internal/monitoring/forbidden.go)
    - Violation tracking (internal/monitoring/violations.go)
    - Panic mode monitoring (internal/monitoring/panic.go)
    - Web tracking HTTP server on ports 80 and 443 (internal/web/server.go)
-4. Main loop applies enforcement every 60s:
-   - Updates hosts file with blocked domains (internal/enforcement/enforcement.go)
-   - Updates sudoers restrictions
+   - Syncer to glockpeek when `cfg.Sync.Enabled` (internal/syncer/)
+4. Main loop applies enforcement periodically:
+   - Updates hosts file with blocked domains (internal/enforcement/hosts.go)
+   - Updates sudoers restrictions (internal/enforcement/sudoers.go)
    - Applies time window logic
 
-**Socket Commands** (internal/ipc/server.go:33-146):
+**Socket Commands** (internal/ipc/server.go, `HandleConnection`):
 - Client sends command via Unix socket at `/var/glocker/glocker.sock`
 - Format: `"action:payload\n"` (e.g., `"block:example.com\n"`)
 - Server processes command and returns response
-- Commands: `status`, `reload`, `unblock`, `block`, `block-app`, `panic`, `lock`, `add-keyword`, `uninstall`
+- Commands: `ping`, `status`, `info`, `unblock`, `block`, `block-app`, `panic`, `extend`, `lock`, `add-keyword`, `uninstall`
 - Multi-line responses end with `"END"`
 
 ### Important Files and Paths
@@ -320,25 +342,21 @@ type ForbiddenProgram struct {
 - `/etc/systemd/system/glocker.service` - Systemd service file
 
 **Development files:**
-- `main.go` - Entry point
+- `cmd/glocker/main.go` - Entry point (other binaries under `cmd/`: glockpeek, glocklock, glockdoc, configcheck, usageprobe, e2ekit)
 - `internal/` - Application packages (see File Map above)
-- `conf/conf.yaml` - Sample configuration (~60MB with domain lists)
+- `conf/conf.yaml` + `conf/conf.d/*.yaml` - Working config plus included blocklists
 - `extras/glocker.service` - Systemd service template
 - `extensions/firefox/` - Browser extension
 
 
 ### Security Features
 
-**Self-Healing** (when enabled):
-- Monitors critical file checksums (binary, /etc/hosts, systemd service)
-- Re-applies protections if tampering detected
-- Triggers alarm command on tampering
-
 **Tamper Resistance**:
 - Setuid root binary with immutable flag (`chattr +i`)
 - Immutable /etc/hosts during blocking
 - Sudoers restrictions prevent privilege escalation
-- Mindful delay (configurable, default 60s) before uninstall completes
+- Mindful-uninstall friction (`mindful_uninstall`, internal/mindful) before uninstall completes
+- No active tamper-detection/self-healing module exists; a heartbeat gap on glockpeek is the tamper signal instead
 
 **Accountability**:
 - Logs all unblock attempts with reasons; syncs violations/unblocks/lifecycle to glockpeek
@@ -367,7 +385,7 @@ Applied to (all in internal/config/types.go):
 Endpoints for browser extension communication (internal/web/handlers.go):
 - `POST /report` - Content monitoring reports from extension
 - `GET /keywords` - Returns current URL/content keyword lists
-- `GET /sse` - Server-sent events for real-time updates
+- `GET /keywords-stream` - Server-sent events for real-time keyword updates
 - `GET /blocked` - Blocked page display (served when a hosts-blocked domain is requested)
 
 Server started by internal/web/server.go:StartWebTrackingServer()
@@ -412,6 +430,9 @@ Server started by internal/web/server.go:StartWebTrackingServer()
     already has (glockpeek is the source of truth for sync progress).
   - `GET /api/sync` - `{lastSyncAt, last{counts}, totals}` for the dashboard's
     Data-sync panel (session)
+  - `GET /api/config` - per-device config snapshots (uploaded by the syncer on connect)
+  - Hosted-mode auth/account routes also exist (`/api/register`, `/api/me`, `/api/vault`,
+    `/api/tokens`, `/api/admin/users`, `/verify`, billing) — this list is not exhaustive.
   - Legacy `/stats`, `/stats/` 301-redirect to `/`. (The old
     `glocker.localhost/stats` alias in hosts.go is vestigial.)
 - The frontend lives solely in `internal/stats/assets/` (embedded via `go:embed`).
@@ -445,8 +466,9 @@ Server started by internal/web/server.go:StartWebTrackingServer()
 
 ## Configuration Notes
 
-The `conf/conf.yaml` file contains extensive blocking lists and is ~60MB due to comprehensive domain lists. When making changes:
-- Use `glocker -reload` to reload config without restart
+`conf/conf.yaml` is small; the extensive blocking lists live in `conf/conf.d/*.yaml`
+(~16MB total) and are pulled in via the include mechanism. When making changes:
+- There is no runtime reload; reinstall (`make install` / `make full-install`) to apply
 - Check logs with `journalctl -u glocker.service -f`
 
 Violation tracking can trigger automatic actions (e.g., screen lock):
@@ -464,8 +486,9 @@ The codebase is organized into modular packages under `internal/`:
 
 ```
 glocker/
-├── main.go                      # Entry point, CLI flags, daemon startup
-├── internal/                    # Application packages
+├── cmd/                         # Binary entry points (glocker, glockpeek, glocklock,
+│                                #   glockdoc, configcheck, usageprobe, e2ekit)
+├── internal/                    # Application packages (partial list)
 │   ├── cli/                    # Command processors
 │   ├── config/                 # Configuration structs and loading
 │   ├── enforcement/            # Core blocking logic
@@ -473,10 +496,12 @@ glocker/
 │   ├── ipc/                    # Unix socket server
 │   ├── monitoring/             # Background monitoring tasks
 │   ├── state/                  # Thread-safe global state
+│   ├── syncer/                 # Ships local records to glockpeek
+│   ├── stats/ + store/         # glockpeek dashboard + DB layer
 │   ├── utils/                  # Shared utilities
 │   └── web/                    # HTTP server for extension
 ├── extensions/firefox/          # Browser extension
-├── conf/conf.yaml              # Sample configuration
+├── conf/conf.yaml + conf/conf.d/ # Working config + included blocklists
 └── extras/glocker.service      # Systemd service
 ```
 
@@ -489,16 +514,18 @@ glocker/
 - `web` imports `config`, `monitoring`, `state`
 
 When searching for functionality:
-- CLI flags: `main.go`
-- Enforcement logic: `internal/enforcement/enforcement.go`
+- CLI flags: `cmd/glocker/main.go`
+- Enforcement logic: `internal/enforcement/` (`hosts.go`, `sudoers.go`, `domains.go`)
 - Socket commands: `internal/ipc/server.go`
 - Status output: `internal/cli/commands.go`
 
 ## Dependencies
 
 Go modules (go.mod):
-- `github.com/mailgun/mailgun-go/v4` - Email, used only by glockpeek (`internal/mailer`); the agent sends no email
 - `gopkg.in/yaml.v3` - Configuration parsing
+- `github.com/mailgun/mailgun-go/v4` - Email, used only by glockpeek (`internal/mailer`); the agent sends no email
+- `github.com/alexedwards/argon2id` - Password hashing for glockpeek hosted auth
+- `gorm.io/gorm` + `gorm.io/driver/postgres` + `github.com/glebarez/sqlite` - glockpeek DB layer (`internal/store`)
 
 System dependencies:
 - `systemd` - Service management
