@@ -222,7 +222,9 @@ func TestProcessUnblockRequest_AllPermanentDomainsError(t *testing.T) {
 func TestProcessUnblockRequest_EnforcesDailyCap(t *testing.T) {
 	logFile := filepath.Join(t.TempDir(), "unblocks.log")
 	cfg := &config.Config{
-		Domains: config.DomainsConfig{List: []config.Domain{{Name: "example.com", Unblockable: true}}, Unblocking: config.UnblockingConfig{
+		Domains: config.DomainsConfig{List: []config.Domain{
+			{Name: "a.com", Unblockable: true}, {Name: "b.com", Unblockable: true}, {Name: "c.com", Unblockable: true},
+		}, Unblocking: config.UnblockingConfig{
 			TempUnblockTime: 30,
 			LogFile:         logFile,
 			MaxPerDay:       2,
@@ -231,15 +233,15 @@ func TestProcessUnblockRequest_EnforcesDailyCap(t *testing.T) {
 	enforcement.InitializeTestCache(cfg.Domains.List)
 	state.SetTempUnblocks([]state.TempUnblock{})
 
-	// First two unblocks are within the cap.
-	for i := 1; i <= 2; i++ {
-		if err := ProcessUnblockRequest(cfg, "example.com", "work"); err != nil {
-			t.Fatalf("unblock #%d should be allowed under the cap, got: %v", i, err)
+	// First two unblocks (distinct domains) are within the cap.
+	for _, d := range []string{"a.com", "b.com"} {
+		if err := ProcessUnblockRequest(cfg, d, "work"); err != nil {
+			t.Fatalf("unblock %s should be allowed under the cap, got: %v", d, err)
 		}
 	}
 
-	// Third crosses the daily cap and must be refused.
-	err := ProcessUnblockRequest(cfg, "example.com", "work")
+	// Third distinct domain crosses the daily cap and must be refused.
+	err := ProcessUnblockRequest(cfg, "c.com", "work")
 	if err == nil {
 		t.Fatal("expected the third unblock to be rejected by the daily cap")
 	}
@@ -254,6 +256,37 @@ func TestProcessUnblockRequest_EnforcesDailyCap(t *testing.T) {
 	}
 	if len(entries) != 2 {
 		t.Errorf("expected 2 logged unblocks, got %d", len(entries))
+	}
+}
+
+// Re-unblocking a domain that's already actively unblocked is a no-op: it must
+// not record another log entry or burn a daily slot.
+func TestProcessUnblockRequest_SkipsActiveDomain(t *testing.T) {
+	logFile := filepath.Join(t.TempDir(), "unblocks.log")
+	cfg := &config.Config{
+		Domains: config.DomainsConfig{List: []config.Domain{{Name: "example.com", Unblockable: true}}, Unblocking: config.UnblockingConfig{
+			TempUnblockTime: 30,
+			LogFile:         logFile,
+			MaxPerDay:       3,
+		}},
+	}
+	enforcement.InitializeTestCache(cfg.Domains.List)
+	state.SetTempUnblocks([]state.TempUnblock{})
+
+	if err := ProcessUnblockRequest(cfg, "example.com", "work"); err != nil {
+		t.Fatalf("first unblock: %v", err)
+	}
+	// Second request while the first is still active — must be skipped.
+	if err := ProcessUnblockRequest(cfg, "example.com", "work"); err != nil {
+		t.Fatalf("repeat unblock should be a no-op, not an error: %v", err)
+	}
+
+	entries, err := reports.ParseUnblocksLog(logFile)
+	if err != nil {
+		t.Fatalf("reading unblock log: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("repeat unblock of an active domain should not log a second entry; got %d", len(entries))
 	}
 }
 
@@ -305,7 +338,9 @@ func TestProcessUnblockRequest_ZeroCapIsUnlimited(t *testing.T) {
 func TestGetStatusResponse_UnblocksLeft(t *testing.T) {
 	logFile := filepath.Join(t.TempDir(), "unblocks.log")
 	cfg := &config.Config{
-		Domains: config.DomainsConfig{List: []config.Domain{{Name: "example.com", Unblockable: true}}, Unblocking: config.UnblockingConfig{
+		Domains: config.DomainsConfig{List: []config.Domain{
+			{Name: "example.com", Unblockable: true}, {Name: "other.com", Unblockable: true},
+		}, Unblocking: config.UnblockingConfig{
 			TempUnblockTime: 30,
 			LogFile:         logFile,
 			MaxPerDay:       3,
@@ -314,10 +349,10 @@ func TestGetStatusResponse_UnblocksLeft(t *testing.T) {
 	enforcement.InitializeTestCache(cfg.Domains.List)
 	state.SetTempUnblocks([]state.TempUnblock{})
 
-	// Two unblocks today → status should read 2/3 used, 1 left.
-	for i := range 2 {
-		if err := ProcessUnblockRequest(cfg, "example.com", "work"); err != nil {
-			t.Fatalf("unblock #%d: %v", i, err)
+	// Two unblocks today (distinct domains) → status should read 2/3 used, 1 left.
+	for _, d := range []string{"example.com", "other.com"} {
+		if err := ProcessUnblockRequest(cfg, d, "work"); err != nil {
+			t.Fatalf("unblock %s: %v", d, err)
 		}
 	}
 

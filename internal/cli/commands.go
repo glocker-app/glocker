@@ -102,11 +102,34 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 		}
 	}
 	f.head("programs")
+	if cfg.Programs.Enabled {
+		f.row("forbidden", good("enforced")+dim(fmt.Sprintf("   %d listed", len(cfg.Programs.List))))
+	} else {
+		f.row("forbidden", alert("off"))
+	}
 	f.row("extensions", fmt.Sprintf("%d active", activeExtensions))
 	for _, ext := range extensions {
 		if now.Before(ext.ExpiresAt) {
 			remaining := ext.ExpiresAt.Sub(now)
 			f.detail(ext.Program + dim(fmt.Sprintf("  %v · %s", remaining.Round(time.Minute), ext.Reason)))
+		}
+	}
+
+	// Sudoers restriction state: whether sudo is gated, and if so whether it's
+	// currently permitted or blocked (per the allow windows).
+	f.head("sudo")
+	if !cfg.Sudoers.Enabled {
+		f.row("restriction", dim("unrestricted"))
+	} else {
+		if enforcement.IsSudoAllowed(cfg, now) {
+			f.row("access", good("allowed")+dim(" now"))
+		} else {
+			f.row("access", alert("blocked")+dim(" now"))
+		}
+		if len(cfg.Sudoers.AllowWindows) > 0 {
+			f.detail(dim("allowed " + formatTimeWindows(cfg.Sudoers.AllowWindows)))
+		} else {
+			f.detail(dim("always blocked — no allow windows"))
 		}
 	}
 
@@ -325,6 +348,17 @@ func formatTimeWindows(windows []config.TimeWindow) string {
 	return strings.Join(parts, "; ")
 }
 
+// activeUnblockExists reports whether host already has a temporary unblock that
+// hasn't expired, so a repeat request can be skipped instead of burning a slot.
+func activeUnblockExists(host string, now time.Time) bool {
+	for _, u := range state.GetTempUnblocks() {
+		if strings.EqualFold(u.Domain, host) && now.Before(u.ExpiresAt) {
+			return true
+		}
+	}
+	return false
+}
+
 // ProcessUnblockRequest processes a temporary unblock request.
 func ProcessUnblockRequest(cfg *config.Config, hostsStr, reason string) error {
 	slog.Debug("Processing unblock request", "hosts", hostsStr, "reason", reason)
@@ -355,12 +389,15 @@ func ProcessUnblockRequest(cfg *config.Config, hostsStr, reason string) error {
 		usedToday = countUnblocksToday(cfg)
 	}
 
+	now := time.Now()
 	hosts := strings.Split(hostsStr, ",")
 	unblocked := 0
 	rejected := 0
 	capRejected := 0
+	alreadyActive := 0
 	var rejectedDomains []string
 	var unblockedDomains []string
+	var alreadyActiveDomains []string
 
 	for _, host := range hosts {
 		host = strings.TrimSpace(host)
@@ -386,6 +423,15 @@ func ProcessUnblockRequest(cfg *config.Config, hostsStr, reason string) error {
 
 		// Domain is unblockable or not in config (allow for backward compatibility)
 
+		// Already actively unblocked → skip. Re-issuing would record another log
+		// entry and burn a daily slot for no effect (the domain is already open).
+		if activeUnblockExists(host, now) {
+			log.Printf("SKIP UNBLOCK: %s already has an active unblock; not consuming a daily slot", host)
+			alreadyActive++
+			alreadyActiveDomains = append(alreadyActiveDomains, host)
+			continue
+		}
+
 		// Enforce the daily cap before granting.
 		if maxPerDay > 0 && usedToday+unblocked >= maxPerDay {
 			log.Printf("REJECTED UNBLOCK: %s - daily unblock cap reached (%d/%d used today)", host, usedToday+unblocked, maxPerDay)
@@ -400,7 +446,6 @@ func ProcessUnblockRequest(cfg *config.Config, hostsStr, reason string) error {
 		if duration == 0 {
 			duration = 30 * time.Minute
 		}
-		now := time.Now()
 		expiresAt := now.Add(duration)
 
 		state.AddTempUnblock(host, expiresAt)
@@ -425,6 +470,9 @@ func ProcessUnblockRequest(cfg *config.Config, hostsStr, reason string) error {
 		log.Printf("UNBLOCK SUMMARY: %d domain(s) unblocked successfully", unblocked)
 	} else if rejected > 0 {
 		log.Printf("UNBLOCK SUMMARY: All %d domain(s) rejected - all are permanently blocked", rejected)
+	}
+	if alreadyActive > 0 {
+		log.Printf("UNBLOCK: %d domain(s) already unblocked, skipped (no slot used): %s", alreadyActive, strings.Join(alreadyActiveDomains, ", "))
 	}
 
 	// Force enforcement to apply changes immediately
