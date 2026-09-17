@@ -3253,8 +3253,12 @@ function cfgItem(name, detailHtml) {
 // config snapshots. Each insight maps to a concrete config change; we never
 // surface a vague nudge, and never suggest something the config already does.
 
-const WORK_START = 9;   // work-hours window start (hour, local) — adjustable
-const WORK_END = 17;    // work-hours window end (exclusive)
+let workStart = 9;      // work-hours window start (hour, local) — adjustable in the UI
+let workEnd = 17;       // work-hours window end (exclusive)
+try {
+  const wh = localStorage.getItem("gp_work_hours");
+  if (wh) { const [a, b] = wh.split("-").map(Number); if (a >= 0 && a < 24 && b > 0 && b <= 24) { workStart = a; workEnd = b; } }
+} catch { /* no localStorage -> defaults */ }
 const INSIGHT = {
   minViolations: 5,     // per-domain hits before we call it a pattern
   minWorkSamples: 25,   // ~minutes of a work-hours app before it's worth blocking
@@ -3304,7 +3308,7 @@ const daysList = (set) => [...set].sort((a, b) => a - b).map((i) => `"${DOW[i]}"
 
 // 1. Vulnerable hours: domains that keep tripping the keyword monitor, clustered
 // in time, that aren't already on a scheduled block.
-function insightVulnerableHours(violations, idx) {
+function insightVulnerableHours(violations, idx, blocked) {
   const byDom = new Map();
   for (const v of violations || []) {
     const dom = (v.domain || "").toLowerCase();
@@ -3316,7 +3320,10 @@ function insightVulnerableHours(violations, idx) {
   }
   const out = [];
   for (const [dom, rec] of byDom) {
-    if (rec.count < INSIGHT.minViolations || idx.tbDomains.has(dom)) continue;
+    if (rec.count < INSIGHT.minViolations) continue;
+    // Skip anything the config already handles: a scheduled block, or membership
+    // in the full blocklist (checked against the domain and its parents).
+    if (idx.tbDomains.has(dom) || isBlocked(dom, blocked)) continue;
     const ph = argmax(rec.hours);
     const start = pad2(ph), end = pad2((ph + 2) % 24);
     out.push({
@@ -3339,7 +3346,7 @@ function insightWorkDistraction(usage, idx) {
     if (!a || !a.class) continue;
     if (s.idleMs && s.idleMs > INSIGHT.workIdleMs) continue;
     const d = new Date(s.ts), wd = d.getDay(), hr = d.getHours();
-    if (wd === 0 || wd === 6 || hr < WORK_START || hr >= WORK_END) continue;
+    if (wd === 0 || wd === 6 || hr < workStart || hr >= workEnd) continue;
     byApp.set(a.class, (byApp.get(a.class) || 0) + 1);
   }
   const out = [];
@@ -3350,9 +3357,9 @@ function insightWorkDistraction(usage, idx) {
     out.push({
       kind: "work", tag: "Work hours",
       title: `${escHtml(app)} runs during work hours`,
-      evidence: `~${count} min of ${escHtml(app)} between ${pad2(WORK_START)}:00–${pad2(WORK_END)}:00 on weekdays`,
+      evidence: `~${count} min of ${escHtml(app)} between ${pad2(workStart)}:00–${pad2(workEnd)}:00 on weekdays`,
       action: `Make ${escHtml(app)} a forbidden program during work hours:`,
-      config: `programs:\n  enabled: true\n  list:\n    - name: ${app}\n      kill_windows:\n        - { start: "${pad2(WORK_START)}:00", end: "${pad2(WORK_END)}:00", days: ["Mon", "Tue", "Wed", "Thu", "Fri"] }`,
+      config: `programs:\n  enabled: true\n  list:\n    - name: ${app}\n      kill_windows:\n        - { start: "${pad2(workStart)}:00", end: "${pad2(workEnd)}:00", days: ["Mon", "Tue", "Wed", "Thu", "Fri"] }`,
       weight: count,
     });
   }
@@ -3408,12 +3415,15 @@ function insightUnblockWeakSpots(unblocks) {
   return out.sort((a, b) => b.weight - a.weight).slice(0, 4);
 }
 
+const GROUP_CAP = 6; // cards shown per group before "+N more"
+
 async function renderInsights() {
   const listEl = document.getElementById("insights-list");
   const emptyEl = document.getElementById("insights-empty");
   const errEl = document.getElementById("insights-error");
   const subEl = document.getElementById("insights-sub");
   errEl.hidden = true;
+  renderInsightsControls();
 
   const data = state.data;
   if (!data) {
@@ -3421,32 +3431,129 @@ async function renderInsights() {
     errEl.hidden = false;
     return;
   }
-  const idx = configIndex(await fetchDeviceConfigs());
-  const insights = [
-    ...insightVulnerableHours(data.violations, idx),
-    ...insightWorkDistraction(data.usage, idx),
-    ...insightUninstallWindow(data.lifecycle, idx),
-    ...insightUnblockWeakSpots(data.unblocks),
-  ];
 
-  if (insights.length === 0) {
+  // The blocklist Set is what lets us drop suggestions the config already covers
+  // (e.g. civitai is already blocked). configs give the time-based + program view.
+  const [blocked, configs] = await Promise.all([loadBlockedDomainSet(), fetchDeviceConfigs()]);
+  const idx = configIndex(configs);
+
+  const groups = [
+    { kind: "vuln", label: "Vulnerable hours", blurb: "Domains slipping through the keyword monitor that aren't blocked yet", items: insightVulnerableHours(data.violations, idx, blocked) },
+    { kind: "work", label: "Work-hours distractions", blurb: `Apps used during ${pad2(workStart)}:00–${pad2(workEnd)}:00 that aren't forbidden then`, items: insightWorkDistraction(data.usage, idx) },
+    { kind: "uninstall", label: "Uninstall pattern", blurb: "Uninstalls clustering while sudo is available", items: insightUninstallWindow(data.lifecycle, idx) },
+    { kind: "unblock", label: "Repeated unblocks", blurb: "Domains you keep temporarily unblocking", items: insightUnblockWeakSpots(data.unblocks) },
+  ].filter((g) => g.items.length);
+
+  const total = groups.reduce((n, g) => n + g.items.length, 0);
+  if (total === 0) {
     listEl.innerHTML = "";
     if (subEl) subEl.textContent = "";
     emptyEl.hidden = false;
     return;
   }
   emptyEl.hidden = true;
-  if (subEl) subEl.textContent = `${insights.length} suggestion${insights.length === 1 ? "" : "s"}.`;
-  listEl.innerHTML = insights.map(renderInsightCard).join("");
+  if (subEl) subEl.textContent = `${total} suggestion${total === 1 ? "" : "s"} across ${groups.length} area${groups.length === 1 ? "" : "s"}.`;
+  listEl.innerHTML = groups.map(renderInsightGroup).join("");
+}
+
+// renderInsightGroup renders one violation-kind section: a coloured header with a
+// count, a one-line blurb, then its cards (capped, with a "+N more" tail).
+function renderInsightGroup(g) {
+  const shown = g.items.slice(0, GROUP_CAP);
+  const more = g.items.length - shown.length;
+  const moreNote = more > 0 ? `<p class="insight-more">+${more} more</p>` : "";
+  return `<section class="insight-group insight--${g.kind}">` +
+    `<div class="insight-group-head"><span class="insight-dot"></span>` +
+    `<h3>${escHtml(g.label)}</h3><span class="insight-count">${g.items.length}</span></div>` +
+    `<p class="insight-blurb">${escHtml(g.blurb)}</p>` +
+    `<div class="insight-cards">${shown.map(renderInsightCard).join("")}${moreNote}</div>` +
+    `</section>`;
 }
 
 function renderInsightCard(s) {
-  return `<div class="insight-card insight--${s.kind}">` +
-    `<div class="insight-head"><span class="insight-tag">${escHtml(s.tag)}</span><h3>${s.title}</h3></div>` +
+  return `<div class="insight-card">` +
+    `<div class="insight-title">${s.title}</div>` +
     `<p class="insight-evidence">${s.evidence}</p>` +
     `<p class="insight-action">${s.action}</p>` +
     `<pre class="insight-config">${escHtml(s.config)}</pre>` +
     `</div>`;
+}
+
+// renderInsightsControls builds the work-hours control once and wires it to re-run
+// the analysis. Dynamic only — persisted in localStorage per browser, never the DB.
+function renderInsightsControls() {
+  const el = document.getElementById("insights-controls");
+  if (!el || el.dataset.ready) return;
+  el.innerHTML = `<span class="ins-ctl-label">Work hours</span>` +
+    `<input type="time" id="wh-start" value="${pad2(workStart)}:00">` +
+    `<span class="ins-ctl-sep">to</span>` +
+    `<input type="time" id="wh-end" value="${pad2(workEnd)}:00">`;
+  const onChange = () => {
+    const a = parseInt((document.getElementById("wh-start").value || "").split(":")[0], 10);
+    const b = parseInt((document.getElementById("wh-end").value || "").split(":")[0], 10);
+    if (Number.isInteger(a)) workStart = a;
+    if (Number.isInteger(b)) workEnd = b;
+    try { localStorage.setItem("gp_work_hours", `${workStart}-${workEnd}`); } catch { /* ignore */ }
+    renderInsights();
+  };
+  el.querySelector("#wh-start").addEventListener("change", onChange);
+  el.querySelector("#wh-end").addEventListener("change", onChange);
+  el.dataset.ready = "1";
+}
+
+// isBlocked tests a domain and its parents against the full blocklist Set, so
+// "old.reddit.com" matches a blocked "reddit.com".
+function isBlocked(dom, blocked) {
+  if (!blocked || blocked.size === 0) return false;
+  const parts = dom.split(".");
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (blocked.has(parts.slice(i).join("."))) return true;
+  }
+  return false;
+}
+
+// loadBlockedDomainSet fetches every device's gzip'd blocklist blob, decrypts +
+// gunzips it in the browser, and unions the domains into one Set. Cached for the
+// session — it's multi-MB and changes rarely.
+let _blockedDomainSet = null;
+async function loadBlockedDomainSet() {
+  if (_blockedDomainSet) return _blockedDomainSet;
+  const set = new Set();
+  try {
+    const r = await fetch("api/config?blocklist=1", { credentials: "same-origin" });
+    if (r.ok) {
+      for (const row of (await r.json()).blocklists || []) {
+        if (!row.blocklist) continue;
+        let bytes;
+        if (row.encrypted) {
+          if (!masterKey && !(await unlockVault())) continue;
+          const aad = new TextEncoder().encode(`deviceblocklist|${row.hash}`);
+          bytes = await decryptField(masterKey, row.blocklist, aad);
+        } else {
+          bytes = b64ToBytes(row.blocklist);
+        }
+        const text = await gunzipToText(bytes);
+        for (const line of text.split("\n")) {
+          const d = line.trim().toLowerCase();
+          if (d) set.add(d);
+        }
+      }
+    }
+  } catch { /* no blocklist -> membership just can't refine */ }
+  _blockedDomainSet = set;
+  return set;
+}
+
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function gunzipToText(bytes) {
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return await new Response(stream).text();
 }
 
 // renderSync fills the Data-sync panel from /api/sync: when the daemon last

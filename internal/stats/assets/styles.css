@@ -1149,15 +1149,37 @@ canvas { max-height: 260px; }
 .cfg-item-detail { font-size: 0.83rem; color: var(--ink-dim); line-height: 1.55; }
 
 /* ── Insights ─────────────────────────────────────────── */
-.insights-list { display: flex; flex-direction: column; gap: 14px; }
-.insight-card { border: 1px solid var(--line); border-left: 3px solid var(--signal); border-radius: var(--r); background: var(--panel-2); padding: 15px 18px; }
-.insight--vuln { border-left-color: var(--danger); }
-.insight--work { border-left-color: var(--signal); }
-.insight--uninstall { border-left-color: var(--exposed); }
-.insight--unblock { border-left-color: var(--exposed-dim); }
-.insight-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 7px; }
-.insight-tag { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); }
-.insight-head h3 { margin: 0; font-family: var(--display); font-size: 1rem; font-weight: 600; color: var(--ink); }
-.insight-evidence { margin: 0 0 9px; font-size: 0.86rem; color: var(--ink-dim); }
-.insight-action { margin: 0 0 11px; font-size: 0.86rem; color: var(--ink); }
-.insight-config { margin: 0; padding: 12px 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 0.78rem; line-height: 1.55; color: var(--ink-dim); overflow-x: auto; white-space: pre; }
+.insights-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
+.ins-ctl-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); }
+.ins-ctl-sep { color: var(--ink-faint); font-size: 0.85rem; }
+.insights-controls input[type="time"] {
+  background: var(--panel-2); border: 1px solid var(--line-2); border-radius: 7px; color: var(--ink);
+  font-family: var(--mono); font-size: 0.82rem; padding: 4px 8px;
+}
+
+/* One section per violation kind: a coloured dot + title + count, a blurb, cards. */
+.insights-list { display: flex; flex-direction: column; gap: 26px; }
+.insight-group-head { display: flex; align-items: center; gap: 9px; }
+.insight-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--signal); }
+.insight--vuln .insight-dot { background: var(--danger); }
+.insight--work .insight-dot { background: var(--signal); }
+.insight--uninstall .insight-dot { background: var(--exposed); }
+.insight--unblock .insight-dot { background: var(--exposed-dim); }
+.insight-group-head h3 { margin: 0; font-family: var(--display); font-size: 1.05rem; font-weight: 600; color: var(--ink); }
+.insight-count {
+  font-family: var(--mono); font-size: 11px; color: var(--ink-faint);
+  border: 1px solid var(--line-2); border-radius: 999px; padding: 1px 8px;
+}
+.insight-blurb { margin: 5px 0 12px 18px; font-size: 0.84rem; color: var(--ink-faint); }
+.insight-cards { display: flex; flex-direction: column; gap: 10px; margin-left: 18px; }
+
+.insight-card { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); padding: 14px 16px; }
+.insight-group.insight--vuln .insight-card { border-left: 3px solid var(--danger); }
+.insight-group.insight--work .insight-card { border-left: 3px solid var(--signal); }
+.insight-group.insight--uninstall .insight-card { border-left: 3px solid var(--exposed); }
+.insight-group.insight--unblock .insight-card { border-left: 3px solid var(--exposed-dim); }
+.insight-title { font-size: 0.94rem; color: var(--ink); margin-bottom: 6px; }
+.insight-evidence { margin: 0 0 8px; font-size: 0.85rem; color: var(--ink-dim); }
+.insight-action { margin: 0 0 10px; font-size: 0.85rem; color: var(--ink); }
+.insight-config { margin: 0; padding: 11px 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 0.77rem; line-height: 1.55; color: var(--ink-dim); overflow-x: auto; white-space: pre; }
+.insight-more { margin: 2px 0 0; font-size: 0.82rem; color: var(--ink-faint); }
