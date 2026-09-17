@@ -205,7 +205,17 @@ func (s *Syncer) syncConfig() {
 
 	ts := time.Now().UnixMilli()
 	up := configUpload{TS: ts, Hash: hash}
-	up.Config, up.Encrypted = s.encConfig(plaintext, ts)
+	blob, encrypted, err := s.encConfig(plaintext, ts)
+	if err != nil {
+		// Never upload a snapshot we couldn't seal. The whole subset is ONE
+		// blob, so an empty one isn't a degraded snapshot the way a dropped
+		// field is (see enc) — and it would be stored against a valid hash,
+		// after which the hash check below short-circuits every later connect
+		// and the dashboard shows "Unreadable snapshot" for good.
+		slog.Error("syncer: config encryption failed; not uploading", "err", err)
+		return
+	}
+	up.Config, up.Encrypted = blob, encrypted
 	if err := s.postConfig(up); err != nil {
 		slog.Warn("syncer: config upload failed; will retry next connect", "err", err)
 		return
@@ -216,22 +226,24 @@ func (s *Syncer) syncConfig() {
 // encConfig turns the plaintext subset into the stored blob. Under E2E it's the
 // whole JSON sealed as one AES-GCM box (aad binds it to this record identity),
 // base64 of nonce||ciphertext; otherwise the cleartext JSON, matching how the
-// record fields degrade in local/plaintext mode.
-func (s *Syncer) encConfig(plaintext []byte, ts int64) (string, bool) {
+// record fields degrade in local/plaintext mode. A sealing failure is returned,
+// never swallowed — the caller has to abandon the upload entirely.
+func (s *Syncer) encConfig(plaintext []byte, ts int64) (string, bool, error) {
 	if !s.e2e {
-		return string(plaintext), false
+		return string(plaintext), false, nil
 	}
 	aad := fmt.Appendf(nil, "%d|deviceconfig|config", ts)
 	box, err := e2e.EncryptRecord(s.mk, plaintext, aad)
 	if err != nil {
-		// mk is validated at load; still, never fall back to plaintext — drop it.
-		slog.Error("syncer: config encryption failed; skipping upload", "err", err)
-		return "", true
+		// mk is validated at load, so this is effectively impossible. Report it
+		// rather than returning an empty blob: the caller must not upload, and
+		// must not leave a valid hash standing for content nobody can read.
+		return "", true, err
 	}
 	buf := make([]byte, 0, len(box.Nonce)+len(box.Ct))
 	buf = append(buf, box.Nonce...)
 	buf = append(buf, box.Ct...)
-	return base64.StdEncoding.EncodeToString(buf), true
+	return base64.StdEncoding.EncodeToString(buf), true, nil
 }
 
 // storedConfigHash asks glockpeek for the config hash it currently holds for this

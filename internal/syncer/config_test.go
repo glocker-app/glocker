@@ -22,7 +22,7 @@ import (
 // records every uploaded snapshot.
 type configServer struct {
 	mu      sync.Mutex
-	stored  string        // hash it currently "holds"
+	stored  string // hash it currently "holds"
 	uploads []configUpload
 	srv     *httptest.Server
 }
@@ -61,6 +61,12 @@ func (c *configServer) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.uploads)
+}
+
+func (c *configServer) storedHash() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.stored
 }
 
 func sampleConfig() *config.Config {
@@ -218,5 +224,44 @@ func TestSyncConfigIntoRealGlockpeek(t *testing.T) {
 	}
 	if snap.Domains.Blocked != 2 || len(snap.Keywords.URL) != 2 {
 		t.Errorf("round-tripped snapshot wrong: %+v", snap)
+	}
+}
+
+// TestSyncConfigDoesNotUploadUnsealable pins the fail-closed contract: if the
+// snapshot can't be sealed, NOTHING is uploaded.
+//
+// The regression this guards is subtle and permanent. The upload carries a hash
+// of the PLAINTEXT, and the agent skips re-uploading whenever glockpeek already
+// holds that hash. So posting an empty blob alongside a valid hash doesn't just
+// lose one snapshot — it leaves glockpeek holding unreadable content under the
+// hash the agent will keep recomputing, so every later connect short-circuits
+// and the Config tab stays broken until the config itself changes.
+func TestSyncConfigDoesNotUploadUnsealable(t *testing.T) {
+	c := newConfigServer(t)
+	// e2e on with a deliberately unusable key: AES-GCM rejects the length, so
+	// sealing fails the way it would with a corrupt master key on disk.
+	s := &Syncer{
+		url: c.srv.URL, interval: time.Hour, client: c.srv.Client(),
+		cursors: map[string]int64{}, cfg: sampleConfig(),
+		e2e: true, mk: []byte("not-a-32-byte-key"),
+	}
+
+	s.syncConfig()
+	if c.count() != 0 {
+		t.Fatalf("uploaded %d snapshot(s) that could not be sealed, want 0: %+v", c.count(), c.uploads)
+	}
+	// Nothing may be left on the server that would satisfy a later hash check.
+	if got := c.storedHash(); got != "" {
+		t.Fatalf("server holds hash %q after a failed seal — later connects would short-circuit", got)
+	}
+
+	// The failure must not be sticky: a working key uploads on the next connect.
+	s.mk = make([]byte, e2e.MasterKeyLen)
+	s.syncConfig()
+	if c.count() != 1 {
+		t.Fatalf("recovered connect uploads = %d, want 1", c.count())
+	}
+	if up := c.uploads[0]; !up.Encrypted || up.Config == "" {
+		t.Errorf("expected a sealed, non-empty snapshot, got %+v", up)
 	}
 }
