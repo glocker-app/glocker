@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Synthesize a realistic multi-month glocker usage log for exercising the
-glockpeek-web "Usage" tab.
+glockpeek "Usage" tab.
 
 It learns the window universe (app classes + title styles) from an existing
 usage log — by default the live ``op.jsonl`` — then fabricates plausible daily
@@ -16,8 +16,8 @@ Usage:
     python3 scripts/synth_usage.py                       # 90 days -> op-3mo.jsonl
     python3 scripts/synth_usage.py --days 120 --out /tmp/usage.jsonl --seed 7
 
-Then point the web server at it:
-    GLOCKER_USAGE_LOG=$PWD/op-3mo.jsonl node glockpeek-web/server.js
+The output is a usage log in internal/usage's schema; the glocker syncer ingests
+it into glockpeek, which drives the "Usage" tab.
 
 Standard library only — no venv needed.
 """

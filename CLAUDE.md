@@ -398,7 +398,7 @@ Server started by internal/web/server.go:StartWebTrackingServer()
   (needs access to the DB, so run as the service user). `/api/me` returns `{auth}`
   so the frontend hides sign-out in single-user mode.
 - `stats.Register(mux, db, Options{SecureCookies})` mounts:
-  - `GET /` - dashboard (embedded frontend, copy of `glockpeek-web/public`) — **public**
+  - `GET /` - dashboard (embedded frontend in `internal/stats/assets`) — **public**
   - `POST /api/login` — **public**; `POST /api/logout`, `GET /api/me` — session
   - `GET /api/data` - full history (session-gated), unmanaged/downtime derived from
     lifecycle/heartbeat rows; ignored overlay filtered in `buildData`
@@ -414,9 +414,10 @@ Server started by internal/web/server.go:StartWebTrackingServer()
     Data-sync panel (session)
   - Legacy `/stats`, `/stats/` 301-redirect to `/`. (The old
     `glocker.localhost/stats` alias in hosts.go is vestigial.)
-- Frontend must be kept in sync between `glockpeek-web/public/` and
-  `internal/stats/assets/` (the embedded copy). `app.js` gates on `GET /api/me`
-  and shows a login screen when unauthenticated.
+- The frontend lives solely in `internal/stats/assets/` (embedded via `go:embed`).
+  The old standalone `glockpeek-web/` node app was removed; there is no longer a
+  second copy to mirror. `app.js` gates on `GET /api/me` and shows a login screen
+  when unauthenticated.
 
 **Syncer (`internal/syncer/`, a goroutine in the glocker daemon):**
 - Wired in cmd/glocker/main.go under `cfg.Sync.Enabled`: `go syncer.New(cfg).Run()`.

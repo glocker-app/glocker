@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: glockpeek-web API
+  title: glockpeek API
   version: 0.1.0
   description: >
     Serves the parsed glocker log history (violations, unblocks, lifecycle

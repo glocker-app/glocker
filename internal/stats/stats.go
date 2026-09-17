@@ -22,9 +22,8 @@ import (
 	"glocker/internal/store"
 )
 
-// assets is a copy of glockpeek-web/public (the standalone node dev app). Keep
-// the two in sync; the frontend is written path-agnostically so the same files
-// serve at "/" (node) and "/" (here).
+// assets is the dashboard frontend, embedded into the binary and served at "/".
+// This is the sole copy — the old standalone node app (glockpeek-web) was removed.
 //
 //go:embed assets
 var assetsFS embed.FS

@@ -8,7 +8,7 @@ import (
 )
 
 // Rule is one categorization rule: optional program/title regexes -> tag.
-// Mirrors the client-side model and glockpeek-web/lib/rules.js.
+// Mirrors the client-side model in the embedded frontend.
 type Rule struct {
 	Program string `json:"program"`
 	Title   string `json:"title"`

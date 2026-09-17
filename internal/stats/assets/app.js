@@ -1,4 +1,4 @@
-// glockpeek-web frontend. Pulls the full parsed history from /api/data, then
+// glockpeek dashboard frontend. Pulls the full parsed history from /api/data, then
 // does all aggregation/filtering in the browser (the data set is tiny). The
 // vulnerability heatmap is the centrepiece: it surfaces the hour/weekday slots
 // where you actually slip — and hatches the slots where glocker was off, so a
@@ -586,7 +586,7 @@ function showError(msg) {
   document.getElementById("loading").hidden = true;
   const el = document.getElementById("error");
   el.hidden = false;
-  el.innerHTML = `<div>⚠ ${msg}</div><div style="color:var(--ink-faint)">Is glockpeek-web running on a host with the glocker logs?</div>`;
+  el.innerHTML = `<div>⚠ ${msg}</div><div style="color:var(--ink-faint)">Is glockpeek running on a host with the glocker logs?</div>`;
 }
 
 // ── Local-time helpers ──────────────────────────────────

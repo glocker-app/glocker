@@ -73,8 +73,8 @@ type dataResponse struct {
 
 // buildData assembles the full history the dashboard renders, reading from the
 // glockpeek DB (populated by the glocker syncer). Times are epoch milliseconds
-// and every slice is sorted ascending, matching glockpeek-web/lib/parse.js.
-// Sources reflect whether each table has any rows.
+// and every slice is sorted ascending. Sources reflect whether each table has
+// any rows.
 func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 	resp := dataResponse{
 		Now:        now.UnixMilli(),
