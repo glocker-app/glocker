@@ -58,6 +58,17 @@ func readPassphrase(prompt string) ([]byte, error) {
 	return []byte(strings.TrimRight(line, "\r\n")), nil
 }
 
+// parseSinceTime parses a -resync-since value as local time: a bare date
+// (YYYY-MM-DD) or a date plus time (YYYY-MM-DDTHH:MM or "YYYY-MM-DD HH:MM").
+func parseSinceTime(s string) (time.Time, error) {
+	for _, layout := range []string{"2006-01-02T15:04", "2006-01-02 15:04", "2006-01-02"} {
+		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unrecognized time format")
+}
+
 // ansiRE matches SGR (color/style) escape sequences.
 var ansiRE = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
@@ -85,6 +96,8 @@ func main() {
 	addKeyword := flag.String("add-keyword", "", "Comma-separated list of keywords to add to both URL and content keyword lists")
 	panicFlag := flag.Bool("panic", false, "Enter panic mode: suspend the system for panic.duration minutes, re-suspending on early wake")
 	lockFlag := flag.Bool("lock", false, "Immediately lock sudoers access (ignores time windows)")
+	resyncFlag := flag.Bool("resync", false, "Re-push local records to glockpeek (backfill), overwriting its copies — use after a fix like enabling encryption for a field. Watch it with `glocker -status`/`-watch`.")
+	resyncSince := flag.String("resync-since", "", "With -resync: only re-push records on/after this local date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM). Empty = full history.")
 	securityCheckFlag := flag.Bool("security-check", false, "Report bypass/recovery routes (root login, recovery mode, extra sudoers, SSH root, autologin); read-only")
 	connectFlag := flag.Bool("connect", false, "Connect this machine to your dashboard's encryption: fetch your key vault, unlock it with your passphrase, and install the key so synced data is end-to-end encrypted")
 	connectForce := flag.Bool("force", false, "With -connect: replace an existing key even if it differs from your vault (WARNING: makes data encrypted under the old key unreadable)")
@@ -510,6 +523,32 @@ func main() {
 		}
 
 		log.Printf("Response: %s", strings.TrimSpace(response))
+		return
+	}
+
+	if *resyncFlag {
+		// Optional -resync-since limits how far back to re-push (local date/time).
+		var sinceMS int64
+		if s := strings.TrimSpace(*resyncSince); s != "" {
+			t, err := parseSinceTime(s)
+			if err != nil {
+				log.Fatalf("Invalid -resync-since %q: %v (use YYYY-MM-DD or YYYY-MM-DDTHH:MM)", s, err)
+			}
+			sinceMS = t.UnixMilli()
+		}
+		conn, err := net.Dial("unix", ipc.SocketPath)
+		if err != nil {
+			log.Fatalf("Failed to connect to glocker service: %v", err)
+		}
+		defer conn.Close()
+		conn.Write([]byte(fmt.Sprintf("resync:%d\n", sinceMS)))
+		reader := bufio.NewReader(conn)
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			log.Fatalf("Failed to read response: %v", err)
+		}
+		log.Printf("%s", strings.TrimSpace(response))
+		log.Println("Watch it push with `glocker -status` (or `glocker -watch`).")
 		return
 	}
 

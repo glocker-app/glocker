@@ -275,8 +275,24 @@ type SyncSummary struct {
 
 var (
 	syncSummary SyncSummary
+	resyncing   bool // a `glocker -resync` backfill is in flight
 	syncMutex   sync.RWMutex
 )
+
+// SetResyncing marks whether a resync backfill is currently running, so -status
+// can show it (the push is one large POST that can take a while).
+func SetResyncing(v bool) {
+	syncMutex.Lock()
+	defer syncMutex.Unlock()
+	resyncing = v
+}
+
+// IsResyncing reports whether a resync backfill is in flight.
+func IsResyncing() bool {
+	syncMutex.RLock()
+	defer syncMutex.RUnlock()
+	return resyncing
+}
 
 // RecordSync updates the syncer status after a successful push. counts is the
 // batch just sent, keyed by source (violations/unblocks/lifecycle/usage/heartbeat);

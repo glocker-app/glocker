@@ -251,3 +251,40 @@ func TestPendingCounts(t *testing.T) {
 		t.Errorf("pending usage with cursor 0 = %d, want 3", got)
 	}
 }
+
+// TestResyncSignal covers the -resync plumbing: the package-level Resync signal
+// reaches the registered syncer's channel (and is a no-op with none running),
+// and resetCursors rewinds every source.
+func TestResyncSignal(t *testing.T) {
+	activeMu.Lock()
+	active = nil
+	activeMu.Unlock()
+	if Resync(0) {
+		t.Error("Resync should return false when no syncer is running")
+	}
+
+	s := &Syncer{resyncCh: make(chan int64, 4), cursors: map[string]int64{"usage": 999, "reports": 42}}
+	activeMu.Lock()
+	active = s
+	activeMu.Unlock()
+	defer func() { activeMu.Lock(); active = nil; activeMu.Unlock() }()
+
+	if !Resync(1234) {
+		t.Fatal("Resync should return true with a running syncer")
+	}
+	select {
+	case v := <-s.resyncCh:
+		if v != 1234 {
+			t.Errorf("queued since = %d, want 1234", v)
+		}
+	default:
+		t.Fatal("no resync signal was queued")
+	}
+
+	s.resetCursors(0)
+	for _, src := range []string{"usage", "reports", "unblocks", "lifecycle", "heartbeat"} {
+		if s.cursors[src] != 0 {
+			t.Errorf("resetCursors(0): %s = %d, want 0", src, s.cursors[src])
+		}
+	}
+}

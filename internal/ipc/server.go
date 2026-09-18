@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"glocker/internal/config"
 	"glocker/internal/enforcement"
 	"glocker/internal/install"
+	"glocker/internal/syncer"
 	"glocker/internal/web"
 )
 
@@ -172,6 +174,25 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 		case "lock":
 			conn.Write([]byte("OK: Lock request received\n"))
 			go processLockRequest(cfg)
+		case "resync":
+			// Rewind the syncer's cursors and backfill, re-pushing local records so
+			// glockpeek's copies are overwritten (idempotent upsert). Optional
+			// payload is a "since" TS in ms; absent/blank means full history.
+			var since int64
+			if len(parts) == 2 {
+				if v, err := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 64); err == nil {
+					since = v
+				}
+			}
+			if syncer.Resync(since) {
+				if since > 0 {
+					conn.Write([]byte(fmt.Sprintf("OK: resync triggered (backfill from %d)\n", since)))
+				} else {
+					conn.Write([]byte("OK: resync triggered (full backfill)\n"))
+				}
+			} else {
+				conn.Write([]byte("ERROR: syncer is not running (sync disabled, or encryption key unusable)\n"))
+			}
 		case "add-keyword":
 			if len(parts) != 2 {
 				conn.Write([]byte("ERROR: Invalid format. Use 'add-keyword:keywords'\n"))

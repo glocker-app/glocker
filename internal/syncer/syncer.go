@@ -24,6 +24,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"glocker/internal/config"
@@ -100,6 +101,13 @@ type Syncer struct {
 	// sends records with TS >= cursor (the boundary re-send is idempotent).
 	cursors map[string]int64
 
+	// resyncCh carries `glocker -resync` requests: the value is the "since" TS in
+	// ms (0 = full history). A request resets the cursors and backfills on the
+	// next loop turn, overwriting server-side rows in place (ingest is an
+	// idempotent upsert) — used to repair records after a fix like encrypting a
+	// field that used to ship in cleartext.
+	resyncCh chan int64
+
 	// e2e end-to-end encryption: when on, sensitive fields are encrypted under mk
 	// before upload (see enc). e2eBroken is set when E2E was requested but the key
 	// couldn't be loaded — the syncer then refuses to run, so it never falls back
@@ -117,6 +125,7 @@ func New(cfg *config.Config) *Syncer {
 		interval: time.Duration(orInt(cfg.Sync.IntervalSeconds, config.DefaultSyncIntervalSeconds)) * time.Second,
 		client:   &http.Client{Timeout: 30 * time.Second},
 		cursors:  map[string]int64{},
+		resyncCh: make(chan int64, 4),
 		cfg:      cfg,
 	}
 	s.paths = resolveLogPaths(cfg)
@@ -258,12 +267,50 @@ func PendingCounts(cfg *config.Config, cursors map[string]int64) map[string]int 
 // snapshot, does the initial sync, then syncs on the interval. Blocks; run in
 // a goroutine. Every error is logged and retried next tick — enforcement is
 // never affected.
+// active is the running syncer, registered while Run loops so `glocker -resync`
+// (via the IPC server) can signal it. Only one syncer runs per daemon.
+var (
+	activeMu sync.Mutex
+	active   *Syncer
+)
+
+// Resync signals the running syncer to reset its cursors to `since` (ms; 0 = full
+// history) and backfill immediately. Returns false if no syncer is running
+// (sync disabled, or e2e enabled but the key is unusable). Non-blocking: a
+// request already queued is enough, so extra calls collapse into one.
+func Resync(since int64) bool {
+	activeMu.Lock()
+	a := active
+	activeMu.Unlock()
+	if a == nil {
+		return false
+	}
+	select {
+	case a.resyncCh <- since:
+	default: // a request is already queued; one backfill covers it
+	}
+	return true
+}
+
+// resetCursors rewinds every source to `since` so the next syncOnce re-sends
+// records with TS >= since (0 = everything).
+func (s *Syncer) resetCursors(since int64) {
+	for _, src := range []string{"reports", "unblocks", "lifecycle", "heartbeat", "usage"} {
+		s.cursors[src] = since
+	}
+}
+
 func (s *Syncer) Run() {
 	if s.e2eBroken {
 		slog.Error("syncer: not starting — e2e was enabled but the master key is unusable")
 		return
 	}
 	slog.Info("syncer starting", "target", s.url, "interval", s.interval, "e2e", s.e2e)
+	activeMu.Lock()
+	active = s
+	activeMu.Unlock()
+	defer func() { activeMu.Lock(); active = nil; activeMu.Unlock() }()
+
 	s.seedCursors() // ask glockpeek what it already has, so we only send the gap
 	// Reconcile this device's config snapshot. Retried each tick until it
 	// lands: if glockpeek is down at daemon start, a one-shot attempt would
@@ -273,11 +320,20 @@ func (s *Syncer) Run() {
 	s.syncOnce()
 	t := time.NewTicker(s.interval)
 	defer t.Stop()
-	for range t.C {
-		if !configSynced {
-			configSynced = s.syncConfig()
+	for {
+		select {
+		case <-t.C:
+			if !configSynced {
+				configSynced = s.syncConfig()
+			}
+			s.syncOnce()
+		case since := <-s.resyncCh:
+			slog.Info("syncer: resync requested — rewinding cursors and backfilling", "since", since)
+			state.SetResyncing(true)
+			s.resetCursors(since)
+			s.syncOnce()
+			state.SetResyncing(false)
 		}
-		s.syncOnce()
 	}
 }
 

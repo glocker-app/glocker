@@ -194,6 +194,11 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 		f.row("status", dim("disabled"))
 	} else {
 		ss := state.GetSyncSummary()
+		// A `glocker -resync` backfill in flight — one large push that can take a
+		// while; surface it so the status doesn't look idle mid-resync.
+		if state.IsResyncing() {
+			f.row("resync", good("backfilling…")+dim(" re-pushing local records"))
+		}
 		// Records sitting in the local logs that the next push will carry.
 		pending := formatSyncCounts(syncer.PendingCounts(cfg, ss.Cursors))
 		interval := time.Duration(cfg.Sync.IntervalSeconds) * time.Second

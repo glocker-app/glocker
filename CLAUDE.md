@@ -35,7 +35,8 @@ glocker -uninstall "reason"
 - **`cmd/glocker/main.go`** - CLI entry point
   - Command-line flag definitions (`-status`, `-watch`, `-info`, `-version`, `-connect`,
     `-extend`, `-purge`, `-security-check`, `-install`, `-uninstall`, `-note`, `-daemon`,
-    `-block`, `-block-app`, `-unblock`, `-add-keyword`, `-panic`, `-lock`, `-force`)
+    `-block`, `-block-app`, `-unblock`, `-add-keyword`, `-panic`, `-lock`, `-force`,
+    `-resync` [+`-resync-since`])
   - Flag handlers with socket communication
   - Default behavior: show status or help
   - Daemon startup logic
@@ -89,6 +90,7 @@ glocker -uninstall "reason"
     - `extend` - One-hour grant for an extendible forbidden program
     - `lock` - Force sudoers lock
     - `add-keyword` - Add monitoring keywords
+    - `resync` - Rewind the syncer's cursors and backfill (re-push local records to glockpeek, overwriting its copies); optional `:sinceMS` payload
     - `uninstall` - Uninstall glocker
   - `processLockRequest()` - Lock processor
   - `processAddKeywordRequest()` - Keyword processor
@@ -326,7 +328,7 @@ type ForbiddenProgram struct {
 - Client sends command via Unix socket at `/var/glocker/glocker.sock`
 - Format: `"action:payload\n"` (e.g., `"block:example.com\n"`)
 - Server processes command and returns response
-- Commands: `ping`, `status`, `info`, `unblock`, `block`, `block-app`, `panic`, `extend`, `lock`, `add-keyword`, `uninstall`
+- Commands: `ping`, `status`, `info`, `unblock`, `block`, `block-app`, `panic`, `extend`, `lock`, `add-keyword`, `resync`, `uninstall`
 - Multi-line responses end with `"END"`
 
 ### Important Files and Paths
@@ -462,7 +464,14 @@ Server started by internal/web/server.go:StartWebTrackingServer()
 - The syncer's payload JSON tags must match glockpeek's ingest decoder
   (store-model JSON). `TestSyncIntoRealGlockpeek` guards that across the boundary.
 - Config `sync.{enabled, glockpeek_url, token, interval_seconds}`; token only for a
-  hosted glockpeek. Cursor is in-memory (restart re-backfills; idempotent).
+  hosted glockpeek. Cursor is in-memory and, on startup, **seeded from glockpeek's
+  high-water marks** (`seedCursors` GETs `/api/ingest`), so a plain restart only
+  sends the gap — it does NOT re-push. To force a full re-push (e.g. to repair rows
+  after a field that used to ship cleartext is now encrypted), `glocker -resync`
+  (socket cmd → `syncer.Resync`) rewinds the cursors and backfills; because ingest
+  upserts on the natural key, the re-push overwrites glockpeek's copies in place
+  (no server-side delete, no data loss). `-resync-since <date>` limits how far back.
+  `state.IsResyncing()` surfaces an in-flight backfill in `glocker -status`.
 
 ### Extension Communication Flow
 
