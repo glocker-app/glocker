@@ -64,7 +64,7 @@
           <section class="panel score-hero" title="A 0–100 health score over all recorded history (not the selected window): 100 minus weighted penalties for unmanaged time, violations, and deliberate days. Hover each penalty for its weight.">
             <div class="panel-head">
               <h2>Composite health</h2>
-              <p class="panel-sub">Over all recorded history (not the selected window): 100 minus penalties for unmanaged time, violations, and deliberate days. Higher is healthier.</p>
+              <p class="panel-sub">100 minus penalties for unmanaged time, violations, and deliberate days, over all history (not the window). Higher is better.</p>
             </div>
             <div class="score-split">
               <div class="score-body" id="score"></div>
@@ -92,7 +92,7 @@
           <section class="panel strip-panel">
             <div class="panel-head">
               <h2>Range</h2>
-              <p class="panel-sub">Drag across the strip to choose the window — History and Usage below reflect it. Lines are violations and unblocks per day; the pink band is unmanaged time.</p>
+              <p class="panel-sub">Drag to pick the window. Lines are violations and unblocks per day; the pink band is unmanaged time.</p>
             </div>
             <div class="spark-wrap"><canvas id="chart-timeline"></canvas></div>
             <div class="tl-legend">
@@ -173,7 +173,7 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Ignored violations</h2>
-              <p class="panel-sub">Hits you marked &ldquo;not a violation&rdquo; from a day's detail. They&rsquo;re hidden from every count; restore any to bring it back. The raw log is never modified.</p>
+              <p class="panel-sub">Hits you marked &ldquo;not a violation&rdquo;. Hidden from every count; restore any to bring it back.</p>
             </div>
             <div id="ignored-list" class="ign-list"></div>
           </section>
@@ -190,7 +190,7 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Activity per day</h2>
-              <p class="panel-sub">Active time each day in the window, stacked by tag. The label above each bar is the day's total active time and its share of the 24-hour day.</p>
+              <p class="panel-sub">Active time per day, stacked by tag. Labels show each day's total and its share of 24h.</p>
             </div>
             <div id="usage-perday-wrap" class="tall-chart"><canvas id="chart-usage-perday"></canvas></div>
           </section>
@@ -200,7 +200,7 @@
             <section class="panel">
               <div class="panel-head">
                 <h2>Time by tag</h2>
-                <p class="panel-sub">Active time recategorized by your rules. Untagged time is shown so you can see coverage. Click a tag to see what fed it.</p>
+                <p class="panel-sub">Active time by tag, with untagged shown for coverage. Click a tag to see what fed it.</p>
               </div>
               <div id="usage-tags-wrap" class="tall-chart"><canvas id="chart-usage-tags"></canvas></div>
             </section>
@@ -217,7 +217,7 @@
           <section class="panel">
             <div class="panel-head">
               <h2 id="usage-tag-detail-head">Tag contributors</h2>
-              <p class="panel-sub">Click a tag in &ldquo;Time by tag&rdquo; above, then click an app to expand its windows and see its common title words.</p>
+              <p class="panel-sub">Click a tag above, then an app to see its windows and common title words.</p>
             </div>
             <div class="tagc-split">
               <div id="usage-tag-detail" class="tagtree"></div>
@@ -236,7 +236,7 @@
                 <h2>Untagged windows</h2>
                 <span id="untagged-total" class="untag-total"></span>
               </summary>
-              <p class="panel-sub">Top 10 individual windows no rule matched, by active time. Click &plus; tag to start a rule for that window, then set a tag below and Save.</p>
+              <p class="panel-sub">Top windows no rule matched. Click &plus; tag to make a rule for one, or hide to drop it.</p>
               <div id="usage-untagged" class="untag-list"></div>
             </details>
           </section>
@@ -245,7 +245,7 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Rules</h2>
-              <p class="panel-sub">A rule matches on program &amp; title regexes (blank = match anything) and attaches tags from the registry — at most one per namespace. Drag the handle to reorder: the first matching rule per namespace wins. Manage the tags themselves on the <strong>Tags</strong> sub-tab.</p>
+              <p class="panel-sub">Match on program &amp; title regexes (blank = anything) and attach a tag per namespace. Drag to reorder: first match per namespace wins. Edit tags on the <strong>Tags</strong> sub-tab.</p>
             </div>
             <div class="rules-editor">
               <div class="rules-head">
@@ -277,7 +277,7 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Tag registry</h2>
-              <p class="panel-sub">Tags are <code>Namespace:name</code>. The shared <strong>Glocker</strong> tags come with your account — you can flag them as distractions for the work-hours insights; their colour and name are fixed and they can't be deleted. Add your own namespaces and tags below; rules on the Usage sub-tab attach these to your activity.</p>
+              <p class="panel-sub">Tags are <code>Namespace:name</code>. Shared <strong>Glocker</strong> tags come built-in — flag them as distractions, but their name and colour are fixed. Add your own below.</p>
             </div>
             <div id="tags-registry"></div>
             <div class="tags-add-ns">
@@ -293,7 +293,7 @@
           <section class="panel strip-panel">
             <div class="panel-head">
               <h2>Insights</h2>
-              <p class="panel-sub">Patterns in the selected window, each with a concrete config change. Computed in your browser from your own data. <span id="insights-sub"></span></p>
+              <p class="panel-sub">Patterns in the window, each with a config change to apply. Computed in your browser. <span id="insights-sub"></span></p>
             </div>
             <div class="spark-wrap"><canvas id="insights-timeline"></canvas></div>
           </section>
@@ -310,7 +310,7 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Configuration</h2>
-              <p class="panel-sub">What each connected device is enforcing — services, keywords, forbidden programs and guardrails. Synced end-to-end encrypted; decrypted here in your browser. <span id="config-sub"></span></p>
+              <p class="panel-sub">What each device is enforcing. Synced end-to-end encrypted, decrypted in your browser. <span id="config-sub"></span></p>
             </div>
             <div id="config-list" class="config-list"></div>
             <p id="config-empty" class="config-empty" hidden>No configuration synced yet. It shows up here once a device running a recent glocker syncs its config.</p>
