@@ -3983,7 +3983,12 @@ async function renderInsights() {
   ];
 
   const total = groups.reduce((n, g) => n + g.items.length, 0);
-  if (subEl) subEl.textContent = total ? `${total} suggestion${total === 1 ? "" : "s"} in this window.` : "";
+  const clear = groups.length - groups.filter((g) => g.items.length).length;
+  if (subEl) {
+    subEl.textContent = total
+      ? `${total} suggestion${total === 1 ? "" : "s"} in this window` + (clear ? ` · ${clear} check${clear === 1 ? "" : "s"} clear` : "")
+      : "";
+  }
   if (total === 0) {
     tabsEl.innerHTML = "";
     listEl.innerHTML = "";
@@ -4000,9 +4005,10 @@ async function renderInsights() {
   }
   state.insightsTab = active;
 
-  // Tabs — one per kind, with its count; empty kinds are shown but disabled.
-  tabsEl.innerHTML = groups.map((g) =>
-    `<button data-instab="${g.kind}" class="insight-tab insight--${g.kind}${g.kind === active ? " active" : ""}"${g.items.length ? "" : " disabled"}>` +
+  // Tabs — only the kinds that actually have suggestions (empty ones are noted as
+  // "clear" in the subline instead of shown as greyed-out dead tabs).
+  tabsEl.innerHTML = groups.filter((g) => g.items.length).map((g) =>
+    `<button data-instab="${g.kind}" class="insight-tab insight--${g.kind}${g.kind === active ? " active" : ""}">` +
     `${escHtml(g.label)} <span class="subtab-count">${g.items.length}</span></button>`).join("");
   wireInsightsTabs();
 
