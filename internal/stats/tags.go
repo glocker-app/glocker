@@ -54,15 +54,31 @@ func handleTags(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		in, ok := readTagInput(w, r)
+		in, ok := readTagPatch(w, r)
 		if !ok {
 			return
 		}
+		// PATCH is partial: only the fields the client sent are written, so
+		// saving a colour never blanks the tag's namespace/name. Build the
+		// column map from the fields that were actually present.
+		fields := map[string]any{}
+		if in.Namespace != nil {
+			fields["namespace"] = *in.Namespace
+		}
+		if in.Name != nil {
+			fields["name"] = *in.Name
+		}
+		if in.Color != nil {
+			fields["color"] = *in.Color
+		}
+		if in.Distraction != nil {
+			fields["distraction"] = *in.Distraction
+		}
 		// A user tag updates in place; a system tag only accepts a distraction
 		// change, recorded as this account's override.
-		err := db.UpdateUserTag(uid, id, in.Namespace, in.Name, in.Color, in.Distraction)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err = db.SetTagDistraction(uid, id, in.Distraction)
+		err := db.UpdateUserTagFields(uid, id, fields)
+		if errors.Is(err, gorm.ErrRecordNotFound) && in.Distraction != nil {
+			err = db.SetTagDistraction(uid, id, *in.Distraction)
 		}
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -112,6 +128,30 @@ func readTagInput(w http.ResponseWriter, r *http.Request) (tagInput, bool) {
 	if err := json.Unmarshal(body, &in); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return tagInput{}, false
+	}
+	return in, true
+}
+
+// tagPatch is the PATCH body. Pointers distinguish "field omitted" (leave the
+// column alone) from "field set to its zero value", so a partial update — e.g.
+// just {"color":"…"} — never blanks the namespace/name it didn't mention.
+type tagPatch struct {
+	Namespace   *string `json:"namespace"`
+	Name        *string `json:"name"`
+	Color       *string `json:"color"`
+	Distraction *bool   `json:"distraction"`
+}
+
+func readTagPatch(w http.ResponseWriter, r *http.Request) (tagPatch, bool) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 8<<10))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return tagPatch{}, false
+	}
+	var in tagPatch
+	if err := json.Unmarshal(body, &in); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return tagPatch{}, false
 	}
 	return in, true
 }

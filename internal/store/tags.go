@@ -47,11 +47,16 @@ func (db *DB) CreateUserTag(userID uint, namespace, name, color string, distract
 	return t, nil
 }
 
-// UpdateUserTag edits one of the account's own tags. It never touches a system
-// tag (scope+user_id in the WHERE); RowsAffected 0 means "not yours / not found".
-func (db *DB) UpdateUserTag(userID, id uint, namespace, name, color string, distraction bool) error {
+// UpdateUserTagFields edits one of the account's own tags, writing only the
+// columns present in fields (a partial PATCH — an absent column keeps its value).
+// It never touches a system tag (scope+user_id in the WHERE); RowsAffected 0
+// means "not yours / not found". A caller passing an empty map is a no-op error.
+func (db *DB) UpdateUserTagFields(userID, id uint, fields map[string]any) error {
+	if len(fields) == 0 {
+		return gorm.ErrRecordNotFound
+	}
 	res := db.Model(&Tag{}).Where("id = ? AND scope = ? AND user_id = ?", id, "user", userID).
-		Updates(map[string]any{"namespace": namespace, "name": name, "color": color, "distraction": distraction})
+		Updates(fields)
 	if res.Error != nil {
 		return res.Error
 	}
