@@ -1331,6 +1331,13 @@ canvas { max-height: 260px; }
 .subtabs button.active .subtab-count { color: inherit; }
 .subtabs button:disabled { opacity: 0.4; cursor: default; }
 
+/* Shown when no device config snapshot has synced — insights can't cross-check. */
+.insight-noconfig {
+  margin: 0 0 16px; padding: 10px 14px; font-size: 0.83rem; line-height: 1.5;
+  color: var(--ink-dim); background: var(--panel-2);
+  border: 1px solid var(--line); border-left: 3px solid var(--signal); border-radius: var(--r);
+}
+
 /* Master–detail: a sticky left column (controls + category rail) beside the
    selected category's cards. The frame stays put; only the detail scrolls. */
 .insights-body { display: grid; grid-template-columns: 224px 1fr; gap: 26px; align-items: start; }

@@ -3977,6 +3977,19 @@ async function renderInsights() {
   const configs = await fetchDeviceConfigs();
   const idx = configIndex(configs);
 
+  // Without a config snapshot the insights are flying blind — they can't tell
+  // what's already enforced or whether violation tracking is on, so a suggestion
+  // may repeat what's set or wrongly say "turn on tracking". Flag it.
+  const noConfigEl = document.getElementById("insights-noconfig");
+  if (noConfigEl) {
+    const missing = configs.length === 0;
+    noConfigEl.hidden = !missing;
+    if (missing) {
+      noConfigEl.textContent =
+        "No device config has synced, so these suggestions can't check what you already enforce — enable sync on the agent (sync.enabled) for accurate insights.";
+    }
+  }
+
   const groups = [
     { kind: "vuln", label: "Repeated searches", blurb: "Banned keywords the monitor keeps catching — tighten the response (violation tracking → screen lock), not the host.", items: insightKeywordHits(violations, idx) },
     { kind: "work", label: "Work-hours apps", blurb: `Distraction-tagged apps (per your Tags registry) used ${pad2(workStart)}:00–${pad2(workEnd)}:00 on weekdays that aren't forbidden then.`, items: insightWorkDistraction(usage, idx) },
