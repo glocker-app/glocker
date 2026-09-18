@@ -3641,6 +3641,18 @@ try {
   const wh = localStorage.getItem("gp_work_hours");
   if (wh) { const [a, b] = wh.split("-").map(Number); if (a >= 0 && a < 24 && b > 0 && b <= 24) { workStart = a; workEnd = b; } }
 } catch { /* no localStorage -> defaults */ }
+
+let bedStart = 23;      // bedtime window start (hour, local) — wraps past midnight
+let bedEnd = 7;         // bedtime window end (exclusive)
+try {
+  const bt = localStorage.getItem("gp_bedtime");
+  if (bt) { const [a, b] = bt.split("-").map(Number); if (a >= 0 && a <= 24 && b >= 0 && b <= 24) { bedStart = a; bedEnd = b; } }
+} catch { /* no localStorage -> defaults */ }
+// inBedtime tests an hour against the bedtime window, handling the usual
+// overnight wrap (end ≤ start, e.g. 23:00→07:00).
+const inBedtime = (hr) =>
+  bedStart === bedEnd ? false : bedStart < bedEnd ? hr >= bedStart && hr < bedEnd : hr >= bedStart || hr < bedEnd;
+
 const INSIGHT = {
   minViolations: 5,     // per-domain hits before we call it a pattern
   minWorkSamples: 25,   // ~minutes of a work-hours distraction before it's worth blocking
@@ -3648,6 +3660,8 @@ const INSIGHT = {
   workIdleMs: 5 * 60_000,
   minUninstalls: 3,
   minUnblocks: 3,
+  minBedtimeMs: 30 * 60_000, // ≥30 min of active use before an app is a "time-sink"
+  minBedtimeShare: 0.05,     // and it must be ≥5% of tracked active time
 };
 const LEGIT_UNINSTALL = new Set(["maintenance", "testing", "update", "upgrade", "reinstall"]);
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -3806,6 +3820,46 @@ function insightWorkDistraction(usage, idx) {
   return out.sort((a, b) => b.weight - a.weight);
 }
 
+// 4. Bedtime lockout: your heaviest-used apps (by active hours, any category)
+// shouldn't be runnable past bedtime — if the app can't run, the domains inside
+// it don't matter. Ranks apps by total active time in the window and suggests a
+// kill window over the bedtime hours (every day). Preventive: an app qualifies on
+// overall use, not just use already happening at night (that's shown as evidence).
+function insightBedtimeApps(usage, idx) {
+  // Attribute real active time per app (eachSampleDuration handles idle/gaps), so
+  // the ranking and the hours shown match the Usage view — not a raw sample count.
+  const byApp = new Map(); // class -> { ms, nightMs }
+  let grand = 0;
+  eachSampleDuration(usage || [], (e, dt, away) => {
+    if (away) return; // idle / no focus isn't "use"
+    const a = e.active;
+    if (!a || !a.class) return;
+    const rec = byApp.get(a.class) || { ms: 0, nightMs: 0 };
+    rec.ms += dt; grand += dt;
+    if (inBedtime(new Date(e.ts).getHours())) rec.nightMs += dt;
+    byApp.set(a.class, rec);
+  });
+  if (!grand) return [];
+  const days7 = `["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]`;
+  const win = `{ start: "${pad2(bedStart)}:00", end: "${pad2(bedEnd)}:00", days: ${days7} }`;
+  const out = [];
+  for (const [app, rec] of byApp) {
+    if (idx.forbidden.has(app.toLowerCase())) continue; // already killed
+    const share = rec.ms / grand;
+    if (rec.ms < INSIGHT.minBedtimeMs || share < INSIGHT.minBedtimeShare) continue;
+    const night = rec.nightMs ? ` — ${fmtDur(rec.nightMs)} of it already after bedtime` : "";
+    out.push({
+      kind: "bedtime",
+      title: `${escHtml(app)} is one of your biggest time-sinks`,
+      evidence: `About ${fmtDur(rec.ms)} of active use in this window (${Math.round(share * 100)}% of your tracked time)${night}. Lock it out overnight so it isn't an option.`,
+      action: `Kill ${escHtml(app)} during bedtime (${pad2(bedStart)}:00–${pad2(bedEnd)}:00):`,
+      config: `programs:\n  enabled: true\n  list:\n    - name: ${app}\n      kill_windows:\n        - ${win}`,
+      weight: rec.ms,
+    });
+  }
+  return out.sort((a, b) => b.weight - a.weight).slice(0, 6);
+}
+
 // 5. Uninstalls clustered at a time of day (excluding legit reasons) → the sudo
 // window is open then.
 function insightUninstallWindow(lifecycle, idx) {
@@ -3922,6 +3976,7 @@ async function renderInsights() {
   const groups = [
     { kind: "vuln", label: "Repeated searches", blurb: "Banned keywords the monitor keeps catching — tighten the response (violation tracking → screen lock), not the host.", items: insightKeywordHits(violations, idx) },
     { kind: "work", label: "Work-hours apps", blurb: `Distraction-tagged apps (per your Tags registry) used ${pad2(workStart)}:00–${pad2(workEnd)}:00 on weekdays that aren't forbidden then.`, items: insightWorkDistraction(usage, idx) },
+    { kind: "bedtime", label: "Past bedtime", blurb: `Your heaviest-used apps, blocked overnight (${pad2(bedStart)}:00–${pad2(bedEnd)}:00) so they aren't an option at bedtime.`, items: insightBedtimeApps(usage, idx) },
     { kind: "uninstall", label: "Uninstalls", blurb: "Uninstalls clustering while sudo is available.", items: insightUninstallWindow(lifecycle, idx) },
     { kind: "unblock", label: "Repeated unblocks", blurb: "Domains you keep temporarily unblocking.", items: insightUnblockWeakSpots(unblocks) },
     { kind: "extend", label: "Repeated extensions", blurb: "Forbidden programs you keep granting one-hour runs to.", items: insightRepeatedExtensions(unblocks) },
@@ -3985,45 +4040,79 @@ function renderInsightCard(s) {
     `</div>`;
 }
 
-// renderInsightsControls builds the work-hours dual-range slider once and wires it
-// to re-run the analysis. Dynamic only — persisted in localStorage, never the DB.
+// renderInsightsControls builds the Work-hours and Bedtime sliders once and wires
+// them to re-run the analysis. Dynamic only — persisted in localStorage, never the
+// DB.
 function renderInsightsControls() {
   const el = document.getElementById("insights-controls");
   if (!el || el.dataset.ready) return;
-  el.innerHTML = `<span class="ins-ctl-label">Work hours</span>` +
+  el.innerHTML = "";
+  mountRangeSlider(el, {
+    label: "Work hours", id: "wh", start: workStart, end: workEnd, wrap: false,
+    onChange: (a, e) => {
+      workStart = a; workEnd = e;
+      try { localStorage.setItem("gp_work_hours", `${a}-${e}`); } catch { /* ignore */ }
+      renderInsights();
+    },
+  });
+  mountRangeSlider(el, {
+    label: "Bedtime", id: "bt", start: bedStart, end: bedEnd, wrap: true,
+    onChange: (a, e) => {
+      bedStart = a; bedEnd = e;
+      try { localStorage.setItem("gp_bedtime", `${a}-${e}`); } catch { /* ignore */ }
+      renderInsights();
+    },
+  });
+  el.dataset.ready = "1";
+}
+
+// mountRangeSlider appends one labelled 0–24h dual-range slider. wrap=true allows
+// an overnight window (end ≤ start), used for bedtime — its highlighted band then
+// wraps around the two ends (rendered as two fill segments).
+function mountRangeSlider(el, { label, id, start, end, wrap, onChange }) {
+  const g = document.createElement("div");
+  g.className = "ins-slider-group";
+  g.innerHTML = `<span class="ins-ctl-label">${label}</span>` +
     `<div class="wh-slider">` +
-    `<div class="wh-track"><div class="wh-fill"></div></div>` +
-    `<input type="range" id="wh-start" min="0" max="24" step="1" value="${workStart}">` +
-    `<input type="range" id="wh-end" min="0" max="24" step="1" value="${workEnd}">` +
+    `<div class="wh-track"><div class="wh-fill"></div>${wrap ? `<div class="wh-fill wh-fill2"></div>` : ""}</div>` +
+    `<input type="range" id="${id}-start" min="0" max="24" step="1" value="${start}">` +
+    `<input type="range" id="${id}-end" min="0" max="24" step="1" value="${end}">` +
     `</div>` +
-    `<span class="wh-readout" id="wh-readout"></span>`;
-  const startEl = el.querySelector("#wh-start");
-  const endEl = el.querySelector("#wh-end");
-  const fill = el.querySelector(".wh-fill");
-  const readout = el.querySelector("#wh-readout");
-  const bounds = () => {
-    let a = +startEl.value, e = +endEl.value;
-    return a <= e ? [a, e] : [e, a];
+    `<span class="wh-readout" id="${id}-readout"></span>`;
+  el.appendChild(g);
+  const startEl = g.querySelector(`#${id}-start`);
+  const endEl = g.querySelector(`#${id}-end`);
+  const fill = g.querySelector(".wh-fill:not(.wh-fill2)");
+  const fill2 = g.querySelector(".wh-fill2");
+  const readout = g.querySelector(`#${id}-readout`);
+  const pct = (h) => (h / 24) * 100;
+  // Non-wrap sliders sort the thumbs (a window is the span between them); wrap
+  // sliders keep them as-is so start can sit after end (overnight).
+  const vals = () => {
+    const a = +startEl.value, e = +endEl.value;
+    return wrap ? [a, e] : a <= e ? [a, e] : [e, a];
   };
   const paint = () => {
-    const [a, e] = bounds();
-    fill.style.left = `${(a / 24) * 100}%`;
-    fill.style.right = `${100 - (e / 24) * 100}%`;
+    const [a, e] = vals();
+    if (wrap && e <= a) { // overnight: a→24 and 0→e
+      fill.style.left = `${pct(a)}%`; fill.style.right = "0%";
+      fill2.style.left = "0%"; fill2.style.right = `${100 - pct(e)}%`; fill2.style.display = "";
+    } else {
+      fill.style.left = `${pct(a)}%`; fill.style.right = `${100 - pct(e)}%`;
+      if (fill2) fill2.style.display = "none";
+    }
     readout.textContent = `${pad2(a)}:00 – ${pad2(e)}:00`;
   };
   const commit = () => {
-    const [a, e] = bounds();
+    const [a, e] = vals();
     if (a === e) { paint(); return; } // ignore a zero-width window
-    workStart = a; workEnd = e;
-    try { localStorage.setItem("gp_work_hours", `${workStart}-${workEnd}`); } catch { /* ignore */ }
-    renderInsights();
+    onChange(a, e);
   };
   startEl.addEventListener("input", paint);
   endEl.addEventListener("input", paint);
   startEl.addEventListener("change", commit);
   endEl.addEventListener("change", commit);
   paint();
-  el.dataset.ready = "1";
 }
 
 // renderSync fills the Data-sync panel from /api/sync: when the daemon last

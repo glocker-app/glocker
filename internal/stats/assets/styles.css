@@ -1306,7 +1306,8 @@ canvas { max-height: 260px; }
 
 /* ── Insights ─────────────────────────────────────────── */
 /* Work-hours dual-range slider. */
-.insights-controls { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+.insights-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; margin-bottom: 16px; }
+.ins-slider-group { display: flex; align-items: center; gap: 12px; }
 .ins-ctl-label { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-faint); white-space: nowrap; }
 .wh-readout { font-family: var(--mono); font-size: 0.82rem; color: var(--ink-dim); white-space: nowrap; }
 .wh-slider { position: relative; width: 220px; height: 22px; }
@@ -1339,6 +1340,7 @@ canvas { max-height: 260px; }
 .insight-card { border: 1px solid var(--line); border-left: 3px solid var(--line-2); border-radius: var(--r); background: var(--panel-2); padding: 14px 16px; }
 .insight-cards.insight--vuln .insight-card { border-left-color: var(--danger); }
 .insight-cards.insight--work .insight-card { border-left-color: var(--signal); }
+.insight-cards.insight--bedtime .insight-card { border-left-color: var(--safe); }
 .insight-cards.insight--uninstall .insight-card { border-left-color: var(--exposed); }
 .insight-cards.insight--unblock .insight-card { border-left-color: var(--exposed-dim); }
 .insight-cards.insight--extend .insight-card { border-left-color: var(--signal); }
