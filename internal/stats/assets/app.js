@@ -591,7 +591,13 @@ function setSubtab(tab) {
   document.querySelectorAll(".subview").forEach((v) => v.classList.toggle("active", v.dataset.subtab === tab));
   const strip = document.querySelector("#view-analytics .strip-panel") || document.querySelector('.view[data-view="analytics"] .strip-panel');
   if (strip) strip.hidden = tab === "tags";
-  if (tab === "tags") renderTags();
+  if (tab === "tags") {
+    renderTags();
+    // Tags has no range strip and is short, so a preserved scroll position would
+    // clamp and show the registry from the middle (heading cut off). Show it from
+    // the top instead. History/Usage keep their scroll (they share the strip).
+    window.scrollTo({ top: 0 });
+  }
   // Charts sized while their sub-view was hidden need a resize once revealed.
   requestAnimationFrame(() => {
     for (const c of Object.values(state.charts)) { try { c.resize(); } catch { /* mid-rebuild */ } }
