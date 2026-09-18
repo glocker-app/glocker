@@ -1737,7 +1737,7 @@ function stackedBar(id, labels, series, { yUnit = "", precision = 0, autoSkipX =
   opts.plugins.tooltip = { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y.toFixed(precision)}${yUnit}` } };
   state.charts[id] = new Chart(ctx, {
     type: "bar",
-    data: { labels, datasets: series.map((s) => ({ label: s.label, data: s.data, backgroundColor: s.color, borderWidth: 0 })) },
+    data: { labels, datasets: series.map((s) => ({ label: s.label, data: s.data, backgroundColor: translucent(s.color), borderColor: s.color, borderWidth: 1 })) },
     options: opts,
   });
 }
@@ -2109,9 +2109,12 @@ function escapeRegex(s) {
 
 // Categorical palette for the tag pie (distinct hues that read on the dark
 // theme). "(untagged)" is always rendered in the muted faint ink instead.
+// Fallback palette for user tags without a set colour, and for unblock-reason
+// colours. Same muted family as the Glocker:* defaults (see store/seed.go),
+// ordered so neighbours in a stack stay distinguishable.
 const TAG_COLORS = [
-  "#f0a020", "#2f9e8f", "#4a90d9", "#c0468f", "#7bc86c",
-  "#9b6dff", "#ff4d4d", "#e8734a", "#54c7d6", "#c9a227",
+  "#6f9de0", "#e0a94e", "#4bb8a5", "#d9789f", "#92c26f",
+  "#a98fe0", "#5cc4d6", "#e08a5c", "#8493e6", "#d76b6b",
 ];
 
 // reasonColorMap assigns each unblock reason a stable colour from the palette
@@ -2314,7 +2317,7 @@ function doughnutChart(id, labels, msValues, colors, onHoverLabel) {
   destroy(id);
   state.charts[id] = new Chart(document.getElementById(id), {
     type: "doughnut",
-    data: { labels, datasets: [{ data: msValues, backgroundColor: colors, borderWidth: 0 }] },
+    data: { labels, datasets: [{ data: msValues, backgroundColor: translucent(colors), borderColor: colors, borderWidth: 1 }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -2323,7 +2326,7 @@ function doughnutChart(id, labels, msValues, colors, onHoverLabel) {
         ? (_e, els) => onHoverLabel(els.length ? labels[els[0].index] : null)
         : undefined,
       plugins: {
-        legend: { position: "right", labels: { color: TICK, font: { family: "IBM Plex Sans", size: 11 }, boxWidth: 10, padding: 6 } },
+        legend: { position: "right", labels: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, boxWidth: 10, padding: 6 } },
         tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${fmtDur(ctx.parsed)}` } },
       },
     },
@@ -2895,6 +2898,13 @@ function cssVar(name) {
 const GRID = "rgba(255,255,255,0.08)";
 const TICK = "#aeb9c9";
 
+// Chart fills read better translucent, with a solid same-colour border keeping
+// the shape crisp (the same treatment the violations area chart uses). FILL_ALPHA
+// is a hex alpha suffix appended to a #rrggbb colour; non-hex colours pass through.
+const FILL_ALPHA = "b3"; // ~0.70
+const fillOf = (c) => (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) ? c + FILL_ALPHA : c);
+const translucent = (c) => (Array.isArray(c) ? c.map(fillOf) : fillOf(c));
+
 function destroy(id) {
   if (state.charts[id]) state.charts[id].destroy();
 }
@@ -2913,10 +2923,12 @@ function hbarChart(id, { labels, pct, ms, colors, onSelect }) {
     x: {
       beginAtZero: true,
       grid: { color: GRID },
+      border: { display: false },
       ticks: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, callback: (v) => `${v}%` },
     },
     y: {
       grid: { display: false },
+      border: { display: false },
       ticks: { color: TICK, font: { family: "IBM Plex Mono", size: 11 }, autoSkip: false },
     },
   };
@@ -2928,7 +2940,7 @@ function hbarChart(id, { labels, pct, ms, colors, onSelect }) {
     type: "bar",
     data: {
       labels,
-      datasets: [{ data: pct, backgroundColor: colors, borderWidth: 0, borderRadius: 3, maxBarThickness: 26 }],
+      datasets: [{ data: pct, backgroundColor: translucent(colors), borderColor: colors, borderWidth: 1, borderRadius: 3, maxBarThickness: 26 }],
     },
     options: opts,
   });
@@ -2955,7 +2967,7 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
   opts.plugins.legend = {
     display: true,
     position: "bottom",
-    labels: { color: TICK, font: { family: "IBM Plex Sans", size: 11 }, boxWidth: 12, padding: 8 },
+    labels: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, boxWidth: 12, padding: 8 },
   };
   opts.plugins.tooltip = {
     mode: "index",
@@ -2967,7 +2979,16 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
     opts.plugins.tooltip.callbacks.title = (items) => (items.length ? titles[items[0].dataIndex] : "");
   }
 
-  const cfg = { type: "bar", data: { labels, datasets }, options: opts };
+  // Translucent fills with a thin solid separator on top of each stacked segment
+  // keep the pieces legible while softening the look.
+  const shaded = datasets.map((d) => ({
+    ...d,
+    backgroundColor: translucent(d.backgroundColor),
+    borderColor: d.backgroundColor,
+    borderWidth: { top: 1, right: 0, bottom: 0, left: 0 },
+    borderSkipped: false,
+  }));
+  const cfg = { type: "bar", data: { labels, datasets: shaded }, options: opts };
 
   if (topLabels) {
     opts.layout = { padding: { top: 18 } }; // room for the labels above the tallest bar
@@ -3003,7 +3024,7 @@ function barChart(id, labels, data, colorVar) {
   const color = cssVar(colorVar);
   state.charts[id] = new Chart(document.getElementById(id), {
     type: "bar",
-    data: { labels, datasets: [{ data, backgroundColor: color, borderRadius: 3, maxBarThickness: 34 }] },
+    data: { labels, datasets: [{ data, backgroundColor: translucent(color), borderColor: color, borderWidth: 1, borderRadius: 3, maxBarThickness: 34 }] },
     options: baseOpts(),
   });
 }
@@ -3063,8 +3084,8 @@ function baseOpts() {
     maintainAspectRatio: false,
     plugins: { legend: { display: false }, tooltip: { intersect: false, mode: "index" } },
     scales: {
-      x: { grid: { display: false }, ticks: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, maxRotation: 0, autoSkip: false } },
-      y: { beginAtZero: true, grid: { color: GRID }, ticks: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, precision: 0 } },
+      x: { grid: { display: false }, border: { display: false }, ticks: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, maxRotation: 0, autoSkip: false } },
+      y: { beginAtZero: true, grid: { color: GRID }, border: { display: false }, ticks: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, precision: 0 } },
     },
   };
 }

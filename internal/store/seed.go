@@ -10,15 +10,17 @@ import "gorm.io/gorm/clause"
 // glockerTags is the fixed Glocker:* vocabulary. Distraction defaults marked;
 // "hide" is a behavior tag (its windows drop out of usage totals).
 var glockerTags = []Tag{
-	{Namespace: "Glocker", Name: "entertainment", Color: "#c0468f", Distraction: true},
-	{Namespace: "Glocker", Name: "social", Color: "#6aa6ff", Distraction: true},
-	{Namespace: "Glocker", Name: "games", Color: "#f0a020", Distraction: true},
-	{Namespace: "Glocker", Name: "adult", Color: "#ff4d4d", Distraction: true},
-	{Namespace: "Glocker", Name: "news", Color: "#2f9e8f"},
-	{Namespace: "Glocker", Name: "shopping", Color: "#b083f0"},
-	{Namespace: "Glocker", Name: "messaging", Color: "#4fd1c5"},
-	{Namespace: "Glocker", Name: "work", Color: "#7c9cff"},
-	{Namespace: "Glocker", Name: "dev", Color: "#9fce6a"},
+	// Curated palette: even hue spread, medium saturation, ~65% lightness so the
+	// categories stay distinct yet calm on the near-black background.
+	{Namespace: "Glocker", Name: "entertainment", Color: "#d9789f", Distraction: true},
+	{Namespace: "Glocker", Name: "social", Color: "#6f9de0", Distraction: true},
+	{Namespace: "Glocker", Name: "games", Color: "#e0a94e", Distraction: true},
+	{Namespace: "Glocker", Name: "adult", Color: "#d76b6b", Distraction: true},
+	{Namespace: "Glocker", Name: "news", Color: "#4bb8a5"},
+	{Namespace: "Glocker", Name: "shopping", Color: "#a98fe0"},
+	{Namespace: "Glocker", Name: "messaging", Color: "#5cc4d6"},
+	{Namespace: "Glocker", Name: "work", Color: "#8493e6"},
+	{Namespace: "Glocker", Name: "dev", Color: "#92c26f"},
 	{Namespace: "Glocker", Name: "hide", Color: "#5b6675", Behavior: "hide"},
 }
 
