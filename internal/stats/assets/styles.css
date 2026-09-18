@@ -1331,19 +1331,50 @@ canvas { max-height: 260px; }
 .subtabs button.active .subtab-count { color: inherit; }
 .subtabs button:disabled { opacity: 0.4; cursor: default; }
 
-.insights-list { display: flex; flex-direction: column; }
-.insight-group { margin-bottom: 24px; }
-.insight-group:last-child { margin-bottom: 0; }
-.insight-group-head { display: flex; align-items: center; gap: 8px; }
-.insight-group-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; }
-.insight-group-title { margin: 0; font-family: var(--display); font-size: 0.95rem; font-weight: 600; color: var(--ink); }
-.insight-group-count { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
-.insight-group.insight--vuln .insight-group-dot { background: var(--danger); }
-.insight-group.insight--work .insight-group-dot { background: var(--signal); }
-.insight-group.insight--bedtime .insight-group-dot { background: var(--safe); }
-.insight-group.insight--uninstall .insight-group-dot { background: var(--exposed); }
-.insight-group.insight--unblock .insight-group-dot { background: var(--exposed-dim); }
-.insight-group.insight--extend .insight-group-dot { background: var(--signal); }
+/* Master–detail: a sticky left column (controls + category rail) beside the
+   selected category's cards. The frame stays put; only the detail scrolls. */
+.insights-body { display: grid; grid-template-columns: 224px 1fr; gap: 26px; align-items: start; }
+.insight-side { position: sticky; top: 14px; align-self: start; display: flex; flex-direction: column; gap: 18px; }
+.insight-detail { min-width: 0; }
+
+.insight-nav { display: flex; flex-direction: column; gap: 2px; }
+.insight-navrow {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; cursor: pointer;
+  color: var(--ink-dim); font-family: var(--mono); font-size: 12.5px;
+  transition: background 0.15s, color 0.15s;
+}
+.insight-navrow:hover:not(.clear) { background: var(--panel-2); color: var(--ink); }
+.insight-navrow.active { background: var(--panel-2); color: var(--ink); box-shadow: inset 2px 0 0 var(--line-2); }
+.insight-navlabel { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.insight-navcount { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.insight-navrow.active .insight-navcount { color: inherit; }
+.insight-navdot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; }
+.insight-navrow.insight--vuln .insight-navdot { background: var(--danger); }
+.insight-navrow.insight--work .insight-navdot { background: var(--signal); }
+.insight-navrow.insight--bedtime .insight-navdot { background: var(--safe); }
+.insight-navrow.insight--uninstall .insight-navdot { background: var(--exposed); }
+.insight-navrow.insight--unblock .insight-navdot { background: var(--exposed-dim); }
+.insight-navrow.insight--extend .insight-navdot { background: var(--signal); }
+/* "Clear" (empty) categories: muted, non-interactive, hollow dot. */
+.insight-navrow.clear { color: var(--ink-faint); cursor: default; }
+.insight-navrow.clear .insight-navdot { background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); }
+.insight-navsep { font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-faint); margin: 12px 0 2px 10px; }
+
+/* Sliders stack in the narrow side column: label / slider / readout. */
+.insight-side .insights-controls { flex-direction: column; align-items: stretch; gap: 14px; margin-bottom: 0; }
+.insight-side .ins-slider-group { flex-direction: column; align-items: flex-start; gap: 6px; }
+.insight-side .wh-slider { width: 100%; }
+
+@media (max-width: 680px) {
+  .insights-body { grid-template-columns: 1fr; gap: 16px; }
+  .insight-side { position: static; }
+  .insight-side .insights-controls { flex-direction: row; flex-wrap: wrap; }
+  .insight-side .ins-slider-group { flex-direction: row; align-items: center; }
+  .insight-nav { flex-direction: row; flex-wrap: wrap; }
+  .insight-navrow { width: auto; }
+}
+
 .insight-blurb { margin: 4px 0 14px; font-size: 0.85rem; color: var(--ink-faint); }
 .insight-cards { display: flex; flex-direction: column; gap: 10px; }
 

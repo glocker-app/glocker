@@ -3941,14 +3941,18 @@ function insightRepeatedExtensions(unblocks) {
   return out.sort((a, b) => b.weight - a.weight).slice(0, 4);
 }
 
-const GROUP_CAP = 25; // cards shown per group before "+N more"
+const GROUP_CAP = 25; // cards shown per category before "+N more"
+
+// Master–detail insight state: the computed groups (one compute per window) and
+// the selected category. Category clicks re-render only the detail pane from
+// this cache — never re-run renderInsights, so the timeline never redraws.
+let insightGroups = [];
+let insightSel = null;
 
 async function renderInsights() {
-  const listEl = document.getElementById("insights-list");
   const emptyEl = document.getElementById("insights-empty");
   const errEl = document.getElementById("insights-error");
   const subEl = document.getElementById("insights-sub");
-  const tabsEl = document.getElementById("insights-tabs");
   errEl.hidden = true;
   renderInsightsControls();
 
@@ -3989,31 +3993,76 @@ async function renderInsights() {
       ? `${total} suggestion${total === 1 ? "" : "s"} in this window` + (clear ? ` · ${clear} check${clear === 1 ? "" : "s"} clear` : "")
       : "";
   }
-  if (tabsEl) tabsEl.hidden = true; // no tab switcher — one grouped list instead
+
+  insightGroups = groups;
+  const nav = document.getElementById("insights-nav");
+  const detail = document.getElementById("insights-detail");
   if (total === 0) {
-    listEl.innerHTML = "";
+    if (nav) nav.innerHTML = "";
+    if (detail) detail.innerHTML = "";
     emptyEl.hidden = false;
     return;
   }
   emptyEl.hidden = true;
 
-  // One scannable list, grouped by kind. No tab switching (which used to redraw
-  // the whole timeline on every click); each group is a small header + its cards,
-  // and the card's coloured rail carries the kind.
-  listEl.innerHTML = groups.filter((g) => g.items.length).map((g) => {
-    const shown = g.items.slice(0, GROUP_CAP);
-    const more = g.items.length - shown.length;
-    return `<section class="insight-group insight--${g.kind}">` +
-      `<div class="insight-group-head">` +
-      `<span class="insight-group-dot"></span>` +
-      `<h3 class="insight-group-title">${escHtml(g.label)}</h3>` +
-      `<span class="insight-group-count">${g.items.length}</span>` +
-      `</div>` +
-      `<p class="insight-blurb">${escHtml(g.blurb)}</p>` +
-      `<div class="insight-cards insight--${g.kind}">${shown.map(renderInsightCard).join("")}` +
-      (more > 0 ? `<p class="insight-more">+${more} more</p>` : "") +
-      `</div></section>`;
-  }).join("");
+  // Keep the selected category if it still has items; else fall to the first
+  // non-empty one.
+  if (!groups.some((g) => g.kind === insightSel && g.items.length)) {
+    insightSel = (groups.find((g) => g.items.length) || {}).kind;
+  }
+  renderInsightNav();
+  renderInsightDetail();
+  wireInsightNav();
+}
+
+// renderInsightNav draws the left rail: non-empty categories (bright, clickable)
+// over the "clear" ones (muted, non-interactive), each a uniform row of dot +
+// label + count.
+function renderInsightNav() {
+  const nav = document.getElementById("insights-nav");
+  if (!nav) return;
+  const row = (g) => {
+    const on = g.items.length > 0;
+    return `<button class="insight-navrow insight--${g.kind}${g.kind === insightSel ? " active" : ""}${on ? "" : " clear"}"` +
+      (on ? ` data-insel="${g.kind}"` : " disabled") + `>` +
+      `<span class="insight-navdot"></span>` +
+      `<span class="insight-navlabel">${escHtml(g.label)}</span>` +
+      `<span class="insight-navcount">${g.items.length}</span></button>`;
+  };
+  const active = insightGroups.filter((g) => g.items.length);
+  const clear = insightGroups.filter((g) => !g.items.length);
+  nav.innerHTML = active.map(row).join("") +
+    (clear.length ? `<div class="insight-navsep">Clear</div>` + clear.map(row).join("") : "");
+}
+
+// renderInsightDetail draws only the selected category's cards.
+function renderInsightDetail() {
+  const el = document.getElementById("insights-detail");
+  if (!el) return;
+  const g = insightGroups.find((x) => x.kind === insightSel);
+  if (!g) { el.innerHTML = ""; return; }
+  const shown = g.items.slice(0, GROUP_CAP);
+  const more = g.items.length - shown.length;
+  el.innerHTML =
+    `<p class="insight-blurb">${escHtml(g.blurb)}</p>` +
+    `<div class="insight-cards insight--${g.kind}">${shown.map(renderInsightCard).join("")}` +
+    (more > 0 ? `<p class="insight-more">+${more} more</p>` : "") +
+    `</div>`;
+}
+
+// wireInsightNav (delegated, once): a category click swaps only the detail pane
+// and the rail's active state — no recompute, no timeline redraw.
+function wireInsightNav() {
+  const nav = document.getElementById("insights-nav");
+  if (!nav || nav.dataset.wired) return;
+  nav.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-insel]");
+    if (!btn) return;
+    insightSel = btn.dataset.insel;
+    renderInsightNav();
+    renderInsightDetail();
+  });
+  nav.dataset.wired = "1";
 }
 
 // renderInsightCard lays out one suggestion as problem → details → suggestion,
