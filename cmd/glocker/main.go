@@ -137,11 +137,13 @@ func main() {
 		return
 	}
 
-	// Connect this agent to the account's end-to-end encryption. Writes the master
-	// key to /etc/glocker (root), so it needs sudo.
+	// Connect this agent to the account's end-to-end encryption. It only writes the
+	// master key under /etc/glocker, which the setuid binary's effective root
+	// already permits — so, unlike install/uninstall, it is NOT gated on real root
+	// (the sudo window). The passphrase is the real gate on installing a key.
 	if *connectFlag {
-		if !install.RunningAsRoot(true) {
-			log.Fatal("Connect must be run as root (it installs the encryption key under /etc/glocker) — use sudo")
+		if !install.RunningAsRoot(false) {
+			log.Fatal("Connect needs root to write the encryption key under /etc/glocker — run the installed glocker (setuid root), or use sudo")
 		}
 		cfg, err := config.LoadConfig()
 		if err != nil {
