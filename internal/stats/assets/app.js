@@ -1818,29 +1818,38 @@ function compileRules(rules) {
   });
 }
 
-// matchedTags returns the winning tag per namespace for a sample: the first rule
-// (in order) that matches and carries a tag in a namespace claims that namespace.
+// matchedTags classifies a sample: `.tags` is the winning tag per namespace
+// (first matching rule per namespace claims that namespace) and `.hidden` says
+// whether the window is dropped from all usage totals.
+//
+// Hide respects OVERALL first-match precedence: a hide rule hides the window only
+// when it is the FIRST rule to match — i.e. nothing higher-priority already
+// categorized it. This mirrors the single-tag "first match wins" behaviour that
+// this replaced, so a broad catch-all like "hide leftover Firefox windows"
+// (^firefox-esr$ / Mozilla Firefox) sitting near the bottom doesn't clobber the
+// specific entertainment/work rules above it.
 function matchedTags(e, compiled) {
   const out = new Map(); // namespace -> tag object
-  if (!e.active) return out;
+  let hidden = false, first = true;
+  if (!e.active) return { tags: out, hidden };
   const cls = e.active.class || "", title = e.active.title || "";
   for (const c of compiled) {
     if (c.error || !c.tagIds.length) continue;
     if (c.program && !c.program.test(cls)) continue;
     if (c.title && !c.title.test(title)) continue;
+    if (first) {
+      first = false; // only the first matching rule decides hide
+      for (const id of c.tagIds) {
+        const t = state.tagById.get(id);
+        if (t && t.behavior === "hide") { hidden = true; break; }
+      }
+    }
     for (const id of c.tagIds) {
       const t = state.tagById.get(id);
       if (t && !out.has(t.namespace)) out.set(t.namespace, t);
     }
   }
-  return out;
-}
-
-// A sample is dropped from every usage total if a matched tag says so
-// (behavior "hide" — the Glocker:hide tag).
-function sampleHidden(byNs) {
-  for (const t of byNs.values()) if (t.behavior === "hide") return true;
-  return false;
+  return { tags: out, hidden };
 }
 
 const UNTAGGED = "(untagged)";
@@ -1875,8 +1884,9 @@ function computeTagUsage(entries, compiled) {
 
   eachSampleDuration(entries, (e, dt, away) => {
     if (away) return;
-    const byNs = matchedTags(e, compiled);
-    if (sampleHidden(byNs)) { hidden += dt; return; }
+    const m = matchedTags(e, compiled);
+    if (m.hidden) { hidden += dt; return; }
+    const byNs = m.tags;
     active += dt;
     const hr = new Date(e.ts).getHours();
     const dk = dayKey(e.ts);
@@ -3642,10 +3652,12 @@ function insightWorkDistraction(usage, idx) {
     if (s.idleMs && s.idleMs > INSIGHT.workIdleMs) continue;
     const d = new Date(s.ts), wd = d.getDay(), hr = d.getHours();
     if (wd === 0 || wd === 6 || hr < workStart || hr >= workEnd) continue;
+    const m = matchedTags({ active: a }, compiled);
+    if (m.hidden) continue; // hidden windows are dropped from usage, so not distractions
     const rec = byApp.get(a.class) || { total: 0, distract: 0, tags: new Set(), title: "" };
     rec.total++;
     let isDistraction = false;
-    for (const t of matchedTags({ active: a }, compiled).values()) {
+    for (const t of m.tags.values()) {
       if (t.distraction) { isDistraction = true; rec.tags.add(tagLabel(t)); }
     }
     if (isDistraction) { rec.distract++; if (!rec.title && a.title) rec.title = a.title; }
