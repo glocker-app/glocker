@@ -3991,19 +3991,19 @@ async function renderInsights() {
   }
 
   const groups = [
-    { kind: "vuln", label: "Repeated searches", blurb: "Banned keywords the monitor keeps catching — tighten the response (violation tracking → screen lock), not the host.", items: insightKeywordHits(violations, idx) },
-    { kind: "work", label: "Work-hours apps", blurb: `Distraction-tagged apps (per your Tags registry) used ${pad2(workStart)}:00–${pad2(workEnd)}:00 on weekdays that aren't forbidden then.`, items: insightWorkDistraction(usage, idx) },
-    { kind: "bedtime", label: "Past bedtime", blurb: `Your heaviest-used apps, blocked overnight (${pad2(bedStart)}:00–${pad2(bedEnd)}:00) so they aren't an option at bedtime.`, items: insightBedtimeApps(usage, idx) },
-    { kind: "uninstall", label: "Uninstalls", blurb: "Uninstalls clustering while sudo is available.", items: insightUninstallWindow(lifecycle, idx) },
-    { kind: "unblock", label: "Repeated unblocks", blurb: "Domains you keep temporarily unblocking.", items: insightUnblockWeakSpots(unblocks) },
-    { kind: "extend", label: "Repeated extensions", blurb: "Forbidden programs you keep granting one-hour runs to.", items: insightRepeatedExtensions(unblocks) },
+    { kind: "vuln", label: "Repeated searches", items: insightKeywordHits(violations, idx) },
+    { kind: "work", label: "Work-hours apps", items: insightWorkDistraction(usage, idx) },
+    { kind: "bedtime", label: "Past bedtime", items: insightBedtimeApps(usage, idx) },
+    { kind: "uninstall", label: "Uninstalls", items: insightUninstallWindow(lifecycle, idx) },
+    { kind: "unblock", label: "Repeated unblocks", items: insightUnblockWeakSpots(unblocks) },
+    { kind: "extend", label: "Repeated extensions", items: insightRepeatedExtensions(unblocks) },
   ];
 
   const total = groups.reduce((n, g) => n + g.items.length, 0);
   const clear = groups.length - groups.filter((g) => g.items.length).length;
   if (subEl) {
     subEl.textContent = total
-      ? `${total} suggestion${total === 1 ? "" : "s"} in this window` + (clear ? ` · ${clear} check${clear === 1 ? "" : "s"} clear` : "")
+      ? `${total} suggestion${total === 1 ? "" : "s"}` + (clear ? ` · ${clear} clear` : "")
       : "";
   }
 
@@ -4057,7 +4057,6 @@ function renderInsightDetail() {
   const shown = g.items.slice(0, GROUP_CAP);
   const more = g.items.length - shown.length;
   el.innerHTML =
-    `<p class="insight-blurb">${escHtml(g.blurb)}</p>` +
     `<div class="insight-cards insight--${g.kind}">${shown.map(renderInsightCard).join("")}` +
     (more > 0 ? `<p class="insight-more">+${more} more</p>` : "") +
     `</div>`;
