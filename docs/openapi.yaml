@@ -137,6 +137,96 @@ paths:
                     type: object
                     additionalProperties:
                       type: string
+  /api/tags:
+    get:
+      summary: The account's tag registry
+      description: >
+        Session-gated. Returns the shared system tags (`Glocker:*`, with this
+        account's distraction overrides applied) followed by the account's own
+        tags. See docs/tags-and-rules.md.
+      operationId: listTags
+      responses:
+        "200":
+          description: Registry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tags:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        scope: { type: string, enum: [system, user] }
+                        namespace: { type: string }
+                        name: { type: string }
+                        color: { type: string }
+                        distraction: { type: boolean }
+                        behavior: { type: string, description: "\"\" or \"hide\" (windows dropped from usage totals)." }
+        "401": { description: Not authenticated }
+    post:
+      summary: Create a user tag
+      description: Session-gated. Adds a tag in one of the account's own namespaces (not `Glocker`).
+      operationId: createTag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                namespace: { type: string }
+                name: { type: string }
+                color: { type: string }
+                distraction: { type: boolean }
+      responses:
+        "201": { description: Created; returns the tag }
+        "400": { description: Missing fields, or the reserved Glocker namespace }
+        "409": { description: A tag with that namespace+name already exists }
+        "401": { description: Not authenticated }
+    patch:
+      summary: Edit a tag (or override a system tag's distraction)
+      description: >
+        Session-gated. `?id=<tag>`. A user tag is edited in place; a system tag
+        accepts only a distraction change, stored as this account's override.
+      operationId: patchTag
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                namespace: { type: string }
+                name: { type: string }
+                color: { type: string }
+                distraction: { type: boolean }
+      responses:
+        "204": { description: Updated }
+        "404": { description: Tag not found / not yours }
+        "401": { description: Not authenticated }
+    delete:
+      summary: Delete a user tag
+      description: Session-gated. `?id=<tag>`. Removes the tag and unlinks it from the account's rules. System tags cannot be deleted.
+      operationId: deleteTag
+      parameters:
+        - in: query
+          name: id
+          required: true
+          schema: { type: integer }
+      responses:
+        "204": { description: Deleted }
+        "403": { description: System tag — cannot be deleted }
+        "404": { description: Tag not found / not yours }
+        "401": { description: Not authenticated }
+
   /api/config:
     get:
       summary: Read device configuration snapshot(s)

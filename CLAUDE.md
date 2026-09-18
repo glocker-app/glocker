@@ -422,6 +422,9 @@ Server started by internal/web/server.go:StartWebTrackingServer()
     lifecycle/heartbeat rows; ignored overlay filtered in `buildData`
   - `GET /api/health` - `{ok, counts}` for the account (session)
   - `GET|PUT /api/rules` - `{rules, colors}` in the DB (session)
+  - `GET|POST|PATCH|DELETE /api/tags` - tag registry: shared system `Glocker:*`
+    tags (with per-account distraction overrides) + the account's own tags
+    (session; see docs/tags-and-rules.md)
   - `GET|PUT /api/ignored` - false-positive overlay in the DB (session)
   - `POST /api/ingest` - batched idempotent upsert from the syncer (**bearer token**);
     also stamps the `sync_status` row (last-ingest time + last-batch counts).

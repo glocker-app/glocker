@@ -121,6 +121,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	mux.HandleFunc("/api/data", requireUser(handleData))
 	mux.HandleFunc("/api/health", requireUser(handleHealth))
 	mux.HandleFunc("/api/rules", requireUser(handleRules))
+	mux.HandleFunc("/api/tags", requireUser(handleTags))
 	mux.HandleFunc("/api/ignored", requireUser(handleIgnored))
 	mux.HandleFunc("/api/sync", requireUser(handleSync))
 	mux.HandleFunc("/api/tokens", requireUser(handleTokens))
