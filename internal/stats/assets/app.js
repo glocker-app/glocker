@@ -14,7 +14,7 @@ const HOUR = 3600000;
 // all-history timeline strip at the top (no more fixed presets). Null until the
 // first data load picks a default (see defaultWindow).
 const DEFAULT_WINDOW_DAYS = 30;
-const state = { data: null, winStart: null, winEnd: null, view: "overview", analyticsTab: "history", insightsTab: null, charts: {}, rules: [], tags: [], tagById: new Map(), tagByLabel: new Map(), usageNamespace: null, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null };
+const state = { data: null, winStart: null, winEnd: null, view: "overview", analyticsTab: "history", charts: {}, rules: [], tags: [], tagById: new Map(), tagByLabel: new Map(), usageNamespace: null, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null };
 
 const VIEW_TITLES = {
   overview: "Overview",
@@ -3941,7 +3941,7 @@ function insightRepeatedExtensions(unblocks) {
   return out.sort((a, b) => b.weight - a.weight).slice(0, 4);
 }
 
-const GROUP_CAP = 25; // cards shown in a tab before "+N more"
+const GROUP_CAP = 25; // cards shown per group before "+N more"
 
 async function renderInsights() {
   const listEl = document.getElementById("insights-list");
@@ -3989,50 +3989,31 @@ async function renderInsights() {
       ? `${total} suggestion${total === 1 ? "" : "s"} in this window` + (clear ? ` · ${clear} check${clear === 1 ? "" : "s"} clear` : "")
       : "";
   }
+  if (tabsEl) tabsEl.hidden = true; // no tab switcher — one grouped list instead
   if (total === 0) {
-    tabsEl.innerHTML = "";
     listEl.innerHTML = "";
     emptyEl.hidden = false;
     return;
   }
   emptyEl.hidden = true;
 
-  // Keep the current tab if it still has items; otherwise fall to the first
-  // non-empty group.
-  let active = state.insightsTab;
-  if (!groups.some((g) => g.kind === active && g.items.length)) {
-    active = (groups.find((g) => g.items.length) || {}).kind;
-  }
-  state.insightsTab = active;
-
-  // Tabs — only the kinds that actually have suggestions (empty ones are noted as
-  // "clear" in the subline instead of shown as greyed-out dead tabs).
-  tabsEl.innerHTML = groups.filter((g) => g.items.length).map((g) =>
-    `<button data-instab="${g.kind}" class="insight-tab insight--${g.kind}${g.kind === active ? " active" : ""}">` +
-    `${escHtml(g.label)} <span class="subtab-count">${g.items.length}</span></button>`).join("");
-  wireInsightsTabs();
-
-  const g = groups.find((x) => x.kind === active);
-  const shown = g.items.slice(0, GROUP_CAP);
-  const more = g.items.length - shown.length;
-  listEl.innerHTML =
-    `<p class="insight-blurb">${escHtml(g.blurb)}</p>` +
-    `<div class="insight-cards insight--${g.kind}">${shown.map(renderInsightCard).join("")}` +
-    (more > 0 ? `<p class="insight-more">+${more} more</p>` : "") +
-    `</div>`;
-}
-
-// wireInsightsTabs attaches the tab click handler once (delegated).
-function wireInsightsTabs() {
-  const el = document.getElementById("insights-tabs");
-  if (!el || el.dataset.wired) return;
-  el.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-instab]");
-    if (!btn || btn.disabled) return;
-    state.insightsTab = btn.dataset.instab;
-    renderInsights();
-  });
-  el.dataset.wired = "1";
+  // One scannable list, grouped by kind. No tab switching (which used to redraw
+  // the whole timeline on every click); each group is a small header + its cards,
+  // and the card's coloured rail carries the kind.
+  listEl.innerHTML = groups.filter((g) => g.items.length).map((g) => {
+    const shown = g.items.slice(0, GROUP_CAP);
+    const more = g.items.length - shown.length;
+    return `<section class="insight-group insight--${g.kind}">` +
+      `<div class="insight-group-head">` +
+      `<span class="insight-group-dot"></span>` +
+      `<h3 class="insight-group-title">${escHtml(g.label)}</h3>` +
+      `<span class="insight-group-count">${g.items.length}</span>` +
+      `</div>` +
+      `<p class="insight-blurb">${escHtml(g.blurb)}</p>` +
+      `<div class="insight-cards insight--${g.kind}">${shown.map(renderInsightCard).join("")}` +
+      (more > 0 ? `<p class="insight-more">+${more} more</p>` : "") +
+      `</div></section>`;
+  }).join("");
 }
 
 // renderInsightCard lays out one suggestion as problem → details → suggestion,

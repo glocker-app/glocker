@@ -1332,6 +1332,18 @@ canvas { max-height: 260px; }
 .subtabs button:disabled { opacity: 0.4; cursor: default; }
 
 .insights-list { display: flex; flex-direction: column; }
+.insight-group { margin-bottom: 24px; }
+.insight-group:last-child { margin-bottom: 0; }
+.insight-group-head { display: flex; align-items: center; gap: 8px; }
+.insight-group-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; }
+.insight-group-title { margin: 0; font-family: var(--display); font-size: 0.95rem; font-weight: 600; color: var(--ink); }
+.insight-group-count { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+.insight-group.insight--vuln .insight-group-dot { background: var(--danger); }
+.insight-group.insight--work .insight-group-dot { background: var(--signal); }
+.insight-group.insight--bedtime .insight-group-dot { background: var(--safe); }
+.insight-group.insight--uninstall .insight-group-dot { background: var(--exposed); }
+.insight-group.insight--unblock .insight-group-dot { background: var(--exposed-dim); }
+.insight-group.insight--extend .insight-group-dot { background: var(--signal); }
 .insight-blurb { margin: 4px 0 14px; font-size: 0.85rem; color: var(--ink-faint); }
 .insight-cards { display: flex; flex-direction: column; gap: 10px; }
 
