@@ -2084,7 +2084,7 @@ function startRuleForWindow(program, title) {
 // immediately, so the window drops out of every usage total in one click.
 async function hideWindow(program, title) {
   const hid = hideTagId();
-  if (!hid) { setRulesStatus("no Glocker:hide tag in the registry", "err"); return; }
+  if (!hid) { setRulesStatus("can’t hide — hide rule unavailable", "err"); return; }
   syncRulesFromDom();
   state.rules.push({
     program: program ? `^${escapeRegex(program)}$` : "",
@@ -2523,7 +2523,7 @@ function setupRules() {
   });
   document.getElementById("hide-add").addEventListener("click", () => {
     const hid = hideTagId();
-    if (!hid) { setRulesStatus("no Glocker:hide tag in the registry", "err"); return; }
+    if (!hid) { setRulesStatus("can’t hide — hide rule unavailable", "err"); return; }
     syncRulesFromDom();
     state.rules.push({ program: "", title: "", tagIds: [hid] });
     renderRulesEditor();
