@@ -3692,43 +3692,68 @@ async function fetchDeviceConfigs() {
 function configIndex(configs) {
   const tbDomains = new Set(), forbidden = new Set();
   const sudoAllow = [];
+  // Violation-tracking posture, unioned across devices: enabled if any device has
+  // it on; the loosest threshold/window seen (so "lower it" advice targets the
+  // slackest device).
+  let vtEnabled = false, violationMax = 0, violationWindowMin = 0;
   for (const cfg of configs) {
     for (const d of (cfg.domains && cfg.domains.timeBased) || []) if (d.name) tbDomains.add(d.name.toLowerCase());
     for (const n of (cfg.programs && cfg.programs.alwaysKilled) || []) forbidden.add(String(n).toLowerCase());
     for (const p of (cfg.programs && cfg.programs.windowed) || []) if (p.name) forbidden.add(String(p.name).toLowerCase());
     for (const w of (cfg.guardrails && cfg.guardrails.sudoAllow) || []) sudoAllow.push(w);
+    const svc = cfg.services || {}, g = cfg.guardrails || {};
+    if (svc.violationTracking) vtEnabled = true;
+    if (g.violationMax) violationMax = Math.max(violationMax, g.violationMax);
+    if (g.violationWindowMin) violationWindowMin = Math.max(violationWindowMin, g.violationWindowMin);
   }
-  return { tbDomains, forbidden, sudoAllow };
+  return { tbDomains, forbidden, sudoAllow, vtEnabled, violationMax, violationWindowMin };
 }
 
 const argmax = (arr) => arr.reduce((best, v, i, a) => (v > a[best] ? i : best), 0);
-const daysList = (set) => [...set].sort((a, b) => a - b).map((i) => `"${DOW[i]}"`).join(", ");
 
-// 1. Vulnerable hours: domains that keep tripping the keyword monitor, clustered
-// in time, that aren't already on a scheduled block.
-function insightVulnerableHours(violations, idx, blocked) {
-  const byDom = new Map();
+// 1. Repeated keyword hits: search/URL/content terms the monitor keeps flagging,
+// clustered in time. The keyword is the signal, not the host — a banned search on
+// google shouldn't suggest blocking google. The monitor only *logs* the hit, so
+// the fix is to tighten the response (violation_tracking → glocklock), not to
+// block the domain. Grouped by keyword so the same term surfaces once.
+function insightKeywordHits(violations, idx) {
+  const byKw = new Map(); // keyword -> { kw, hours[24], days:Set, count, domains:Map }
   for (const v of violations || []) {
-    const dom = (v.domain || "").toLowerCase();
-    if (!dom || dom === "🔒") continue;
+    const kw = (v.keyword || "").trim();
+    if (!kw || kw === "🔒") continue; // blank or still-encrypted
+    const key = kw.toLowerCase();
     const d = new Date(v.ts);
-    const rec = byDom.get(dom) || { hours: new Array(24).fill(0), days: new Set(), count: 0 };
+    const rec = byKw.get(key) || { kw, hours: new Array(24).fill(0), days: new Set(), count: 0, domains: new Map() };
     rec.hours[d.getHours()]++; rec.days.add(d.getDay()); rec.count++;
-    byDom.set(dom, rec);
+    const dom = (v.domain || "").toLowerCase();
+    if (dom && dom !== "🔒") rec.domains.set(dom, (rec.domains.get(dom) || 0) + 1);
+    byKw.set(key, rec);
   }
   const out = [];
-  for (const [dom, rec] of byDom) {
+  for (const rec of byKw.values()) {
     if (rec.count < INSIGHT.minViolations) continue;
-    // Skip anything the config already handles: a scheduled block, or membership
-    // in the full blocklist (checked against the domain and its parents).
-    if (idx.tbDomains.has(dom) || isBlocked(dom, blocked)) continue;
     const band = peakBand(rec.hours);
+    // Where it mostly showed up — context only, never the thing we act on.
+    const topDom = [...rec.domains.entries()].sort((a, b) => b[1] - a[1])[0];
+    const where = topDom ? `, mostly on ${escHtml(topDom[0])}` : "";
+    // glocklock needs the desktop user's session; templated like the other snippets.
+    const lock = `sudo -u <your-user> DISPLAY=:0 /usr/local/bin/glocklock`;
+    let action, config;
+    if (!idx.vtEnabled) {
+      action = `The monitor logs it but nothing stops it. Make repeated hits lock the screen — turn on violation tracking:`;
+      config = `violation_tracking:\n  enabled: true\n  max_violations: 3\n  time_window_minutes: 60\n  command: "${lock}"`;
+    } else {
+      const win = idx.violationWindowMin || 60;
+      const sugg = idx.violationMax ? Math.max(2, Math.ceil(idx.violationMax / 2)) : 3;
+      action = `Violation tracking is on (${idx.violationMax || "?"} in ${win} min) but this still recurs. Trip the lock sooner:`;
+      config = `violation_tracking:\n  enabled: true\n  max_violations: ${sugg}\n  time_window_minutes: ${win}\n  command: "${lock}"`;
+    }
     out.push({
       kind: "vuln",
-      title: `${escHtml(dom)} keeps slipping through`,
-      evidence: `The content monitor flagged it ${rec.count}× here — ${band.share}% of those between ${band.label}. It isn't blocked yet.`,
-      action: `Block ${escHtml(dom)} during ${band.label}:`,
-      config: `domains:\n  list:\n    - name: ${dom}\n      block_windows:\n        - { start: "${band.start}", end: "${band.end}", days: [${daysList(rec.days)}] }`,
+      title: `“${escHtml(rec.kw)}” keeps getting searched`,
+      evidence: `The content monitor flagged “${escHtml(rec.kw)}” ${rec.count}× — ${band.share}% between ${band.label}${where}.`,
+      action,
+      config,
       weight: rec.count,
     });
   }
@@ -3889,13 +3914,13 @@ async function renderInsights() {
   const lifecycle = (data.lifecycle || []).filter((e) => inWin(e.ts));
   const unblocks = (data.unblocks || []).filter((u) => inWin(u.ts));
 
-  // The blocklist Set is what lets us drop suggestions the config already covers
-  // (e.g. civitai is already blocked). configs give the time-based + program view.
-  const [blocked, configs] = await Promise.all([loadBlockedDomainSet(), fetchDeviceConfigs()]);
+  // Device config snapshots give the time-based/program view and the current
+  // violation-tracking posture the keyword insight tunes against.
+  const configs = await fetchDeviceConfigs();
   const idx = configIndex(configs);
 
   const groups = [
-    { kind: "vuln", label: "Vulnerable hours", blurb: "Domains slipping through the content monitor that aren't blocked yet.", items: insightVulnerableHours(violations, idx, blocked) },
+    { kind: "vuln", label: "Repeated searches", blurb: "Banned keywords the monitor keeps catching — tighten the response (violation tracking → screen lock), not the host.", items: insightKeywordHits(violations, idx) },
     { kind: "work", label: "Work-hours apps", blurb: `Distraction-tagged apps (per your Tags registry) used ${pad2(workStart)}:00–${pad2(workEnd)}:00 on weekdays that aren't forbidden then.`, items: insightWorkDistraction(usage, idx) },
     { kind: "uninstall", label: "Uninstalls", blurb: "Uninstalls clustering while sudo is available.", items: insightUninstallWindow(lifecycle, idx) },
     { kind: "unblock", label: "Repeated unblocks", blurb: "Domains you keep temporarily unblocking.", items: insightUnblockWeakSpots(unblocks) },
@@ -3999,61 +4024,6 @@ function renderInsightsControls() {
   endEl.addEventListener("change", commit);
   paint();
   el.dataset.ready = "1";
-}
-
-// isBlocked tests a domain and its parents against the full blocklist Set, so
-// "old.reddit.com" matches a blocked "reddit.com".
-function isBlocked(dom, blocked) {
-  if (!blocked || blocked.size === 0) return false;
-  const parts = dom.split(".");
-  for (let i = 0; i < parts.length - 1; i++) {
-    if (blocked.has(parts.slice(i).join("."))) return true;
-  }
-  return false;
-}
-
-// loadBlockedDomainSet fetches every device's gzip'd blocklist blob, decrypts +
-// gunzips it in the browser, and unions the domains into one Set. Cached for the
-// session — it's multi-MB and changes rarely.
-let _blockedDomainSet = null;
-async function loadBlockedDomainSet() {
-  if (_blockedDomainSet) return _blockedDomainSet;
-  const set = new Set();
-  try {
-    const r = await fetch("api/config?blocklist=1", { credentials: "same-origin" });
-    if (r.ok) {
-      for (const row of (await r.json()).blocklists || []) {
-        if (!row.blocklist) continue;
-        let bytes;
-        if (row.encrypted) {
-          if (!masterKey && !(await unlockVault())) continue;
-          const aad = new TextEncoder().encode(`deviceblocklist|${row.hash}`);
-          bytes = await decryptField(masterKey, row.blocklist, aad);
-        } else {
-          bytes = b64ToBytes(row.blocklist);
-        }
-        const text = await gunzipToText(bytes);
-        for (const line of text.split("\n")) {
-          const d = line.trim().toLowerCase();
-          if (d) set.add(d);
-        }
-      }
-    }
-  } catch { /* no blocklist -> membership just can't refine */ }
-  _blockedDomainSet = set;
-  return set;
-}
-
-function b64ToBytes(b64) {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-}
-
-async function gunzipToText(bytes) {
-  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return await new Response(stream).text();
 }
 
 // renderSync fills the Data-sync panel from /api/sync: when the daemon last
