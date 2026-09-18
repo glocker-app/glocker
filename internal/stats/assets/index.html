@@ -245,18 +245,29 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Rules</h2>
-              <p class="panel-sub">A rule matches on program &amp; title regexes (blank = match anything) and attaches tags from the registry — at most one per namespace. Drag the handle to reorder: the first matching rule per namespace wins. Manage the tags themselves on the <strong>Tags</strong> sub-tab; the <strong>Glocker:hide</strong> tag drops matching windows from all usage totals.</p>
+              <p class="panel-sub">A rule matches on program &amp; title regexes (blank = match anything) and attaches tags from the registry — at most one per namespace. Drag the handle to reorder: the first matching rule per namespace wins. Manage the tags themselves on the <strong>Tags</strong> sub-tab.</p>
             </div>
             <div class="rules-editor">
               <div class="rules-head">
                 <span></span><span>Program</span><span>Title</span><span>Tags</span><span></span>
               </div>
               <div id="rules-rows"></div>
-              <div class="rules-actions">
-                <button id="rule-add" class="btn-ghost" type="button">+ Add rule</button>
-                <span class="rules-status" id="rules-status"></span>
-                <button id="rule-save" class="btn-primary" type="button">Save rules</button>
-              </div>
+              <button id="rule-add" class="btn-ghost" type="button">+ Add rule</button>
+            </div>
+
+            <!-- Hidden windows: rules that drop a window from usage. A last
+                 resort — applied only when no rule above matches. -->
+            <div class="hide-editor">
+              <h3 class="hide-title">Hidden windows</h3>
+              <p class="panel-sub">Windows dropped from all usage totals (tagged <strong>Glocker:hide</strong>). A last resort — a window is hidden only when no rule above matches it, so these can’t clobber a real tag. Anchor titles as <code>^…$</code> so a loose pattern doesn’t hide everything.</p>
+              <div class="hide-head"><span>Program</span><span>Title</span><span></span></div>
+              <div id="hide-rows"></div>
+              <button id="hide-add" class="btn-ghost" type="button">+ Add hidden window</button>
+            </div>
+
+            <div class="rules-actions">
+              <span class="rules-status" id="rules-status"></span>
+              <button id="rule-save" class="btn-primary" type="button">Save rules</button>
             </div>
           </section>
           </div><!-- /subview usage -->

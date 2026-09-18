@@ -2431,56 +2431,63 @@ function renderUsagePerDay(tu, available, b) {
 function setupRules() {
   renderRulesEditor();
 
-  const rows = document.getElementById("rules-rows");
+  const normalRows = document.getElementById("rules-rows");
+  const hideRows = document.getElementById("hide-rows");
+
   // Live feedback on the program/title regexes: sync + recategorize on every
-  // keystroke, without re-rendering the editor (which would drop focus).
-  rows.addEventListener("input", (e) => {
+  // keystroke, without re-rendering (which would drop focus). Shared by both lists.
+  const onInput = (e) => {
     if (e.target.closest("select")) return; // selects handled on change
     syncRulesFromDom();
     markRuleValidity();
     recategorize();
-  });
-  // A tag slot changed: recategorize and flag the edit as unsaved.
-  rows.addEventListener("change", (e) => {
+    setRulesStatus("unsaved change — click Save rules", "");
+  };
+  const onDelete = (e) => {
+    const del = e.target.closest(".rule-del");
+    if (!del) return;
+    del.closest(".rule-row").remove();
+    syncRulesFromDom();
+    renderRulesEditor();
+    markRuleValidity();
+    recategorize();
+    setRulesStatus("unsaved change — click Save rules", "");
+  };
+  for (const el of [normalRows, hideRows]) {
+    el.addEventListener("input", onInput);
+    el.addEventListener("click", onDelete);
+  }
+  // A tag slot changed (categorization rows only).
+  normalRows.addEventListener("change", (e) => {
     if (!e.target.closest("select.rule-tag")) return;
     syncRulesFromDom();
     recategorize();
     setRulesStatus("unsaved change — click Save rules", "");
   });
-  rows.addEventListener("click", (e) => {
-    const del = e.target.closest("[data-del]");
-    if (!del) return;
-    syncRulesFromDom();
-    state.rules.splice(Number(del.dataset.del), 1);
-    renderRulesEditor();
-    markRuleValidity();
-    recategorize();
-    setRulesStatus("unsaved change — click Save rules", "");
-  });
 
-  // Drag-to-reorder by the handle (rows stay editable; only the handle drags).
-  // Reordering changes precedence, so flag it unsaved until Save.
+  // Drag-to-reorder the categorization rules by the handle (precedence). Hidden
+  // windows are a last resort, so they aren't ordered.
   let dragFrom = null;
-  rows.addEventListener("dragstart", (e) => {
+  normalRows.addEventListener("dragstart", (e) => {
     const h = e.target.closest(".rule-drag");
     if (!h) return;
     dragFrom = Number(h.closest(".rule-row").dataset.i);
     e.dataTransfer.effectAllowed = "move";
     h.closest(".rule-row").classList.add("dragging");
   });
-  rows.addEventListener("dragend", () => {
+  normalRows.addEventListener("dragend", () => {
     dragFrom = null;
-    rows.querySelectorAll(".dragging, .drop-target").forEach((el) => el.classList.remove("dragging", "drop-target"));
+    normalRows.querySelectorAll(".dragging, .drop-target").forEach((el) => el.classList.remove("dragging", "drop-target"));
   });
-  rows.addEventListener("dragover", (e) => {
+  normalRows.addEventListener("dragover", (e) => {
     if (dragFrom == null) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     const row = e.target.closest(".rule-row");
-    rows.querySelectorAll(".drop-target").forEach((el) => el.classList.remove("drop-target"));
+    normalRows.querySelectorAll(".drop-target").forEach((el) => el.classList.remove("drop-target"));
     if (row) row.classList.add("drop-target");
   });
-  rows.addEventListener("drop", (e) => {
+  normalRows.addEventListener("drop", (e) => {
     if (dragFrom == null) return;
     e.preventDefault();
     const row = e.target.closest(".rule-row");
@@ -2488,6 +2495,8 @@ function setupRules() {
     const to = Number(row.dataset.i);
     if (to === dragFrom) return;
     syncRulesFromDom();
+    // Categorization rules occupy the front of state.rules (see syncRulesFromDom),
+    // so the handle indices map straight onto it.
     const [moved] = state.rules.splice(dragFrom, 1);
     state.rules.splice(to, 0, moved);
     dragFrom = null;
@@ -2503,10 +2512,18 @@ function setupRules() {
     renderRulesEditor();
     markRuleValidity();
   });
+  document.getElementById("hide-add").addEventListener("click", () => {
+    const hid = hideTagId();
+    if (!hid) { setRulesStatus("no Glocker:hide tag in the registry", "err"); return; }
+    syncRulesFromDom();
+    state.rules.push({ program: "", title: "", tagIds: [hid] });
+    renderRulesEditor();
+    markRuleValidity();
+  });
   document.getElementById("rule-save").addEventListener("click", saveRulesToServer);
 
-  // "＋ tag" prefills a rule for that window; "hide" adds a Glocker:hide rule
-  // directly (no typing) so the window drops out of every usage total at once.
+  // "＋ tag" prefills a categorization rule for that window; "hide" adds a
+  // hidden-window rule directly (no typing).
   document.getElementById("usage-untagged").addEventListener("click", (e) => {
     const hideBtn = e.target.closest("[data-hide-program]");
     if (hideBtn) { hideWindow(hideBtn.dataset.hideProgram, hideBtn.dataset.hideTitle || ""); return; }
@@ -2531,64 +2548,94 @@ function setRulesStatus(msg, cls) {
   s.textContent = msg;
 }
 
+// A rule whose tags include the Glocker:hide tag is a "hidden window" rule and
+// lives in its own section; everything else is a categorization rule.
+function isHideRule(r) {
+  const hid = hideTagId();
+  return hid != null && (r.tagIds || []).includes(hid);
+}
+
 function renderRulesEditor() {
+  const normal = state.rules.filter((r) => !isHideRule(r));
+  const hidden = state.rules.filter(isHideRule);
+
   const wrap = document.getElementById("rules-rows");
-  if (!state.rules.length) {
+  if (!normal.length) {
     wrap.innerHTML = `<div class="rules-empty">No rules yet — add one to categorize your active time.</div>`;
-    return;
+  } else {
+    const namespaces = tagNamespaces();
+    wrap.innerHTML = normal
+      .map((r, i) => {
+        const selected = new Map(); // ns -> tagId (first per namespace wins)
+        for (const id of (r.tagIds || [])) {
+          const t = state.tagById.get(id);
+          if (t && t.behavior !== "hide" && !selected.has(t.namespace)) selected.set(t.namespace, id);
+        }
+        const slots = namespaces.map((ns) => tagSlot(ns, selected.get(ns))).join("");
+        return `<div class="rule-row" data-i="${i}">
+          <span class="rule-drag" draggable="true" title="Drag to reorder">⋮⋮</span>
+          <input data-field="program" value="${esc(r.program || "")}" placeholder="^Emacs$" spellcheck="false" autocomplete="off" />
+          <input data-field="title" value="${esc(r.title || "")}" placeholder="regex on title" spellcheck="false" autocomplete="off" />
+          <div class="rule-tags">${slots || `<span class="rule-tags-empty">add tags on the Tags sub-tab</span>`}</div>
+          <button class="rule-del" title="Delete rule" type="button">&times;</button>
+        </div>`;
+      })
+      .join("");
   }
-  const namespaces = tagNamespaces();
-  wrap.innerHTML = state.rules
-    .map((r, i) => {
-      const selected = new Map(); // ns -> tagId (first per namespace wins)
-      for (const id of (r.tagIds || [])) {
-        const t = state.tagById.get(id);
-        if (t && !selected.has(t.namespace)) selected.set(t.namespace, id);
-      }
-      const slots = namespaces.map((ns) => tagSlot(ns, selected.get(ns))).join("");
-      return `<div class="rule-row" data-i="${i}">
-        <span class="rule-drag" draggable="true" title="Drag to reorder">⋮⋮</span>
-        <input data-field="program" value="${esc(r.program || "")}" placeholder="^Emacs$" spellcheck="false" autocomplete="off" />
-        <input data-field="title" value="${esc(r.title || "")}" placeholder="regex on title" spellcheck="false" autocomplete="off" />
-        <div class="rule-tags">${slots || `<span class="rule-tags-empty">add tags on the Tags sub-tab</span>`}</div>
-        <button class="rule-del" data-del="${i}" title="Delete rule" type="button">&times;</button>
-      </div>`;
-    })
-    .join("");
+
+  const hwrap = document.getElementById("hide-rows");
+  if (hwrap) {
+    hwrap.innerHTML = hidden.length
+      ? hidden
+          .map((r) => `<div class="rule-row hide-row">
+            <input data-field="program" value="${esc(r.program || "")}" placeholder="^firefox-esr$" spellcheck="false" autocomplete="off" />
+            <input data-field="title" value="${esc(r.title || "")}" placeholder="^Exact title$" spellcheck="false" autocomplete="off" />
+            <button class="rule-del" title="Remove" type="button">&times;</button>
+          </div>`)
+          .join("")
+      : `<div class="rules-empty">No hidden windows. Add one to drop specific windows from usage.</div>`;
+  }
 }
 
 // One tag slot for a namespace: a small namespace label plus a <select> of that
-// namespace's tags (one-tag-per-namespace, so a single slot is enough). The
-// namespace lives in the label, not each option, so the empty choice is a clean
-// "—" (no tag) rather than a repeated "Namespace: —".
+// namespace's tags. Hide is a behaviour managed in the Hidden-windows section, so
+// it's not offered here. One tag per namespace, so a single slot is enough.
 function tagSlot(ns, selectedId) {
   const opts = state.tags
-    .filter((t) => t.namespace === ns)
+    .filter((t) => t.namespace === ns && t.behavior !== "hide")
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((t) => `<option value="${t.id}"${t.id === selectedId ? " selected" : ""}>${esc(t.name)}</option>`)
     .join("");
   return `<label class="rule-slot"><span class="rule-slot-ns">${esc(ns)}</span><select class="rule-tag" data-ns="${esc(ns)}" title="${esc(ns)} tag"><option value="">—</option>${opts}</select></label>`;
 }
 
+// Rebuild state.rules from both editors: categorization rules first (their order
+// is precedence), then the hidden-window rules (a last resort, so order among them
+// doesn't matter). Each hide row carries the Glocker:hide tag implicitly.
 function syncRulesFromDom() {
-  const rows = [...document.querySelectorAll("#rules-rows .rule-row")];
-  state.rules = rows.map((row) => ({
+  const hid = hideTagId();
+  const normal = [...document.querySelectorAll("#rules-rows .rule-row")].map((row) => ({
     program: row.querySelector('[data-field="program"]').value.trim(),
     title: row.querySelector('[data-field="title"]').value.trim(),
     tagIds: [...row.querySelectorAll("select.rule-tag")].map((s) => Number(s.value)).filter((n) => n > 0),
   }));
+  const hidden = [...document.querySelectorAll("#hide-rows .rule-row")].map((row) => ({
+    program: row.querySelector('[data-field="program"]').value.trim(),
+    title: row.querySelector('[data-field="title"]').value.trim(),
+    tagIds: hid ? [hid] : [],
+  }));
+  state.rules = normal.concat(hidden);
 }
 
-// Flag rows whose program/title is not a valid regex so the user sees why a
-// rule isn't matching.
+// Flag rows whose program/title is not a valid regex so the user sees why a rule
+// isn't matching (both editors).
 function markRuleValidity() {
-  for (const row of document.querySelectorAll("#rules-rows .rule-row")) {
+  for (const row of document.querySelectorAll("#rules-rows .rule-row, #hide-rows .rule-row")) {
     let bad = false;
     for (const f of ["program", "title"]) {
-      const v = row.querySelector(`[data-field="${f}"]`).value.trim();
-      if (v) {
-        try { new RegExp(v); } catch { bad = true; }
-      }
+      const inp = row.querySelector(`[data-field="${f}"]`);
+      const v = inp ? inp.value.trim() : "";
+      if (v) { try { new RegExp(v); } catch { bad = true; } }
     }
     row.classList.toggle("invalid", bad);
   }

@@ -992,6 +992,30 @@ canvas { max-height: 260px; }
 }
 .rule-del:hover { color: var(--danger); border-color: var(--danger); }
 .rules-empty { color: var(--ink-faint); font-family: var(--mono); font-size: 12px; padding: 6px 2px; }
+
+/* Hidden-windows section: a separate, visually distinct list below the rules. */
+.hide-editor {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hide-title { font-size: 14px; margin: 0; }
+.hide-head {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 26px;
+  gap: 8px;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--ink-faint); padding: 0 2px 2px;
+}
+.hide-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 26px;
+  gap: 8px;
+  align-items: center;
+}
 .rules-actions {
   display: flex; align-items: center; gap: 12px;
   margin-top: 8px;
