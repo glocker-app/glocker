@@ -14,7 +14,7 @@ const HOUR = 3600000;
 // all-history timeline strip at the top (no more fixed presets). Null until the
 // first data load picks a default (see defaultWindow).
 const DEFAULT_WINDOW_DAYS = 30;
-const state = { data: null, winStart: null, winEnd: null, view: "overview", analyticsTab: "history", insightsTab: null, charts: {}, rules: [], tagColors: {}, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null };
+const state = { data: null, winStart: null, winEnd: null, view: "overview", analyticsTab: "history", insightsTab: null, charts: {}, rules: [], tags: [], tagById: new Map(), tagByLabel: new Map(), usageNamespace: null, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null };
 
 const VIEW_TITLES = {
   overview: "Overview",
@@ -349,15 +349,16 @@ async function bootDashboard(me) {
     showError(`Could not load logs: ${err.message}`);
     return;
   }
-  // Usage categorization config: rules + tag colours (non-fatal if missing).
+  // Tag registry (shared Glocker:* system tags + this account's own), then the
+  // rules that attach them. Both non-fatal if missing. Matching stays client-side.
+  try {
+    const tres = await fetch("api/tags");
+    if (tres.ok) setTags((await tres.json()).tags || []);
+  } catch { /* keep empty registry */ }
   try {
     const rres = await fetch("api/rules");
-    if (rres.ok) {
-      const cfg = await rres.json();
-      state.rules = cfg.rules || [];
-      state.tagColors = cfg.colors || {};
-    }
-  } catch { /* keep empty rules/colours */ }
+    if (rres.ok) state.rules = (await rres.json()).rules || [];
+  } catch { /* keep empty rules */ }
 
   // False-positive ignore list (non-fatal if missing).
   try {
@@ -573,12 +574,16 @@ function setView(view) {
   });
 }
 
-// setSubtab switches the Analytics History/Usage sub-view. The shared strip +
-// window stay put; only the detail content below changes.
+// setSubtab switches the Analytics History/Usage/Tags sub-view. History and
+// Usage share the strip + window above; Tags is a registry editor that doesn't
+// use the window, so the strip is hidden there.
 function setSubtab(tab) {
   state.analyticsTab = tab;
   document.querySelectorAll("#analytics-subtabs button").forEach((b) => b.classList.toggle("active", b.dataset.subtab === tab));
   document.querySelectorAll(".subview").forEach((v) => v.classList.toggle("active", v.dataset.subtab === tab));
+  const strip = document.querySelector("#view-analytics .strip-panel") || document.querySelector('.view[data-view="analytics"] .strip-panel');
+  if (strip) strip.hidden = tab === "tags";
+  if (tab === "tags") renderTags();
   // Charts sized while their sub-view was hidden need a resize once revealed.
   requestAnimationFrame(() => {
     for (const c of Object.values(state.charts)) { try { c.resize(); } catch { /* mid-rebuild */ } }
@@ -1785,112 +1790,144 @@ function computeUsage(entries) {
 // { program, title, tag }: optional case-insensitive regexes on the active
 // window's class and title. The first rule whose present regexes all match
 // wins; $1..$9 in the tag interpolate that rule's regex captures.
+function setTags(tags) {
+  state.tags = tags || [];
+  state.tagById = new Map();
+  state.tagByLabel = new Map();
+  for (const t of state.tags) {
+    state.tagById.set(t.id, t);
+    state.tagByLabel.set(tagLabel(t), t);
+  }
+}
+const tagLabel = (t) => `${t.namespace}:${t.name}`;
+
+// The registry's namespaces, Glocker first then the rest alphabetically. Drives
+// the per-namespace Usage breakdown and the per-rule tag slots.
+function tagNamespaces() {
+  const seen = new Set(state.tags.map((t) => t.namespace));
+  const rest = [...seen].filter((n) => n !== "Glocker").sort();
+  return (seen.has("Glocker") ? ["Glocker"] : []).concat(rest);
+}
+
 function compileRules(rules) {
   return rules.map((r) => {
     let program = null, title = null, error = false;
     try { if (r.program) program = new RegExp(r.program, "i"); } catch { error = true; }
     try { if (r.title) title = new RegExp(r.title, "i"); } catch { error = true; }
-    return { program, title, tag: (r.tag || "").trim(), error };
+    return { program, title, tagIds: r.tagIds || [], error };
   });
 }
 
-function interpolateTag(tag, match) {
-  if (!match) return tag;
-  return tag.replace(/\$([1-9])/g, (_, n) => match[Number(n)] || "");
+// matchedTags returns the winning tag per namespace for a sample: the first rule
+// (in order) that matches and carries a tag in a namespace claims that namespace.
+function matchedTags(e, compiled) {
+  const out = new Map(); // namespace -> tag object
+  if (!e.active) return out;
+  const cls = e.active.class || "", title = e.active.title || "";
+  for (const c of compiled) {
+    if (c.error || !c.tagIds.length) continue;
+    if (c.program && !c.program.test(cls)) continue;
+    if (c.title && !c.title.test(title)) continue;
+    for (const id of c.tagIds) {
+      const t = state.tagById.get(id);
+      if (t && !out.has(t.namespace)) out.set(t.namespace, t);
+    }
+  }
+  return out;
 }
 
-function tagForSample(e, compiled) {
-  if (!e.active) return null;
-  const cls = e.active.class || "";
-  const title = e.active.title || "";
-  for (const c of compiled) {
-    if (c.error || !c.tag) continue;
-    let pm = null, tm = null;
-    if (c.program) { pm = c.program.exec(cls); if (!pm) continue; }
-    if (c.title) { tm = c.title.exec(title); if (!tm) continue; }
-    return interpolateTag(c.tag, tm || pm); // named/numbered captures from the last regex to match
-  }
-  return null;
+// A sample is dropped from every usage total if a matched tag says so
+// (behavior "hide" — the Glocker:hide tag).
+function sampleHidden(byNs) {
+  for (const t of byNs.values()) if (t.behavior === "hide") return true;
+  return false;
 }
 
 const UNTAGGED = "(untagged)";
-// Windows tagged "hidden" (by any user rule) are excluded from the usage stats
-// entirely — not a category, just dropped. Matched case-insensitively.
-const HIDDEN_TAG = "hidden";
-const isHidden = (tag) => !!tag && tag.trim().toLowerCase() === HIDDEN_TAG;
 
+// computeTagUsage aggregates active time once into a per-namespace bucket, each
+// shaped like the old single-tag result. Within a namespace every active sample
+// is either tagged or untagged, so a namespace's tags + untagged sum to its
+// active time (the "per prefix" view). Hidden samples are dropped everywhere.
 function computeTagUsage(entries, compiled) {
-  const byTag = new Map();
-  const hourByTag = new Map(); // tag -> [24] ms, for the stacked hour-of-day chart
-  const dayByTag = new Map();  // tag -> Map(dayKey -> ms), for the per-day stack
-  const untaggedByWindow = new Map(); // "program\x00title" -> { program, title, ms }
-  let untagged = 0, active = 0, hidden = 0;
-
-  const addHour = (name, hr, dt) => {
-    let a = hourByTag.get(name);
-    if (!a) { a = new Array(24).fill(0); hourByTag.set(name, a); }
-    a[hr] += dt;
+  const namespaces = tagNamespaces();
+  const buckets = new Map(); // ns -> accumulators
+  const bucketFor = (ns) => {
+    let b = buckets.get(ns);
+    if (!b) {
+      b = { byTag: new Map(), hourByTag: new Map(), dayByTag: new Map(), windowsByTag: new Map(), untaggedByWindow: new Map(), untagged: 0 };
+      buckets.set(ns, b);
+    }
+    return b;
   };
-  const addDay = (name, dk, dt) => {
-    let m = dayByTag.get(name);
-    if (!m) { m = new Map(); dayByTag.set(name, m); }
-    m.set(dk, (m.get(dk) || 0) + dt);
-  };
-  // Per-tag contributing windows (program + title), for the tag drill-down.
-  const windowsByTag = new Map(); // tag -> Map(key -> { program, title, ms })
+  const addHour = (m, name, hr, dt) => { let a = m.get(name); if (!a) { a = new Array(24).fill(0); m.set(name, a); } a[hr] += dt; };
+  const addDay = (m, name, dk, dt) => { let d = m.get(name); if (!d) { d = new Map(); m.set(name, d); } d.set(dk, (d.get(dk) || 0) + dt); };
   const noTitle = "—";
-  const addWindow = (name, e, dt) => {
+  const addWindow = (m, name, e, dt) => {
     const program = (e.active.class || "").trim() || "unknown";
     const title = e.active.title || noTitle;
-    const wkey = program + " " + title;
-    let m = windowsByTag.get(name);
-    if (!m) { m = new Map(); windowsByTag.set(name, m); }
-    let w = m.get(wkey);
-    if (!w) { w = { program, title, ms: 0 }; m.set(wkey, w); }
+    const wkey = program + " " + title;
+    let wm = m.get(name); if (!wm) { wm = new Map(); m.set(name, wm); }
+    let w = wm.get(wkey); if (!w) { w = { program, title, ms: 0 }; wm.set(wkey, w); }
     w.ms += dt;
   };
+  let active = 0, hidden = 0;
 
   eachSampleDuration(entries, (e, dt, away) => {
     if (away) return;
-    const tag = tagForSample(e, compiled);
-    // "hidden" windows are dropped from every total (active time, tags, untagged).
-    if (isHidden(tag)) {
-      hidden += dt;
-      return;
-    }
+    const byNs = matchedTags(e, compiled);
+    if (sampleHidden(byNs)) { hidden += dt; return; }
     active += dt;
     const hr = new Date(e.ts).getHours();
     const dk = dayKey(e.ts);
-    if (tag) {
-      byTag.set(tag, (byTag.get(tag) || 0) + dt);
-      addHour(tag, hr, dt);
-      addDay(tag, dk, dt);
-      addWindow(tag, e, dt);
-    } else {
-      untagged += dt;
-      addHour(UNTAGGED, hr, dt);
-      addDay(UNTAGGED, dk, dt);
-      addWindow(UNTAGGED, e, dt);
-      // Track each untagged window (program + title) separately so the user can
-      // see and tag individual windows, not a collapsed per-program summary.
-      const program = (e.active.class || "").trim() || "unknown";
-      const title = e.active.title || "—";
-      const key = program + " " + title;
-      let u = untaggedByWindow.get(key);
-      if (!u) { u = { program, title, ms: 0 }; untaggedByWindow.set(key, u); }
-      u.ms += dt;
+    for (const ns of namespaces) {
+      const b = bucketFor(ns);
+      const t = byNs.get(ns);
+      const name = t ? tagLabel(t) : null;
+      if (name) {
+        b.byTag.set(name, (b.byTag.get(name) || 0) + dt);
+        addHour(b.hourByTag, name, hr, dt);
+        addDay(b.dayByTag, name, dk, dt);
+        addWindow(b.windowsByTag, name, e, dt);
+      } else {
+        b.untagged += dt;
+        addHour(b.hourByTag, UNTAGGED, hr, dt);
+        addDay(b.dayByTag, UNTAGGED, dk, dt);
+        addWindow(b.windowsByTag, UNTAGGED, e, dt);
+        const program = (e.active.class || "").trim() || "unknown";
+        const title = e.active.title || noTitle;
+        const key = program + " " + title;
+        let u = b.untaggedByWindow.get(key);
+        if (!u) { u = { program, title, ms: 0 }; b.untaggedByWindow.set(key, u); }
+        u.ms += dt;
+      }
     }
   });
 
-  // Rank individual untagged windows by active time (most-used first).
-  const untaggedItems = [...untaggedByWindow.values()].sort((a, b) => b.ms - a.ms);
-
-  return { tags: rankMap(byTag), untagged, active, hidden, hourByTag, dayByTag, windowsByTag, untaggedItems };
+  const byNamespace = new Map();
+  for (const ns of namespaces) {
+    const b = bucketFor(ns);
+    byNamespace.set(ns, {
+      tags: rankMap(b.byTag),
+      untagged: b.untagged,
+      active, hidden,
+      hourByTag: b.hourByTag,
+      dayByTag: b.dayByTag,
+      windowsByTag: b.windowsByTag,
+      untaggedItems: [...b.untaggedByWindow.values()].sort((a, c) => c.ms - a.ms),
+    });
+  }
+  return { byNamespace, namespaces, active, hidden };
 }
 
-// Canonical ordering shared by the tag pie and the stacked hour chart, so a tag
-// keeps the same colour in both. Tags sorted by total desc, untagged last-ish
-// (sorted in by size but flagged so it always renders grey).
+// A per-namespace bucket in the {tags, untagged, ...} shape the renderers use;
+// an all-zero bucket when the namespace has no time, so callers never crash.
+function tuForNamespace(all, ns) {
+  return all.byNamespace.get(ns) || { tags: [], untagged: 0, active: all.active, hidden: all.hidden, hourByTag: new Map(), dayByTag: new Map(), windowsByTag: new Map(), untaggedItems: [] };
+}
+
+// Canonical ordering shared by the tag pie and the stacked charts, so a tag
+// keeps the same colour across them. Untagged is appended and always grey.
 function orderedTagItems(tu) {
   const items = tu.tags.slice();
   if (tu.untagged > 0) items.push({ name: UNTAGGED, ms: tu.untagged, untagged: true });
@@ -1898,18 +1935,15 @@ function orderedTagItems(tu) {
   return items;
 }
 
-// A tag's colour is the user's saved override if any, else a stable palette
-// slot by rank. Untagged is always the muted faint ink.
+// A tag's colour is its registry colour; untagged is the muted faint ink; a tag
+// no longer in the registry falls back to a stable palette slot.
 function tagColorMap(items) {
   const map = new Map();
   let ci = 0;
   for (const it of items) {
-    if (it.untagged) {
-      map.set(it.name, cssVar("var(--ink-faint)"));
-      continue;
-    }
-    const fallback = TAG_COLORS[ci++ % TAG_COLORS.length];
-    map.set(it.name, state.tagColors[it.name] || fallback);
+    if (it.untagged) { map.set(it.name, cssVar("var(--ink-faint)")); continue; }
+    const t = state.tagByLabel.get(it.name);
+    map.set(it.name, (t && t.color) || TAG_COLORS[ci++ % TAG_COLORS.length]);
   }
   return map;
 }
@@ -1926,40 +1960,34 @@ function renderUsage(b) {
   recategorize();
 }
 
-// Recompute and render only the "Time by tag" panel from the current window
-// and rules — cheap enough to run on every keystroke in the rule editor.
-function recategorize({ colorsOnly = false } = {}) {
+// Recompute and render the per-namespace tag panels from the current window and
+// rules — cheap enough to run on every keystroke in the rule editor.
+function recategorize() {
   const win = state.usageWindow;
   if (!win) return;
-  const tu = computeTagUsage(win.entries, compileRules(state.rules));
+  const all = computeTagUsage(win.entries, compileRules(state.rules));
+  // Default the selected namespace to the first with any tagged time, else the
+  // first namespace; keep the current one only if it still exists.
+  if (!state.usageNamespace || !all.namespaces.includes(state.usageNamespace)) {
+    state.usageNamespace = all.namespaces.find((ns) => tuForNamespace(all, ns).tags.length) || all.namespaces[0] || null;
+  }
+  renderNamespacePills(all);
+  const tu = tuForNamespace(all, state.usageNamespace);
   renderUsagePerDay(tu, win.available, win.b);
   renderUsageTags(tu, win.available);
   renderUsageTagHours(tu, win.available);
   renderUntagged(tu, win.available);
-  // Skip re-rendering the colour pickers when a picker itself triggered this,
-  // so the open colour dialog / focus isn't disturbed mid-drag.
-  if (!colorsOnly) renderTagColors(tu, win.available);
 }
 
-// One colour swatch per tag (excluding untagged), shown in the Rules panel.
-// Editing recolours the charts live; the value is saved with the rules.
-function renderTagColors(tu, available) {
-  const el = document.getElementById("tag-colors");
+// One pill per registry namespace; clicking one re-renders the tag charts for
+// that namespace (the "per prefix" view). Hidden when there are no namespaces.
+function renderNamespacePills(all) {
+  const el = document.getElementById("usage-ns-pills");
   if (!el) return;
-  const ordered = orderedTagItems(tu);
-  const items = ordered.filter((it) => !it.untagged);
-  if (!available || !items.length) {
-    el.innerHTML = `<span class="tagcolor-empty">Tag colours appear here once rules produce tags.</span>`;
-    return;
-  }
-  const colors = tagColorMap(ordered);
-  el.innerHTML = items
-    .map(
-      (it) => `<label class="tagcolor" title="Colour for ${esc(it.name)}">
-        <input type="color" data-tagcolor="${esc(it.name)}" value="${colors.get(it.name)}" />
-        <span>${esc(it.name)}</span>
-      </label>`
-    )
+  if (!all.namespaces.length) { el.innerHTML = ""; el.hidden = true; return; }
+  el.hidden = false;
+  el.innerHTML = all.namespaces
+    .map((ns) => `<button type="button" class="ns-pill${ns === state.usageNamespace ? " active" : ""}" data-ns="${esc(ns)}">${esc(ns)}</button>`)
     .join("");
 }
 
@@ -1975,7 +2003,7 @@ function renderUntagged(tu, available) {
     return;
   }
   const hiddenNote = tu.hidden > 0
-    ? `<div style="margin-top:10px;font-size:.82rem;color:#8b97a8;">${fmtDur(tu.hidden)} hidden by rules (tag “hidden”)</div>`
+    ? `<div style="margin-top:10px;font-size:.82rem;color:#8b97a8;">$${fmtDur(tu.hidden)} hidden by rules (Glocker:hide)</div>`
     : "";
   const items = tu.untaggedItems || [];
   if (!items.length) {
@@ -2014,7 +2042,7 @@ function startRuleForWindow(program, title) {
   state.rules.push({
     program: program ? `^${escapeRegex(program)}$` : "",
     title: title && title !== "—" ? escapeRegex(title) : "",
-    tag: "",
+    tagIds: [],
   });
   renderRulesEditor();
   markRuleValidity();
@@ -2022,24 +2050,33 @@ function startRuleForWindow(program, title) {
   const last = rows[rows.length - 1];
   if (last) {
     last.scrollIntoView({ behavior: "smooth", block: "center" });
-    last.querySelector('[data-field="tag"]').focus();
+    const sel = last.querySelector("select");
+    if (sel) sel.focus();
   }
   recategorize();
 }
 
-// hideWindow is the one-click shortcut for the "hide" button: add a rule tagging
-// this exact window HIDDEN_TAG and save it immediately, so the window drops out
-// of every usage total without opening the rule editor or typing "hidden".
+// hideWindow adds a rule tagging this exact window Glocker:hide and saves it
+// immediately, so the window drops out of every usage total in one click.
 async function hideWindow(program, title) {
+  const hid = hideTagId();
+  if (!hid) { setRulesStatus("no Glocker:hide tag in the registry", "err"); return; }
   syncRulesFromDom();
   state.rules.push({
     program: program ? `^${escapeRegex(program)}$` : "",
     title: title && title !== "—" ? escapeRegex(title) : "",
-    tag: HIDDEN_TAG,
+    tagIds: [hid],
   });
   renderRulesEditor();
   await saveRulesToServer();
   recategorize();
+}
+
+// The registry id of the Glocker:hide tag (its windows are dropped from all
+// usage totals), or null when it is not present.
+function hideTagId() {
+  const t = state.tagByLabel.get("Glocker:hide");
+  return t ? t.id : null;
 }
 
 function escapeRegex(s) {
@@ -2377,12 +2414,20 @@ function setupRules() {
   renderRulesEditor();
 
   const rows = document.getElementById("rules-rows");
-  // Live feedback: sync + recategorize on every keystroke, without re-rendering
-  // the editor (which would drop focus).
-  rows.addEventListener("input", () => {
+  // Live feedback on the program/title regexes: sync + recategorize on every
+  // keystroke, without re-rendering the editor (which would drop focus).
+  rows.addEventListener("input", (e) => {
+    if (e.target.closest("select")) return; // selects handled on change
     syncRulesFromDom();
     markRuleValidity();
     recategorize();
+  });
+  // A tag slot changed: recategorize and flag the edit as unsaved.
+  rows.addEventListener("change", (e) => {
+    if (!e.target.closest("select.rule-tag")) return;
+    syncRulesFromDom();
+    recategorize();
+    setRulesStatus("unsaved change — click Save rules", "");
   });
   rows.addEventListener("click", (e) => {
     const del = e.target.closest("[data-del]");
@@ -2392,17 +2437,57 @@ function setupRules() {
     renderRulesEditor();
     markRuleValidity();
     recategorize();
+    setRulesStatus("unsaved change — click Save rules", "");
+  });
+
+  // Drag-to-reorder by the handle (rows stay editable; only the handle drags).
+  // Reordering changes precedence, so flag it unsaved until Save.
+  let dragFrom = null;
+  rows.addEventListener("dragstart", (e) => {
+    const h = e.target.closest(".rule-drag");
+    if (!h) return;
+    dragFrom = Number(h.closest(".rule-row").dataset.i);
+    e.dataTransfer.effectAllowed = "move";
+    h.closest(".rule-row").classList.add("dragging");
+  });
+  rows.addEventListener("dragend", () => {
+    dragFrom = null;
+    rows.querySelectorAll(".dragging, .drop-target").forEach((el) => el.classList.remove("dragging", "drop-target"));
+  });
+  rows.addEventListener("dragover", (e) => {
+    if (dragFrom == null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const row = e.target.closest(".rule-row");
+    rows.querySelectorAll(".drop-target").forEach((el) => el.classList.remove("drop-target"));
+    if (row) row.classList.add("drop-target");
+  });
+  rows.addEventListener("drop", (e) => {
+    if (dragFrom == null) return;
+    e.preventDefault();
+    const row = e.target.closest(".rule-row");
+    if (!row) return;
+    const to = Number(row.dataset.i);
+    if (to === dragFrom) return;
+    syncRulesFromDom();
+    const [moved] = state.rules.splice(dragFrom, 1);
+    state.rules.splice(to, 0, moved);
+    dragFrom = null;
+    renderRulesEditor();
+    markRuleValidity();
+    recategorize();
+    setRulesStatus("reordered — click Save rules", "");
   });
 
   document.getElementById("rule-add").addEventListener("click", () => {
     syncRulesFromDom();
-    state.rules.push({ program: "", title: "", tag: "" });
+    state.rules.push({ program: "", title: "", tagIds: [] });
     renderRulesEditor();
     markRuleValidity();
   });
   document.getElementById("rule-save").addEventListener("click", saveRulesToServer);
 
-  // "＋ tag" prefills a rule for that window; "hide" adds a hidden-tag rule
+  // "＋ tag" prefills a rule for that window; "hide" adds a Glocker:hide rule
   // directly (no typing) so the window drops out of every usage total at once.
   document.getElementById("usage-untagged").addEventListener("click", (e) => {
     const hideBtn = e.target.closest("[data-hide-program]");
@@ -2411,14 +2496,15 @@ function setupRules() {
     if (btn) startRuleForWindow(btn.dataset.tagProgram, btn.dataset.tagTitle || "");
   });
 
-  // Per-tag colour pickers: recolour charts live; the value is saved with rules.
-  document.getElementById("tag-colors").addEventListener("input", (e) => {
-    const inp = e.target.closest("[data-tagcolor]");
-    if (!inp) return;
-    state.tagColors[inp.dataset.tagcolor] = inp.value;
-    setRulesStatus("unsaved colour — click Save rules", "");
-    recategorize({ colorsOnly: true });
+  // Namespace pills switch which prefix the Usage tag charts break down.
+  document.getElementById("usage-ns-pills").addEventListener("click", (e) => {
+    const btn = e.target.closest(".ns-pill");
+    if (!btn) return;
+    state.usageNamespace = btn.dataset.ns;
+    recategorize();
   });
+
+  setupTags();
 }
 
 function setRulesStatus(msg, cls) {
@@ -2433,16 +2519,35 @@ function renderRulesEditor() {
     wrap.innerHTML = `<div class="rules-empty">No rules yet — add one to categorize your active time.</div>`;
     return;
   }
+  const namespaces = tagNamespaces();
   wrap.innerHTML = state.rules
-    .map(
-      (r, i) => `<div class="rule-row" data-i="${i}">
+    .map((r, i) => {
+      const selected = new Map(); // ns -> tagId (first per namespace wins)
+      for (const id of (r.tagIds || [])) {
+        const t = state.tagById.get(id);
+        if (t && !selected.has(t.namespace)) selected.set(t.namespace, id);
+      }
+      const slots = namespaces.map((ns) => tagSlot(ns, selected.get(ns))).join("");
+      return `<div class="rule-row" data-i="${i}">
+        <span class="rule-drag" draggable="true" title="Drag to reorder">⋮⋮</span>
         <input data-field="program" value="${esc(r.program || "")}" placeholder="^Emacs$" spellcheck="false" autocomplete="off" />
         <input data-field="title" value="${esc(r.title || "")}" placeholder="regex on title" spellcheck="false" autocomplete="off" />
-        <input data-field="tag" value="${esc(r.tag || "")}" placeholder="Activity:dev" spellcheck="false" autocomplete="off" />
+        <div class="rule-tags">${slots || `<span class="rule-tags-empty">add tags on the Tags sub-tab</span>`}</div>
         <button class="rule-del" data-del="${i}" title="Delete rule" type="button">&times;</button>
-      </div>`
-    )
+      </div>`;
+    })
     .join("");
+}
+
+// One <select> for a namespace: an empty option plus that namespace's tags. The
+// one-tag-per-namespace rule means a single slot per namespace is enough.
+function tagSlot(ns, selectedId) {
+  const opts = state.tags
+    .filter((t) => t.namespace === ns)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((t) => `<option value="${t.id}"${t.id === selectedId ? " selected" : ""}>${esc(t.name)}</option>`)
+    .join("");
+  return `<select class="rule-tag" data-ns="${esc(ns)}"><option value="">${esc(ns)}: —</option>${opts}</select>`;
 }
 
 function syncRulesFromDom() {
@@ -2450,7 +2555,7 @@ function syncRulesFromDom() {
   state.rules = rows.map((row) => ({
     program: row.querySelector('[data-field="program"]').value.trim(),
     title: row.querySelector('[data-field="title"]').value.trim(),
-    tag: row.querySelector('[data-field="tag"]').value.trim(),
+    tagIds: [...row.querySelectorAll("select.rule-tag")].map((s) => Number(s.value)).filter((n) => n > 0),
   }));
 }
 
@@ -2475,15 +2580,15 @@ async function saveRulesToServer() {
   btn.disabled = true;
   setRulesStatus("saving…", "");
   try {
+    const payload = { rules: state.rules.map((r, i) => ({ position: i, program: r.program, title: r.title, tagIds: r.tagIds || [] })) };
     const res = await fetch("api/rules", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rules: state.rules, colors: state.tagColors }),
+      body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error(`server returned ${res.status}`);
-    const cfg = await res.json(); // canonical, server-sanitized
+    if (!res.ok) throw new Error(await errText(res, `server returned ${res.status}`));
+    const cfg = await res.json(); // canonical, server-validated
     state.rules = cfg.rules || [];
-    state.tagColors = cfg.colors || {};
     renderRulesEditor();
     markRuleValidity();
     recategorize();
@@ -2493,6 +2598,168 @@ async function saveRulesToServer() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// ── Tag registry editor (Tags sub-tab) ──────────────────
+function setupTags() {
+  const reg = document.getElementById("tags-registry");
+  // Commit colour/distraction on change (not every input event, which would
+  // spam the server while dragging the colour picker).
+  reg.addEventListener("change", (e) => {
+    const row = e.target.closest(".tagreg-row");
+    if (!row) return;
+    const id = Number(row.dataset.id);
+    if (e.target.classList.contains("tagreg-color")) patchTag(id, { color: e.target.value });
+    else if (e.target.classList.contains("tagreg-dist-cb")) patchTag(id, { distraction: e.target.checked });
+  });
+  reg.addEventListener("click", (e) => {
+    const del = e.target.closest(".tagreg-del");
+    if (del) { deleteTag(Number(del.closest(".tagreg-row").dataset.id)); return; }
+    const add = e.target.closest(".tagreg-add-btn");
+    if (add) {
+      const inp = add.closest(".tagreg-add").querySelector(".tagreg-newname");
+      const name = inp ? inp.value.trim() : "";
+      if (name) createTag(add.dataset.ns, name);
+    }
+  });
+  reg.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const inp = e.target.closest(".tagreg-newname");
+    if (!inp) return;
+    const name = inp.value.trim();
+    if (name) createTag(inp.dataset.ns, name);
+  });
+
+  document.getElementById("tags-add-ns-btn").addEventListener("click", () => {
+    const inp = document.getElementById("tags-new-ns");
+    const ns = inp.value.trim();
+    if (!ns) return;
+    if (ns === "Glocker") { setTagsStatus("Glocker is the shared namespace — pick another name", "err"); return; }
+    state.pendingNamespace = ns;
+    inp.value = "";
+    renderTags();
+    setTagsStatus(`namespace “${ns}” — add a tag to keep it`, "");
+  });
+}
+
+function renderTags() {
+  const el = document.getElementById("tags-registry");
+  if (!el) return;
+  const namespaces = tagNamespaces();
+  if (state.pendingNamespace && !namespaces.includes(state.pendingNamespace)) namespaces.push(state.pendingNamespace);
+  if (!namespaces.length) {
+    el.innerHTML = `<div class="empty">No tags yet — add a namespace below to start.</div>`;
+    return;
+  }
+  el.innerHTML = namespaces
+    .map((ns) => {
+      const isSystem = ns === "Glocker";
+      const tags = state.tags.filter((t) => t.namespace === ns).sort((a, b) => a.name.localeCompare(b.name));
+      const rows = tags.map((t) => tagRow(t, isSystem)).join("") || `<div class="empty">no tags yet</div>`;
+      const add = isSystem ? "" : `
+        <div class="tagreg-add">
+          <input class="tagreg-newname" data-ns="${esc(ns)}" placeholder="new tag name" spellcheck="false" autocomplete="off" />
+          <button class="btn-ghost tagreg-add-btn" data-ns="${esc(ns)}" type="button">+ Add tag</button>
+        </div>`;
+      return `<section class="tagreg-ns">
+        <h3 class="tagreg-ns-head">${esc(ns)}${isSystem ? ` <span class="tagreg-badge">shared</span>` : ""}</h3>
+        <div class="tagreg-list">${rows}</div>
+        ${add}
+      </section>`;
+    })
+    .join("");
+}
+
+// One tag row. System (Glocker) tags: distraction is editable (stored as this
+// account's override); colour/name are fixed and there's no delete.
+function tagRow(t, isSystem) {
+  const dist = t.distraction ? " checked" : "";
+  return `<div class="tagreg-row" data-id="${t.id}">
+    <input type="color" class="tagreg-color" value="${esc(t.color || "#7c9cff")}"${isSystem ? " disabled" : ""} title="${isSystem ? "Shared tag colour is fixed" : "Tag colour"}" />
+    <span class="tagreg-name">${esc(t.name)}</span>
+    <label class="tagreg-dist" title="Count this tag as a distraction in the work-hours insights">
+      <input type="checkbox" class="tagreg-dist-cb"${dist} /> distraction
+    </label>
+    ${isSystem
+      ? `<span class="tagreg-lock" title="Shared tag — rename/delete not available">shared</span>`
+      : `<button class="tagreg-del" type="button" title="Delete tag">&times;</button>`}
+  </div>`;
+}
+
+function setTagsStatus(msg, cls) {
+  const s = document.getElementById("tags-status");
+  if (!s) return;
+  s.className = "rules-status" + (cls ? " " + cls : "");
+  s.textContent = msg;
+}
+
+// Re-fetch the registry and re-render everything that depends on it (the editor,
+// the rule tag slots, and the Usage charts).
+async function reloadTags() {
+  try {
+    const res = await fetch("api/tags");
+    if (res.ok) setTags((await res.json()).tags || []);
+  } catch { /* keep current registry */ }
+  renderTags();
+  renderRulesEditor();
+  markRuleValidity();
+  recategorize();
+}
+
+async function createTag(namespace, name) {
+  setTagsStatus("saving…", "");
+  try {
+    const res = await fetch("api/tags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ namespace, name, color: randomTagColor(), distraction: false }),
+    });
+    if (!res.ok) { setTagsStatus(await errText(res, "add failed"), "err"); return; }
+    if (state.pendingNamespace === namespace) state.pendingNamespace = null;
+    await reloadTags();
+    setTagsStatus(`added ${namespace}:${name} ✓`, "ok");
+  } catch (err) { setTagsStatus(`add failed: ${err.message}`, "err"); }
+}
+
+async function patchTag(id, fields) {
+  setTagsStatus("saving…", "");
+  try {
+    const res = await fetch(`api/tags?id=${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    if (!res.ok) { setTagsStatus(await errText(res, "update failed"), "err"); return; }
+    await reloadTags();
+    setTagsStatus("saved ✓", "ok");
+  } catch (err) { setTagsStatus(`update failed: ${err.message}`, "err"); }
+}
+
+async function deleteTag(id) {
+  const t = state.tagById.get(id);
+  if (t && !window.confirm(`Delete tag ${tagLabel(t)}? It will be removed from any rules that use it.`)) return;
+  setTagsStatus("deleting…", "");
+  try {
+    const res = await fetch(`api/tags?id=${id}`, { method: "DELETE" });
+    if (!res.ok) { setTagsStatus(await errText(res, "delete failed"), "err"); return; }
+    await reloadTags();
+    setTagsStatus("deleted ✓", "ok");
+  } catch (err) { setTagsStatus(`delete failed: ${err.message}`, "err"); }
+}
+
+// Read a short error message from a failed response (plain text or {error} JSON),
+// falling back to a default.
+async function errText(res, fallback) {
+  try {
+    const t = (await res.text()).trim();
+    if (!t) return fallback;
+    try { const j = JSON.parse(t); if (j && j.error) return j.error; } catch { /* not JSON */ }
+    return t.slice(0, 200);
+  } catch { return fallback; }
+}
+
+function randomTagColor() {
+  return TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)];
 }
 
 function renderUsageReadout(u, available) {

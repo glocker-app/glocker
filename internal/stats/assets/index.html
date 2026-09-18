@@ -105,6 +105,7 @@
           <nav class="subtabs" id="analytics-subtabs">
             <button data-subtab="history" class="active">History</button>
             <button data-subtab="usage">Usage</button>
+            <button data-subtab="tags">Tags</button>
           </nav>
 
           <div class="subview active" data-subtab="history">
@@ -181,6 +182,10 @@
           <div class="subview" data-subtab="usage">
           <section class="readout" id="usage-readout"></section>
 
+          <!-- Namespace selector: the tag charts below show one namespace
+               (prefix) at a time, so each breakdown sums cleanly. -->
+          <nav class="ns-pills" id="usage-ns-pills"></nav>
+
           <!-- Per-day activity -->
           <section class="panel">
             <div class="panel-head">
@@ -240,12 +245,11 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Rules</h2>
-              <p class="panel-sub">First rule whose program &amp; title regexes both match wins. Blank = match anything. The special tag <strong>hidden</strong> drops every matching window from all usage totals (active time, tags, untagged) &mdash; use the &ldquo;hide&rdquo; button on a window as a shortcut.</p>
+              <p class="panel-sub">A rule matches on program &amp; title regexes (blank = match anything) and attaches tags from the registry — at most one per namespace. Drag the handle to reorder: the first matching rule per namespace wins. Manage the tags themselves on the <strong>Tags</strong> sub-tab; the <strong>Glocker:hide</strong> tag drops matching windows from all usage totals.</p>
             </div>
-            <div id="tag-colors" class="tag-colors"></div>
             <div class="rules-editor">
               <div class="rules-head">
-                <span>Program</span><span>Title</span><span>Tag</span><span></span>
+                <span></span><span>Program</span><span>Title</span><span>Tags</span><span></span>
               </div>
               <div id="rules-rows"></div>
               <div class="rules-actions">
@@ -256,6 +260,22 @@
             </div>
           </section>
           </div><!-- /subview usage -->
+
+          <!-- Tags: the registry editor (Phase 4). Grouped by namespace. -->
+          <div class="subview" data-subtab="tags">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Tag registry</h2>
+              <p class="panel-sub">Tags are <code>Namespace:name</code>. The shared <strong>Glocker</strong> tags come with your account — you can flag them as distractions for the work-hours insights; their colour and name are fixed and they can't be deleted. Add your own namespaces and tags below; rules on the Usage sub-tab attach these to your activity.</p>
+            </div>
+            <div id="tags-registry"></div>
+            <div class="tags-add-ns">
+              <input id="tags-new-ns" placeholder="new namespace, e.g. Activity" spellcheck="false" autocomplete="off" />
+              <button id="tags-add-ns-btn" class="btn-ghost" type="button">+ Add namespace</button>
+              <span class="rules-status" id="tags-status"></span>
+            </div>
+          </section>
+          </div><!-- /subview tags -->
         </section><!-- /view analytics -->
 
         <section class="view" data-view="insights">

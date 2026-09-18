@@ -922,10 +922,35 @@ canvas { max-height: 260px; }
 .rules-head,
 .rule-row {
   display: grid;
-  grid-template-columns: 1fr 1.4fr 1fr 26px;
+  grid-template-columns: 20px 1fr 1.4fr 1.5fr 26px;
   gap: 8px;
   align-items: center;
 }
+.rule-row.dragging { opacity: 0.5; }
+.rule-row.drop-target { box-shadow: 0 -2px 0 0 var(--signal); }
+.rule-drag {
+  cursor: grab;
+  color: var(--ink-faint);
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: -2px;
+  text-align: center;
+  user-select: none;
+}
+.rule-drag:active { cursor: grabbing; }
+.rule-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.rule-tags-empty { color: var(--ink-faint); font-family: var(--mono); font-size: 11px; }
+.rule-tag {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 7px;
+  max-width: 100%;
+}
+.rule-tag:focus { outline: none; border-color: var(--line-2); box-shadow: 0 0 0 2px rgba(240,160,32,0.15); }
 .rules-head {
   font-family: var(--mono);
   font-size: 10.5px;
@@ -972,6 +997,71 @@ canvas { max-height: 260px; }
 .rules-status { flex: 1; font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
 .rules-status.ok { color: var(--safe); }
 .rules-status.err { color: var(--danger); }
+
+/* Namespace pills above the Usage tag charts (per-prefix breakdown). */
+.ns-pills { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 14px; }
+.ns-pill {
+  font-family: var(--mono); font-size: 12px;
+  color: var(--ink-dim);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 13px;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.ns-pill:hover { color: var(--ink); }
+.ns-pill.active { color: #07090d; background: var(--signal); border-color: var(--signal); }
+
+/* Tag registry editor (Tags sub-tab). */
+.tagreg-ns { margin-bottom: 22px; }
+.tagreg-ns-head {
+  font-size: 14px; margin: 0 0 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.tagreg-badge {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--ink-faint); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px;
+}
+.tagreg-list { display: flex; flex-direction: column; gap: 6px; }
+.tagreg-row {
+  display: grid;
+  grid-template-columns: 34px 1fr auto 26px;
+  gap: 12px;
+  align-items: center;
+  padding: 5px 2px;
+}
+.tagreg-color {
+  width: 34px; height: 26px; padding: 0;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 7px; cursor: pointer;
+}
+.tagreg-color:disabled { cursor: default; opacity: 0.7; }
+.tagreg-color::-webkit-color-swatch-wrapper { padding: 3px; }
+.tagreg-color::-webkit-color-swatch { border: none; border-radius: 4px; }
+.tagreg-color::-moz-color-swatch { border: none; border-radius: 4px; }
+.tagreg-name { font-family: var(--mono); font-size: 13px; color: var(--ink); }
+.tagreg-dist {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 11.5px; color: var(--ink-dim); cursor: pointer;
+}
+.tagreg-lock { font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-faint); }
+.tagreg-del {
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 15px; line-height: 1;
+  color: var(--ink-faint); background: transparent;
+  border: 1px solid var(--line); border-radius: 7px; cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tagreg-del:hover { color: var(--danger); border-color: var(--danger); }
+.tagreg-add { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+.tagreg-newname, #tags-new-ns {
+  font-family: var(--mono); font-size: 12px; color: var(--ink);
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px;
+}
+.tagreg-newname:focus, #tags-new-ns:focus { outline: none; border-color: var(--line-2); box-shadow: 0 0 0 2px rgba(240,160,32,0.15); }
+.tags-add-ns { display: flex; gap: 10px; align-items: center; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.tags-add-ns .rules-status { flex: 1; }
 .btn-ghost, .btn-primary {
   font-family: var(--display); font-weight: 600; font-size: 12.5px;
   border-radius: 8px; padding: 8px 14px; cursor: pointer;
