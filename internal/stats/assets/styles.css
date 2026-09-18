@@ -564,7 +564,15 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .tl-line2 { width: 16px; height: 2px; background: var(--safe); }
 
 /* Analytics sub-tabs (History / Usage) beneath the shared range strip. */
-.subtabs { display: flex; gap: 8px; margin: 18px 0 4px; }
+.subtabs {
+  display: flex; gap: 8px;
+  margin: 0 0 4px;
+  /* Stay on top: pin the tab bar so it stays visible while scrolling and doesn't
+     shift when the Range strip below it hides for Tags. */
+  position: sticky; top: 0; z-index: 20;
+  background: var(--bg);
+  padding: 14px 0 10px;
+}
 .subtabs button {
   font-family: var(--mono); font-size: 12.5px; color: var(--ink-dim);
   background: transparent; border: 1px solid var(--line-2); border-radius: 8px;
