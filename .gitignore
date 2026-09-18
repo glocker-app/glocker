@@ -43,3 +43,6 @@ deploy/backups/
 # Local habits.md exports
 docs/habits.odt
 docs/habits.pdf
+
+# Hosted-only curated Glocker starter rules (loaded via `glockpeek -import-rules`)
+tags.json

@@ -415,7 +415,12 @@ Server started by internal/web/server.go:StartWebTrackingServer()
   opaque token in the `sessions` table). The syncer uses a bearer **API token**
   (hashed in the `api_tokens` table) on `/api/ingest`. Middleware: `requireUser`
   (cookie) / `requireToken` (bearer). Admin CLI: `glockpeek -adduser/-passwd/-addtoken`
-  (needs access to the DB, so run as the service user). `/api/me` returns `{auth}`
+  (needs access to the DB, so run as the service user). `glockpeek -import-rules
+  tags.json` loads a curated Glocker starter-rule set into the `default_rules`
+  template table; `SeedAccountRules` seeds a new account from that table when it
+  has rows, else from the built-in `glockerStarterRules`. The curated `tags.json`
+  is a **hosted-only** asset (gitignored), so the open-source build ships only the
+  minimal built-in defaults. `/api/me` returns `{auth}`
   so the frontend hides sign-out in single-user mode.
 - `stats.Register(mux, db, Options{SecureCookies})` mounts:
   - `GET /` - dashboard (embedded frontend in `internal/stats/assets`) — **public**

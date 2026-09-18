@@ -24,7 +24,9 @@ var glockerTags = []Tag{
 
 // glockerStarterRules seed a fresh account so it classifies out of the box. Each
 // references a Glocker tag by name. Matching (the regexes) runs in the browser.
-var glockerStarterRules = []struct{ Program, Title, Tag string }{
+type starterRule struct{ Program, Title, Tag string }
+
+var glockerStarterRules = []starterRule{
 	{Title: `youtube|netflix|twitch|hulu|disney\+|primevideo`, Tag: "entertainment"},
 	{Program: `mpv|vlc|smplayer|celluloid|kodi|stremio`, Tag: "entertainment"},
 	{Program: `steam|lutris|heroic|gamescope`, Tag: "games"},
@@ -55,6 +57,54 @@ func (db *DB) SeedSystemTags() error {
 // if already seeded, so deleted starters never come back. Each starter rule is
 // written both as a rule_tag link (the new model) and with the legacy Tag string
 // (so the current Usage tab keeps working until the UI moves over).
+// accountStarterRules is the set a new account is seeded with: the imported
+// default_rules template if it holds any (hosted, loaded via
+// `glockpeek -import-rules`), else the built-in minimal set that ships with the
+// open-source build.
+func (db *DB) accountStarterRules() []starterRule {
+	var rows []DefaultRule
+	if err := db.Order("position, id").Find(&rows).Error; err == nil && len(rows) > 0 {
+		out := make([]starterRule, len(rows))
+		for i, r := range rows {
+			out[i] = starterRule{Program: r.Program, Title: r.Title, Tag: r.Tag}
+		}
+		return out
+	}
+	return glockerStarterRules
+}
+
+// ImportDefaultRules replaces the default_rules template with rules (position =
+// slice order). Only rules whose Tag is a known Glocker tag name are kept;
+// returns how many were imported and how many were skipped. Hosted-only.
+func (db *DB) ImportDefaultRules(rules []DefaultRule) (imported, skipped int, err error) {
+	valid := map[string]bool{}
+	for _, t := range glockerTags {
+		valid[t.Name] = true
+	}
+	var keep []DefaultRule
+	for _, r := range rules {
+		if r.Tag == "" || (r.Program == "" && r.Title == "") || !valid[r.Tag] {
+			skipped++
+			continue
+		}
+		keep = append(keep, r)
+	}
+	err = db.Transaction(func(tx *DB) error {
+		if err := tx.Where("1 = 1").Delete(&DefaultRule{}).Error; err != nil {
+			return err
+		}
+		for i := range keep {
+			keep[i].ID = 0
+			keep[i].Position = i
+			if err := tx.Create(&keep[i]).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return len(keep), skipped, err
+}
+
 func (db *DB) SeedAccountRules(userID uint) error {
 	var u User
 	if err := db.First(&u, userID).Error; err != nil {
@@ -74,8 +124,9 @@ func (db *DB) SeedAccountRules(userID uint) error {
 		tagID[t.Name] = t.ID
 	}
 
+	rules := db.accountStarterRules()
 	return db.Transaction(func(tx *DB) error {
-		for i, sr := range glockerStarterRules {
+		for i, sr := range rules {
 			r := Rule{UserID: userID, Position: i, Program: sr.Program, Title: sr.Title, Tag: "Glocker:" + sr.Tag}
 			if err := tx.Create(&r).Error; err != nil {
 				return err

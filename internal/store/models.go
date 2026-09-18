@@ -286,6 +286,19 @@ func AllModels() []any {
 		&Violation{}, &Unblock{}, &LifecycleEvent{}, &UsageSample{},
 		&Heartbeat{}, &Rule{}, &TagColor{}, &IgnoredViolation{},
 		&SyncStatus{}, &KeyVault{}, &DeviceConfig{},
-		&Tag{}, &TagOverride{}, &RuleTag{},
+		&Tag{}, &TagOverride{}, &RuleTag{}, &DefaultRule{},
 	}
+}
+
+// DefaultRule is one template Glocker starter rule. When the table has any rows,
+// SeedAccountRules seeds new accounts from these instead of the built-in
+// glockerStarterRules. It's a hosted-only asset: the rows are loaded from a
+// (gitignored) tags.json via `glockpeek -import-rules`, so the open-source build
+// ships only the minimal built-in defaults. Tag is a Glocker tag NAME.
+type DefaultRule struct {
+	ID       uint   `gorm:"primaryKey" json:"-"`
+	Position int    `json:"-"`
+	Program  string `json:"program"`
+	Title    string `json:"title"`
+	Tag      string `json:"tag"`
 }

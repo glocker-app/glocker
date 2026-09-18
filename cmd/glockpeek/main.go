@@ -17,6 +17,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -50,6 +51,7 @@ func main() {
 	passwd := flag.String("passwd", "", "change the password for this email, then exit")
 	addToken := flag.String("addtoken", "", "mint an ingest API token for this account (email), then exit")
 	setLimit := flag.String("setlimit", "", "set the device (API-token) limit for this email (use with -devices), then exit")
+	importRules := flag.String("import-rules", "", "load Glocker starter rules from a JSON file ({\"rules\":[{tag,program,title}]}) into the default-rules template that new accounts seed from, then exit")
 	devices := flag.Int("devices", 1, "device limit to apply with -setlimit (negative = unlimited)")
 	flag.Parse()
 
@@ -148,6 +150,9 @@ func main() {
 	case *setLimit != "":
 		runSetLimit(db, *setLimit, *devices)
 		return
+	case *importRules != "":
+		runImportRules(db, *importRules)
+		return
 	}
 
 	opts := stats.Options{
@@ -188,6 +193,32 @@ func forceLoopback(addr string) string {
 		port = "4317"
 	}
 	return net.JoinHostPort("127.0.0.1", port)
+}
+
+// runImportRules loads the Glocker starter-rule template from a JSON file into
+// the default_rules table, so new accounts seed from it instead of the built-in
+// minimal set. The file's rules are the hosted product's curated defaults; the
+// open-source build ships none (empty table -> built-in fallback).
+func runImportRules(db *store.DB, path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("glockpeek: read %s: %v", path, err)
+	}
+	var doc struct {
+		Rules []store.DefaultRule `json:"rules"`
+	}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		log.Fatalf("glockpeek: parse %s: %v", path, err)
+	}
+	imported, skipped, err := db.ImportDefaultRules(doc.Rules)
+	if err != nil {
+		log.Fatalf("glockpeek: import rules: %v", err)
+	}
+	fmt.Printf("imported %d default rules from %s", imported, path)
+	if skipped > 0 {
+		fmt.Printf(" (%d skipped: unknown tag or empty)", skipped)
+	}
+	fmt.Println()
 }
 
 func runAddUser(db *store.DB, email string) {
