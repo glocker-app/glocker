@@ -10,6 +10,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -256,33 +257,47 @@ func handleSync(w http.ResponseWriter, r *http.Request) {
 
 // handleRules serves the usage categorization config: GET returns it, PUT
 // replaces it. The dashboard sends the full {rules, colors} on every change.
+// handleRules is the usage-rules API (session-gated) on the registry model. GET
+// returns the account's rules in precedence order, each with its tag ids (colours
+// and distraction live on the tags via /api/tags). PUT replaces the whole set;
+// each rule may carry at most one tag per namespace, from tags the account can use.
 func handleRules(w http.ResponseWriter, r *http.Request) {
 	uid := userFrom(r).ID
 	switch r.Method {
 	case http.MethodGet:
-		rules, err := db.Rules(uid)
+		rules, err := db.RulesWithTags(uid)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		colors, err := db.Colors(uid)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		writeJSON(w, rulesConfig{Rules: toStatsRules(rules), Colors: colors})
+		writeJSON(w, map[string]any{"rules": rules})
 	case http.MethodPut:
 		body, err := io.ReadAll(io.LimitReader(r.Body, 256*1024))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		rules, colors := parseConfigBytes(body)
-		if err := db.SetRulesConfig(uid, toStoreRules(rules), colors); err != nil {
+		var in struct {
+			Rules []store.RuleInput `json:"rules"`
+		}
+		if err := json.Unmarshal(body, &in); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if err := db.SetRules(uid, in.Rules); err != nil {
+			if errors.Is(err, store.ErrTagNamespaceConflict) || errors.Is(err, store.ErrUnknownTag) {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		writeJSON(w, rulesConfig{Rules: rules, Colors: colors})
+		rules, err := db.RulesWithTags(uid)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"rules": rules})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -324,23 +339,6 @@ func handleIgnored(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// toStatsRules / toStoreRules convert between the API rule shape (rules.go) and
-// the persisted store.Rule.
-func toStatsRules(in []store.Rule) []Rule {
-	out := make([]Rule, 0, len(in))
-	for _, r := range in {
-		out = append(out, Rule{Program: r.Program, Title: r.Title, Tag: r.Tag})
-	}
-	return out
-}
-
-func toStoreRules(in []Rule) []store.Rule {
-	out := make([]store.Rule, 0, len(in))
-	for _, r := range in {
-		out = append(out, store.Rule{Program: r.Program, Title: r.Title, Tag: r.Tag})
-	}
-	return out
-}
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")

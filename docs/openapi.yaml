@@ -29,51 +29,59 @@ paths:
                 $ref: "#/components/schemas/Error"
   /api/rules:
     get:
-      summary: The saved usage categorization config (rules + tag colours)
+      summary: The account's usage-categorization rules
+      description: >
+        Session-gated. Returns the account's rules in precedence order (first
+        match per namespace wins), each with the ids of the registry tags it
+        attaches. Tags themselves come from /api/tags. See docs/tags-and-rules.md.
       operationId: getRules
       responses:
         "200":
-          description: Current config
+          description: Current rules
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UsageConfig"
-        "500":
-          description: Server error reading the config file
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+                type: object
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UsageRule"
+        "401": { description: Not authenticated }
     put:
-      summary: Replace the whole usage categorization config
+      summary: Replace the account's rules
       operationId: putRules
       description: >
-        Body is a `{ rules, colors }` object (a bare array of rules is still
-        accepted for back-compat). Everything is sanitized before being written;
-        the raw usage log is never modified.
+        Session-gated. Body is `{ rules: [...] }`, a full replace-all. Each rule
+        may carry at most one tag per namespace, and every tag id must be one the
+        account can use (a system `Glocker:*` tag or its own). The legacy `Tag`
+        column is dual-written from the first tag during the transition. Rejected
+        bodies leave the stored rules untouched.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              oneOf:
-                - type: array
+              type: object
+              properties:
+                rules:
+                  type: array
                   items:
                     $ref: "#/components/schemas/UsageRule"
-                - $ref: "#/components/schemas/UsageConfig"
       responses:
         "200":
-          description: The sanitized config that was saved
+          description: The saved rules (same shape as GET)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UsageConfig"
-        "500":
-          description: Server error writing the config file
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
+                type: object
+                properties:
+                  rules:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UsageRule"
+        "400": { description: A rule carries two tags in one namespace, or an unknown/inaccessible tag id }
+        "401": { description: Not authenticated }
   /api/ignored:
     get:
       summary: Violations marked as false positives (hidden from all stats)
@@ -549,33 +557,27 @@ components:
       description: >
         One categorization rule. program/title are optional case-insensitive
         regex strings (empty = match anything); the first rule whose present
-        regexes all match a sample's active window wins, and $1..$9 in the tag
-        interpolate that rule's regex captures.
-      required: [tag]
+        regexes all match a sample's active window wins per namespace. Instead of
+        a tag string, a rule attaches registry tags by id (tagIds), at most one
+        per namespace. Matching runs client-side (the server is content-blind).
       properties:
+        id:
+          type: integer
+          description: Rule id (present on GET; ignored on PUT — the set is replaced wholesale).
+        position:
+          type: integer
+          description: Precedence order; lower wins. Defaults to array order when 0.
         program:
           type: string
           description: Regex matched against the active window class (empty = any).
         title:
           type: string
           description: Regex matched against the active window title (empty = any).
-        tag:
-          type: string
-          description: Assigned tag, conventionally "Category:Value".
-    UsageConfig:
-      type: object
-      description: The usage categorization config — rules plus a per-tag colour map.
-      properties:
-        rules:
+        tagIds:
           type: array
+          description: Ids of the registry tags this rule attaches (one per namespace). See /api/tags.
           items:
-            $ref: "#/components/schemas/UsageRule"
-        colors:
-          type: object
-          description: Map of tag -> "#rrggbb" colour used in the tag charts.
-          additionalProperties:
-            type: string
-            pattern: "^#[0-9a-fA-F]{6}$"
+            type: integer
     Data:
       type: object
       properties:

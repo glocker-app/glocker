@@ -421,7 +421,12 @@ Server started by internal/web/server.go:StartWebTrackingServer()
   - `GET /api/data` - full history (session-gated), unmanaged/downtime derived from
     lifecycle/heartbeat rows; ignored overlay filtered in `buildData`
   - `GET /api/health` - `{ok, counts}` for the account (session)
-  - `GET|PUT /api/rules` - `{rules, colors}` in the DB (session)
+  - `GET|PUT /api/rules` - the account's usage rules, each attaching registry
+    tags by id (`{rules:[{id,position,program,title,tagIds}]}`); replace-all,
+    one tag per namespace (session)
+  - `GET|POST|PATCH|DELETE /api/tags` - the tag registry: shared `Glocker:*`
+    system tags (with per-account distraction overrides) + the account's own
+    tags (session). See `docs/tags-and-rules.md`.
   - `GET|POST|PATCH|DELETE /api/tags` - tag registry: shared system `Glocker:*`
     tags (with per-account distraction overrides) + the account's own tags
     (session; see docs/tags-and-rules.md)

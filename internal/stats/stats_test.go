@@ -403,47 +403,81 @@ func TestSyncStatus(t *testing.T) {
 	}
 }
 
+type apiRule struct {
+	ID      uint   `json:"id"`
+	Position int   `json:"position"`
+	Program string `json:"program"`
+	Title   string `json:"title"`
+	TagIDs  []uint `json:"tagIds"`
+}
+
 func TestRulesGetPut(t *testing.T) {
 	mux, sdb := newMux(t)
 	_, cookie, _ := account(t, sdb, "alice")
 
+	tagID := func(ns, name string) uint {
+		r := httptest.NewRequest("GET", "/api/tags", nil)
+		r.AddCookie(cookie)
+		var out struct {
+			Tags []apiTag `json:"tags"`
+		}
+		json.Unmarshal(do(mux, r).Body.Bytes(), &out)
+		for _, t := range out.Tags {
+			if t.Namespace == ns && t.Name == name {
+				return t.ID
+			}
+		}
+		return 0
+	}
+	getRules := func() []apiRule {
+		r := httptest.NewRequest("GET", "/api/rules", nil)
+		r.AddCookie(cookie)
+		var out struct {
+			Rules []apiRule `json:"rules"`
+		}
+		json.Unmarshal(do(mux, r).Body.Bytes(), &out)
+		return out.Rules
+	}
+	put := func(body string) int {
+		r := httptest.NewRequest("PUT", "/api/rules", strings.NewReader(body))
+		r.AddCookie(cookie)
+		return do(mux, r).Code
+	}
+
 	// A fresh account comes seeded with the Glocker starter rules.
-	get := httptest.NewRequest("GET", "/api/rules", nil)
-	get.AddCookie(cookie)
-	if rec := do(mux, get); !strings.Contains(rec.Body.String(), `Glocker:entertainment`) {
-		t.Fatalf("expected seeded starter rules, got %s", rec.Body.String())
+	if len(getRules()) == 0 {
+		t.Fatal("expected seeded starter rules")
 	}
 
-	body := `{"rules":[{"program":"^Emacs$","title":"","tag":"Activity:work"},{"nope":true}],"colors":{"Activity:work":"#3aa0ff","x":"bad"}}`
-	put := httptest.NewRequest("PUT", "/api/rules", strings.NewReader(body))
-	put.AddCookie(cookie)
-	if rec := do(mux, put); rec.Code != http.StatusOK {
-		t.Fatalf("PUT: %d %s", rec.Code, rec.Body.String())
+	ent, games := tagID("Glocker", "entertainment"), tagID("Glocker", "games")
+	// Create a user tag to pair with a Glocker one on the same rule.
+	cr := httptest.NewRequest("POST", "/api/tags", strings.NewReader(`{"namespace":"Activity","name":"work","color":"#3aa0ff"}`))
+	cr.AddCookie(cookie)
+	do(mux, cr)
+	work := tagID("Activity", "work")
+	if ent == 0 || games == 0 || work == 0 {
+		t.Fatalf("tag ids: ent=%d games=%d work=%d", ent, games, work)
 	}
 
-	get2 := httptest.NewRequest("GET", "/api/rules", nil)
-	get2.AddCookie(cookie)
-	var cfg rulesConfig
-	json.Unmarshal(do(mux, get2).Body.Bytes(), &cfg)
-	if len(cfg.Rules) != 1 || cfg.Rules[0].Tag != "Activity:work" || cfg.Colors["Activity:work"] != "#3aa0ff" {
-		t.Fatalf("persisted rules = %+v", cfg)
+	// Replace with one rule carrying two namespaces (Glocker + Activity) — valid.
+	if code := put(fmt.Sprintf(`{"rules":[{"program":"^Emacs$","tagIds":[%d,%d]}]}`, ent, work)); code != http.StatusOK {
+		t.Fatalf("PUT valid: %d", code)
 	}
-	if len(cfg.Colors) != 1 {
-		t.Errorf("bad colour should have been dropped: %+v", cfg.Colors)
+	rules := getRules()
+	if len(rules) != 1 || rules[0].Program != "^Emacs$" || len(rules[0].TagIDs) != 2 {
+		t.Fatalf("persisted rules = %+v", rules)
 	}
-}
 
-// TestSanitizeRulesAndColors covers the pure sanitizers.
-func TestSanitizeRulesAndColors(t *testing.T) {
-	rules := sanitizeRules([]Rule{
-		{Program: " ^Emacs$ ", Title: "glocker", Tag: " Project:glocker "},
-		{Tag: ""},
-	})
-	if len(rules) != 1 || rules[0].Program != "^Emacs$" || rules[0].Tag != "Project:glocker" {
-		t.Fatalf("sanitizeRules = %+v", rules)
+	// Two tags in the same namespace on one rule is rejected.
+	if code := put(fmt.Sprintf(`{"rules":[{"program":"x","tagIds":[%d,%d]}]}`, ent, games)); code != http.StatusBadRequest {
+		t.Errorf("two Glocker tags on one rule should be 400, got %d", code)
 	}
-	colors := sanitizeColors(map[string]string{"Activity:work": "#F0A020", "Bad:short": "#fff"})
-	if len(colors) != 1 || colors["Activity:work"] != "#f0a020" {
-		t.Fatalf("sanitizeColors = %+v", colors)
+	// An inaccessible tag id is rejected.
+	if code := put(`{"rules":[{"program":"y","tagIds":[999999]}]}`); code != http.StatusBadRequest {
+		t.Errorf("unknown tag should be 400, got %d", code)
+	}
+	// The rejected PUTs didn't clobber the good state.
+	if len(getRules()) != 1 {
+		t.Errorf("rejected PUT should not have changed the rules")
 	}
 }

@@ -108,6 +108,10 @@ func (db *DB) Migrate() error {
 	if err := db.SeedSystemTags(); err != nil {
 		return fmt.Errorf("store: seed system tags: %w", err)
 	}
+	// Migrate legacy single-tag rules into the registry model (idempotent).
+	if err := db.backfillRulesToTags(); err != nil {
+		return fmt.Errorf("store: rules->rule_tags backfill: %w", err)
+	}
 	return nil
 }
 
