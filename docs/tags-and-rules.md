@@ -1,6 +1,6 @@
 # Tags & rules — design spec
 
-Status: design agreed; implementation phased. This covers the tag registry, the
+Status: implemented (all phases below done). This covers the tag registry, the
 usage-rules editor, and how the Insights work-hours analyzer consumes them.
 
 ## Goals
@@ -107,9 +107,9 @@ spot-check) before it ships.
 
 ## Phases
 
-- [ ] Store: models + system-tag seed + `rules_seeded` + `SeedAccountRules` + tests (additive; no reshape yet).
-- [ ] Store: rules→`rule_tags` reshape + legacy backfill + migration validation.
-- [ ] API: `/api/tags`, reworked `/api/rules`.
-- [ ] Frontend: Tags sub-tab registry editor.
-- [ ] Frontend: Usage rules editor on the new model + drag reorder.
-- [ ] Insights: work-hours reads distraction tags from the registry; drop the hardcoded app list.
+- [x] Store: models + system-tag seed + `rules_seeded` + `SeedAccountRules` + tests (additive; no reshape yet).
+- [x] Store: rules→`rule_tags` reshape + legacy backfill + tests. (Migration validation on a prod dump still required before deploy.)
+- [x] API: `/api/tags`, reworked `/api/rules`.
+- [x] Frontend: Tags sub-tab registry editor.
+- [x] Frontend: Usage rules editor on the new model + drag reorder.
+- [x] Insights: work-hours reads distraction tags from the registry; drop the hardcoded app list.
