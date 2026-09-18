@@ -1737,7 +1737,7 @@ function stackedBar(id, labels, series, { yUnit = "", precision = 0, autoSkipX =
   opts.plugins.tooltip = { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y.toFixed(precision)}${yUnit}` } };
   state.charts[id] = new Chart(ctx, {
     type: "bar",
-    data: { labels, datasets: series.map((s) => ({ label: s.label, data: s.data, backgroundColor: translucent(s.color), borderColor: s.color, borderWidth: 1 })) },
+    data: { labels, datasets: series.map((s) => ({ label: s.label, data: s.data, backgroundColor: translucent(s.color), borderColor: s.color, borderWidth: 1, borderRadius: 3, borderSkipped: false })) },
     options: opts,
   });
 }
@@ -2317,7 +2317,7 @@ function doughnutChart(id, labels, msValues, colors, onHoverLabel) {
   destroy(id);
   state.charts[id] = new Chart(document.getElementById(id), {
     type: "doughnut",
-    data: { labels, datasets: [{ data: msValues, backgroundColor: translucent(colors), borderColor: colors, borderWidth: 1 }] },
+    data: { labels, datasets: [{ data: msValues, backgroundColor: translucent(colors), borderColor: colors, borderWidth: 1, borderRadius: 4, spacing: 2, hoverOffset: 6 }] },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -2940,7 +2940,7 @@ function hbarChart(id, { labels, pct, ms, colors, onSelect }) {
     type: "bar",
     data: {
       labels,
-      datasets: [{ data: pct, backgroundColor: translucent(colors), borderColor: colors, borderWidth: 1, borderRadius: 3, maxBarThickness: 26 }],
+      datasets: [{ data: pct, backgroundColor: translucent(colors), borderColor: colors, borderWidth: 1, borderRadius: 6, borderSkipped: false, maxBarThickness: 26 }],
     },
     options: opts,
   });
@@ -2979,14 +2979,18 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
     opts.plugins.tooltip.callbacks.title = (items) => (items.length ? titles[items[0].dataIndex] : "");
   }
 
-  // Translucent fills with a thin solid separator on top of each stacked segment
-  // keep the pieces legible while softening the look.
+  // Translucent fills, a thin solid outline, and rounded corners turn each
+  // stacked piece into its own soft rounded block — reads more modern than flat
+  // rectangles. categoryPercentage slims the bars for a bit of breathing room.
   const shaded = datasets.map((d) => ({
     ...d,
     backgroundColor: translucent(d.backgroundColor),
     borderColor: d.backgroundColor,
-    borderWidth: { top: 1, right: 0, bottom: 0, left: 0 },
+    borderWidth: 1,
+    borderRadius: 3,
     borderSkipped: false,
+    categoryPercentage: 0.7,
+    barPercentage: 0.9,
   }));
   const cfg = { type: "bar", data: { labels, datasets: shaded }, options: opts };
 
@@ -3024,7 +3028,7 @@ function barChart(id, labels, data, colorVar) {
   const color = cssVar(colorVar);
   state.charts[id] = new Chart(document.getElementById(id), {
     type: "bar",
-    data: { labels, datasets: [{ data, backgroundColor: translucent(color), borderColor: color, borderWidth: 1, borderRadius: 3, maxBarThickness: 34 }] },
+    data: { labels, datasets: [{ data, backgroundColor: translucent(color), borderColor: color, borderWidth: 1, borderRadius: 6, borderSkipped: false, maxBarThickness: 34 }] },
     options: baseOpts(),
   });
 }
