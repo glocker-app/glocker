@@ -92,7 +92,7 @@
           <section class="panel strip-panel">
             <div class="panel-head">
               <h2>Range</h2>
-              <p class="panel-sub">Drag to pick the window. Lines are violations and unblocks per day; the pink band is unmanaged time.</p>
+              <p class="panel-sub">Drag to pick the window.</p>
             </div>
             <div class="spark-wrap"><canvas id="chart-timeline"></canvas></div>
             <div class="tl-legend">
@@ -114,7 +114,7 @@
               <section class="panel">
                 <div class="panel-head">
                   <h2>History calendar</h2>
-                  <p class="panel-sub">Each cell is a day. Green = clean &amp; managed, red = violations, hatched = unmanaged (glocker off). Click a day for details.</p>
+                  <p class="panel-sub">Each cell is a day: clean, violations, or unmanaged (glocker off). Click a day for details.</p>
                 </div>
                 <div id="calendar" class="calendar"></div>
               </section>
@@ -136,7 +136,7 @@
               <div class="vuln-col vuln-col-heat">
                 <div class="panel-head">
                   <h2>Vulnerability map</h2>
-                  <p class="panel-sub">Violations by hour &times; weekday. Brighter is more exposed.</p>
+                  <p class="panel-sub">Violations by hour &times; weekday.</p>
                 </div>
                 <div id="heatmap" class="heatmap"></div>
                 <div class="heatmap-legend" id="heatmap-legend"></div>
@@ -144,7 +144,7 @@
               <div class="vuln-col vuln-col-unblock">
                 <div class="panel-head">
                   <h2>Unblocks by hour</h2>
-                  <p class="panel-sub">When in the day you unblock, coloured by reason (aggregated over the window &mdash; never crowds).</p>
+                  <p class="panel-sub">When in the day you unblock, by reason.</p>
                 </div>
                 <div class="hour-chart"><canvas id="chart-unblock-hour"></canvas></div>
               </div>
