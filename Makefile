@@ -1,4 +1,4 @@
-.PHONY: build-all install full-install security-check update-blocklists test release deploy deploy-full deploy-landing deploy-extension db-backup db-restore help
+.PHONY: build-all install full-install security-check update-blocklists test release deploy deploy-full deploy-rules deploy-landing deploy-extension db-backup db-restore help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -58,6 +58,17 @@ deploy: ## Deploy the glockpeek dashboard binary to the VPS
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o dist/glockpeek ./cmd/glockpeek
 	scp dist/glockpeek $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.new
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -m 0755 /tmp/glockpeek.new /usr/local/bin/glockpeek && rm -f /tmp/glockpeek.new && sudo systemctl restart glockpeek && sleep 2 && systemctl is-active glockpeek'
+
+# Ship the curated Glocker starter rules (tags.json, hosted-only + gitignored)
+# and load them into the default-rules template so NEW accounts seed from them.
+# Idempotent (replaces the table); run after `deploy` (needs the new binary's
+# -import-rules). Existing accounts are untouched. glockpeek reads the DB DSN
+# from /etc/glocker/config.yaml, so no -db/-driver needed on the box.
+deploy-rules: ## Load tags.json into the hosted default-rules template (run after deploy)
+	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST"; exit 1; }
+	@test -f tags.json || { echo "tags.json not found (hosted-only asset, gitignored)"; exit 1; }
+	scp tags.json $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glocker-tags.json
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo /usr/local/bin/glockpeek -import-rules /tmp/glocker-tags.json && rm -f /tmp/glocker-tags.json'
 
 # ── Database backup / restore ────────────────────────────────
 # DigitalOcean backups cover droplet loss; a local pg_dump also lets you rebuild
