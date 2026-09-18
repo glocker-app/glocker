@@ -2027,7 +2027,7 @@ function renderUntagged(tu, available) {
     return;
   }
   const hiddenNote = tu.hidden > 0
-    ? `<div style="margin-top:10px;font-size:.82rem;color:#8b97a8;">$${fmtDur(tu.hidden)} hidden by rules (Glocker:hide)</div>`
+    ? `<div style="margin-top:10px;font-size:.82rem;color:#8b97a8;">${fmtDur(tu.hidden)} hidden by rules</div>`
     : "";
   const items = tu.untaggedItems || [];
   if (!items.length) {
