@@ -2539,15 +2539,17 @@ function renderRulesEditor() {
     .join("");
 }
 
-// One <select> for a namespace: an empty option plus that namespace's tags. The
-// one-tag-per-namespace rule means a single slot per namespace is enough.
+// One tag slot for a namespace: a small namespace label plus a <select> of that
+// namespace's tags (one-tag-per-namespace, so a single slot is enough). The
+// namespace lives in the label, not each option, so the empty choice is a clean
+// "—" (no tag) rather than a repeated "Namespace: —".
 function tagSlot(ns, selectedId) {
   const opts = state.tags
     .filter((t) => t.namespace === ns)
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((t) => `<option value="${t.id}"${t.id === selectedId ? " selected" : ""}>${esc(t.name)}</option>`)
     .join("");
-  return `<select class="rule-tag" data-ns="${esc(ns)}"><option value="">${esc(ns)}: —</option>${opts}</select>`;
+  return `<label class="rule-slot"><span class="rule-slot-ns">${esc(ns)}</span><select class="rule-tag" data-ns="${esc(ns)}" title="${esc(ns)} tag"><option value="">—</option>${opts}</select></label>`;
 }
 
 function syncRulesFromDom() {

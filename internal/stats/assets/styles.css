@@ -938,8 +938,10 @@ canvas { max-height: 260px; }
   user-select: none;
 }
 .rule-drag:active { cursor: grabbing; }
-.rule-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.rule-tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .rule-tags-empty { color: var(--ink-faint); font-family: var(--mono); font-size: 11px; }
+.rule-slot { display: inline-flex; align-items: center; gap: 5px; }
+.rule-slot-ns { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); }
 .rule-tag {
   font-family: var(--mono);
   font-size: 12px;
