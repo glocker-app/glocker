@@ -1826,38 +1826,33 @@ function compileRules(rules) {
   });
 }
 
-// matchedTags classifies a sample: `.tags` is the winning tag per namespace
-// (first matching rule per namespace claims that namespace) and `.hidden` says
-// whether the window is dropped from all usage totals.
+// matchedTags classifies a sample: `.tags` is the winning display tag per
+// namespace (first matching rule per namespace) and `.hidden` says whether the
+// window is dropped from all usage totals.
 //
-// Hide respects OVERALL first-match precedence: a hide rule hides the window only
-// when it is the FIRST rule to match — i.e. nothing higher-priority already
-// categorized it. This mirrors the single-tag "first match wins" behaviour that
-// this replaced, so a broad catch-all like "hide leftover Firefox windows"
-// (^firefox-esr$ / Mozilla Firefox) sitting near the bottom doesn't clobber the
-// specific entertainment/work rules above it.
+// "hide" is a behaviour, not a display category, and a pure LAST RESORT: it never
+// occupies a namespace slot, and it hides the window only when NO other (non-hide)
+// rule tagged it. So a hide rule can neither be shown as "Glocker:hide" nor
+// clobber a specific tag — a broad catch-all like "hide leftover Firefox windows"
+// (^firefox-esr$ / Mozilla Firefox) only hides Firefox windows nothing else
+// categorized, no matter where it sits in the list.
 function matchedTags(e, compiled) {
-  const out = new Map(); // namespace -> tag object
-  let hidden = false, first = true;
-  if (!e.active) return { tags: out, hidden };
+  const out = new Map(); // namespace -> tag object (display tags only)
+  let sawHide = false;
+  if (!e.active) return { tags: out, hidden: false };
   const cls = e.active.class || "", title = e.active.title || "";
   for (const c of compiled) {
     if (c.error || !c.tagIds.length) continue;
     if (c.program && !c.program.test(cls)) continue;
     if (c.title && !c.title.test(title)) continue;
-    if (first) {
-      first = false; // only the first matching rule decides hide
-      for (const id of c.tagIds) {
-        const t = state.tagById.get(id);
-        if (t && t.behavior === "hide") { hidden = true; break; }
-      }
-    }
     for (const id of c.tagIds) {
       const t = state.tagById.get(id);
-      if (t && !out.has(t.namespace)) out.set(t.namespace, t);
+      if (!t) continue;
+      if (t.behavior === "hide") { sawHide = true; continue; } // last-resort, decided below
+      if (!out.has(t.namespace)) out.set(t.namespace, t);
     }
   }
-  return { tags: out, hidden };
+  return { tags: out, hidden: sawHide && out.size === 0 };
 }
 
 const UNTAGGED = "(untagged)";
@@ -1984,12 +1979,16 @@ function recategorize() {
   const win = state.usageWindow;
   if (!win) return;
   const all = computeTagUsage(win.entries, compileRules(state.rules));
-  // Default the selected namespace to the first with any tagged time, else the
-  // first namespace; keep the current one only if it still exists.
-  if (!state.usageNamespace || !all.namespaces.includes(state.usageNamespace)) {
-    state.usageNamespace = all.namespaces.find((ns) => tuForNamespace(all, ns).tags.length) || all.namespaces[0] || null;
+  // Only offer namespaces that actually produced a tag in this window — a
+  // namespace whose only rules are hide rules (or that nothing matched) would be
+  // all-untagged and just noise. Fall back to every namespace if none tagged.
+  const withTags = all.namespaces.filter((ns) => tuForNamespace(all, ns).tags.length);
+  const shown = withTags.length ? withTags : all.namespaces;
+  // Keep the current selection only if it's still on offer; else pick the first.
+  if (!state.usageNamespace || !shown.includes(state.usageNamespace)) {
+    state.usageNamespace = shown[0] || null;
   }
-  renderNamespacePills(all);
+  renderNamespacePills(shown);
   const tu = tuForNamespace(all, state.usageNamespace);
   renderUsagePerDay(tu, win.available, win.b);
   renderUsageTags(tu, win.available);
@@ -1997,14 +1996,15 @@ function recategorize() {
   renderUntagged(tu, win.available);
 }
 
-// One pill per registry namespace; clicking one re-renders the tag charts for
-// that namespace (the "per prefix" view). Hidden when there are no namespaces.
-function renderNamespacePills(all) {
+// One pill per namespace on offer (see recategorize); clicking one re-renders the
+// tag charts for that namespace (the "per prefix" view). Hidden when there are
+// none, or only one (nothing to switch between).
+function renderNamespacePills(namespaces) {
   const el = document.getElementById("usage-ns-pills");
   if (!el) return;
-  if (!all.namespaces.length) { el.innerHTML = ""; el.hidden = true; return; }
+  if (namespaces.length <= 1) { el.innerHTML = ""; el.hidden = true; return; }
   el.hidden = false;
-  el.innerHTML = all.namespaces
+  el.innerHTML = namespaces
     .map((ns) => `<button type="button" class="ns-pill${ns === state.usageNamespace ? " active" : ""}" data-ns="${esc(ns)}">${esc(ns)}</button>`)
     .join("");
 }
@@ -2059,7 +2059,7 @@ function startRuleForWindow(program, title) {
   syncRulesFromDom();
   state.rules.push({
     program: program ? `^${escapeRegex(program)}$` : "",
-    title: title && title !== "—" ? escapeRegex(title) : "",
+    title: title && title !== "—" ? `^${escapeRegex(title)}$` : "",
     tagIds: [],
   });
   renderRulesEditor();
@@ -2082,7 +2082,7 @@ async function hideWindow(program, title) {
   syncRulesFromDom();
   state.rules.push({
     program: program ? `^${escapeRegex(program)}$` : "",
-    title: title && title !== "—" ? escapeRegex(title) : "",
+    title: title && title !== "—" ? `^${escapeRegex(title)}$` : "",
     tagIds: [hid],
   });
   renderRulesEditor();
