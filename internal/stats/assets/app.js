@@ -486,14 +486,21 @@ async function bootDashboard(me) {
   // and browser back/forward all work.
   document.getElementById("nav").addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-view]");
-    if (btn) routeTo(btn.dataset.view);
+    if (!btn) return;
+    // Analytics routes to its current sub-tab hash (history/usage/tags) so the
+    // URL always names the sub-view and a refresh restores it.
+    if (btn.dataset.view === "analytics") { location.hash = state.analyticsTab || "history"; return; }
+    routeTo(btn.dataset.view);
   });
   window.addEventListener("hashchange", () => setView(viewFromHash()));
 
-  // Analytics sub-tabs (History / Usage) share the strip + window above them.
+  // Analytics sub-tabs (History / Usage / Tags). Drive them through the URL hash
+  // so the selection lives in the address bar and a refresh restores it; setting
+  // the hash fires the hashchange handler, which applies it via setView ->
+  // setSubtab (setting it to the current value is a no-op).
   document.getElementById("analytics-subtabs").addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-subtab]");
-    if (btn) setSubtab(btn.dataset.subtab);
+    if (btn) location.hash = btn.dataset.subtab;
   });
 
   // Mark a violation as a false positive from the day-detail hit list.
@@ -538,11 +545,12 @@ async function bootDashboard(me) {
   setView(viewFromHash()); // honour a deep-linked view like #usage on load
 }
 
-// The view named by the URL hash, or "overview" if absent/unknown. Legacy
-// #history / #usage links map to the Analytics view with that sub-tab selected.
+// The view named by the URL hash, or "overview" if absent/unknown. The Analytics
+// sub-tabs (#history / #usage / #tags) map to the Analytics view with that
+// sub-tab selected, so a deep link or a refresh restores it.
 function viewFromHash() {
   let v = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
-  if (v === "history" || v === "usage") { state.analyticsTab = v; v = "analytics"; }
+  if (v === "history" || v === "usage" || v === "tags") { state.analyticsTab = v; v = "analytics"; }
   return VIEW_TITLES[v] ? v : "overview";
 }
 
