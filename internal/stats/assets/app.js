@@ -2671,18 +2671,19 @@ function renderTags() {
 }
 
 // One tag row. System (Glocker) tags: distraction is editable (stored as this
-// account's override); colour/name are fixed and there's no delete.
+// account's override); colour/name are fixed and there's no delete (the shared
+// namespace is already flagged in its header, so rows carry no extra marker).
 function tagRow(t, isSystem) {
   const dist = t.distraction ? " checked" : "";
   return `<div class="tagreg-row" data-id="${t.id}">
     <input type="color" class="tagreg-color" value="${esc(t.color || "#7c9cff")}"${isSystem ? " disabled" : ""} title="${isSystem ? "Shared tag colour is fixed" : "Tag colour"}" />
     <span class="tagreg-name">${esc(t.name)}</span>
-    <label class="tagreg-dist" title="Count this tag as a distraction in the work-hours insights">
-      <input type="checkbox" class="tagreg-dist-cb"${dist} /> distraction
+    <label class="switch" title="Count this tag as a distraction in the work-hours insights">
+      <input type="checkbox" class="tagreg-dist-cb"${dist} />
+      <span class="switch-track"><span class="switch-thumb"></span></span>
+      <span class="switch-text">distraction</span>
     </label>
-    ${isSystem
-      ? `<span class="tagreg-lock" title="Shared tag — rename/delete not available">shared</span>`
-      : `<button class="tagreg-del" type="button" title="Delete tag">&times;</button>`}
+    ${isSystem ? `` : `<button class="tagreg-del" type="button" title="Delete tag">&times;</button>`}
   </div>`;
 }
 
@@ -3531,14 +3532,12 @@ try {
 } catch { /* no localStorage -> defaults */ }
 const INSIGHT = {
   minViolations: 5,     // per-domain hits before we call it a pattern
-  minWorkSamples: 25,   // ~minutes of a work-hours app before it's worth blocking
+  minWorkSamples: 25,   // ~minutes of a work-hours distraction before it's worth blocking
+  minDistractionShare: 0.6, // an app must be mostly-distraction to suggest killing it
   workIdleMs: 5 * 60_000,
   minUninstalls: 3,
   minUnblocks: 3,
 };
-// Apps we treat as distractions without the user having to tag them. Tags (the
-// usage rules) extend this, but this keeps a fresh account useful.
-const DISTRACTION_APPS = new Set(["mpv", "vlc", "io.github.celluloid", "steam", "steam_app", "lutris", "spotify", "stremio", "kodi", "smplayer"]);
 const LEGIT_UNINSTALL = new Set(["maintenance", "testing", "update", "upgrade", "reinstall"]);
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -3625,29 +3624,45 @@ function insightVulnerableHours(violations, idx, blocked) {
   return out.sort((a, b) => b.weight - a.weight).slice(0, 6);
 }
 
-// 3. Entertainment apps during work hours that aren't forbidden programs yet.
+// 3. Apps that are mostly distractions during work hours (per the tag registry)
+// and aren't forbidden programs yet. A sample counts as a distraction when the
+// rules tag it with a tag flagged "distraction" (system Glocker:* tags with the
+// account's overrides applied, plus the account's own tags). An app is only
+// worth killing when nearly all of its work-hours time is distraction — so
+// media/game apps surface here while a browser (mixed use) is left to the
+// domain-block insight above.
 function insightWorkDistraction(usage, idx) {
-  const byApp = new Map();
+  const compiled = compileRules(state.rules);
+  const byApp = new Map(); // app -> { total, distract, tags:Set, title }
   for (const s of usage || []) {
     const a = s.active;
     if (!a || !a.class) continue;
     if (s.idleMs && s.idleMs > INSIGHT.workIdleMs) continue;
     const d = new Date(s.ts), wd = d.getDay(), hr = d.getHours();
     if (wd === 0 || wd === 6 || hr < workStart || hr >= workEnd) continue;
-    byApp.set(a.class, (byApp.get(a.class) || 0) + 1);
+    const rec = byApp.get(a.class) || { total: 0, distract: 0, tags: new Set(), title: "" };
+    rec.total++;
+    let isDistraction = false;
+    for (const t of matchedTags({ active: a }, compiled).values()) {
+      if (t.distraction) { isDistraction = true; rec.tags.add(tagLabel(t)); }
+    }
+    if (isDistraction) { rec.distract++; if (!rec.title && a.title) rec.title = a.title; }
+    byApp.set(a.class, rec);
   }
   const out = [];
-  for (const [app, count] of byApp) {
-    if (count < INSIGHT.minWorkSamples) continue;
-    if (!DISTRACTION_APPS.has(app.toLowerCase())) continue;
+  for (const [app, rec] of byApp) {
+    if (rec.distract < INSIGHT.minWorkSamples) continue;
+    if (rec.distract / rec.total < INSIGHT.minDistractionShare) continue; // mostly-distraction apps only
     if (idx.forbidden.has(app.toLowerCase())) continue;
+    const tagList = [...rec.tags].join(", ");
+    const eg = rec.title ? `, e.g. “${escHtml(rec.title)}”` : "";
     out.push({
       kind: "work",
       title: `${escHtml(app)} runs during work hours`,
-      evidence: `Active about ${count} min during work hours (${pad2(workStart)}:00–${pad2(workEnd)}:00, weekdays). It isn't a forbidden program.`,
+      evidence: `About ${rec.distract} min of ${escHtml(tagList) || "distraction"} during work hours (${pad2(workStart)}:00–${pad2(workEnd)}:00, weekdays)${eg}. It isn't a forbidden program.`,
       action: `Kill ${escHtml(app)} during work hours:`,
       config: `programs:\n  enabled: true\n  list:\n    - name: ${app}\n      kill_windows:\n        - { start: "${pad2(workStart)}:00", end: "${pad2(workEnd)}:00", days: ["Mon", "Tue", "Wed", "Thu", "Fri"] }`,
-      weight: count,
+      weight: rec.distract,
     });
   }
   return out.sort((a, b) => b.weight - a.weight);
@@ -3768,7 +3783,7 @@ async function renderInsights() {
 
   const groups = [
     { kind: "vuln", label: "Vulnerable hours", blurb: "Domains slipping through the content monitor that aren't blocked yet.", items: insightVulnerableHours(violations, idx, blocked) },
-    { kind: "work", label: "Work-hours apps", blurb: `Apps used ${pad2(workStart)}:00–${pad2(workEnd)}:00 on weekdays that aren't forbidden then.`, items: insightWorkDistraction(usage, idx) },
+    { kind: "work", label: "Work-hours apps", blurb: `Distraction-tagged apps (per your Tags registry) used ${pad2(workStart)}:00–${pad2(workEnd)}:00 on weekdays that aren't forbidden then.`, items: insightWorkDistraction(usage, idx) },
     { kind: "uninstall", label: "Uninstalls", blurb: "Uninstalls clustering while sudo is available.", items: insightUninstallWindow(lifecycle, idx) },
     { kind: "unblock", label: "Repeated unblocks", blurb: "Domains you keep temporarily unblocking.", items: insightUnblockWeakSpots(unblocks) },
     { kind: "extend", label: "Repeated extensions", blurb: "Forbidden programs you keep granting one-hour runs to.", items: insightRepeatedExtensions(unblocks) },
