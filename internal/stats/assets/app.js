@@ -520,6 +520,17 @@ async function bootDashboard(me) {
     restoreViolation({ recordId: btn.dataset.rid });
   });
 
+  // A chart sized while its collapsible panel was closed renders at 0×0; resize
+  // the charts once the panel is opened so they fill their revealed container.
+  document.querySelectorAll("details.collapse").forEach((d) => {
+    d.addEventListener("toggle", () => {
+      if (!d.open) return;
+      requestAnimationFrame(() => {
+        for (const c of Object.values(state.charts)) { try { c.resize(); } catch { /* mid-rebuild */ } }
+      });
+    });
+  });
+
   // Tag-contributor tree: click an app row to expand/collapse its windows and
   // show its common-title-words pie beside the list.
   document.getElementById("usage-tag-detail").addEventListener("click", (e) => {
@@ -1454,6 +1465,8 @@ async function restoreViolation(entry) {
 function renderIgnored() {
   const el = document.getElementById("ignored-list");
   if (!el) return;
+  const count = document.getElementById("ignored-count");
+  if (count) count.textContent = state.ignored.length ? String(state.ignored.length) : "";
   if (!state.ignored.length) {
     el.innerHTML = `<div class="empty">none — mark a hit &ldquo;not a violation&rdquo; in a day's detail to hide it here</div>`;
     return;

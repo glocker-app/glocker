@@ -172,11 +172,11 @@
 
           <!-- False positives hidden from the day-detail hit list -->
           <section class="panel">
-            <div class="panel-head">
-              <h2>Ignored violations</h2>
+            <details class="collapse">
+              <summary><h2>Ignored violations</h2><span id="ignored-count" class="collapse-count"></span></summary>
               <p class="panel-sub">Hits you marked &ldquo;not a violation&rdquo;. Hidden from every count; restore any to bring it back.</p>
-            </div>
-            <div id="ignored-list" class="ign-list"></div>
+              <div id="ignored-list" class="ign-list"></div>
+            </details>
           </section>
           </div><!-- /subview history -->
 
@@ -216,17 +216,17 @@
 
           <!-- Tag drill-down: which windows fed the selected tag -->
           <section class="panel">
-            <div class="panel-head">
-              <h2 id="usage-tag-detail-head">Tag contributors</h2>
+            <details class="collapse" open>
+              <summary><h2 id="usage-tag-detail-head">Tag contributors</h2></summary>
               <p class="panel-sub">Click a tag above, then an app to see its windows and common title words.</p>
-            </div>
-            <div class="tagc-split">
-              <div id="usage-tag-detail" class="tagtree"></div>
-              <div class="tagc-pie">
-                <div class="tagc-pie-head" id="tagc-pie-head">Common words</div>
-                <div id="tagc-pie-body"><div class="empty">click an app to see its common title words</div></div>
+              <div class="tagc-split">
+                <div id="usage-tag-detail" class="tagtree"></div>
+                <div class="tagc-pie">
+                  <div class="tagc-pie-head" id="tagc-pie-head">Common words</div>
+                  <div id="tagc-pie-body"><div class="empty">click an app to see its common title words</div></div>
+                </div>
               </div>
-            </div>
+            </details>
           </section>
 
           <!-- Untagged items feed rule creation. Collapsed by default — only
@@ -244,10 +244,9 @@
 
           <!-- Rules at the bottom -->
           <section class="panel">
-            <div class="panel-head">
-              <h2>Rules</h2>
-              <p class="panel-sub">Match on program &amp; title regexes (blank = anything) and attach a tag per namespace. Drag to reorder: first match per namespace wins. Edit tags on the <strong>Tags</strong> sub-tab.</p>
-            </div>
+            <details class="collapse" open>
+            <summary><h2>Rules</h2></summary>
+            <p class="panel-sub">Match on program &amp; title regexes (blank = anything) and attach a tag per namespace. Drag to reorder: first match per namespace wins. Edit tags on the <strong>Tags</strong> sub-tab.</p>
             <div class="rules-editor">
               <div class="rules-head">
                 <span></span><span>Program</span><span>Title</span><span>Tags</span><span></span>
@@ -270,6 +269,7 @@
               <span class="rules-status" id="rules-status"></span>
               <button id="rule-save" class="btn-primary" type="button">Save rules</button>
             </div>
+            </details>
           </section>
           </div><!-- /subview usage -->
 

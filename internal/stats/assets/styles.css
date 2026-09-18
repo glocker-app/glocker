@@ -911,6 +911,20 @@ canvas { max-height: 260px; }
 .untag-details .panel-sub { margin-top: 8px; }
 .untag-details .untag-list { margin-top: 12px; }
 
+/* Generic collapsible panel: a <details class="collapse"> whose <summary> is the
+   panel heading (the disclosure triangle rotates open). Body content follows the
+   summary and hides when collapsed. */
+.collapse > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 12px; }
+.collapse > summary::-webkit-details-marker { display: none; }
+.collapse > summary::before {
+  content: "\25B8"; color: var(--ink-faint); font-size: 12px;
+  display: inline-block; transition: transform 0.15s;
+}
+.collapse[open] > summary::before { transform: rotate(90deg); }
+.collapse > summary h2 { margin: 0; }
+.collapse-count { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
+.collapse > .panel-sub { margin-top: 8px; }
+
 /* ── Per-tag colour pickers ────────────────────────────── */
 .tag-colors { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 14px; }
 .tagcolor-empty { color: var(--ink-faint); font-family: var(--mono); font-size: 12px; }
