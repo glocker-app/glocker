@@ -92,6 +92,15 @@ func TestTagsRegistryAPI(t *testing.T) {
 	if tg := find(list(alice), "Activity", "reading"); tg == nil || !tg.Distraction || tg.Color != "#ff4d4d" {
 		t.Errorf("user tag edit didn't persist: %+v", tg)
 	}
+	// A partial PATCH (just the colour, as the colour picker sends) must not blank
+	// the namespace/name or reset distraction — the bug that made saving a colour
+	// delete the tag and collide on ux_tag.
+	if rec := send("PATCH", "/api/tags?id="+itoa(rid), `{"color":"#123456"}`, alice); rec.Code != http.StatusNoContent {
+		t.Fatalf("partial colour PATCH: %d %s", rec.Code, rec.Body.String())
+	}
+	if tg := find(list(alice), "Activity", "reading"); tg == nil || tg.Color != "#123456" || !tg.Distraction {
+		t.Errorf("colour-only PATCH should keep namespace/name/distraction, got %+v", tg)
+	}
 	if rec := send("DELETE", "/api/tags?id="+itoa(rid), "", alice); rec.Code != http.StatusNoContent {
 		t.Fatalf("delete user tag: %d", rec.Code)
 	}
