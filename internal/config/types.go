@@ -268,8 +268,47 @@ type Config struct {
 	// separate file (see GlockpeekConfig / GlockpeekConfigFile).
 	Sync SyncConfig `yaml:"sync"`
 
+	// Notifications configures glockpeek's accountability emails (a buddy digest +
+	// went-dark / high-violation alerts). Authored here for consistency with the
+	// rest of the config, but ACTED ON BY GLOCKPEEK — the agent sends no mail. The
+	// stanza rides the config sync to the server in cleartext (buddy addresses and
+	// cadence are routing metadata the server must see, like the account's own
+	// email) and glockpeek's scheduler sends.
+	Notifications NotificationsConfig `yaml:"notifications"`
+
 	// Panic mode.
 	Panic PanicConfig `yaml:"panic"`
+}
+
+// NotificationsConfig drives glockpeek's accountability emails. glockpeek is the
+// sender (the agent holds no Mailgun key); this is synced cleartext so the server
+// can read whom and how often to email. Content is counts + liveness only — the
+// server can't read encrypted record content, so it can't say *what* was
+// accessed; buddy-readable content is a separate multi-recipient feature.
+type NotificationsConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// BuddyEmails receive the digest + alerts. From is always glockpeek's
+	// configured sender (glockerapp.com).
+	BuddyEmails []string `yaml:"buddy_emails"`
+	// DigestEveryHours is the rolling-summary cadence (typically 3, 6, 12, or 24).
+	// 0 disables the periodic digest; alerts below can still fire.
+	DigestEveryHours int `yaml:"digest_every_hours"`
+	// DigestWhenQuiet sends the digest even when nothing happened in the window
+	// (an "all clear" liveness ping) rather than skipping empty windows.
+	DigestWhenQuiet bool `yaml:"digest_when_quiet"`
+	// Alerts fire immediately, not held for the next digest.
+	Alerts NotifyAlertsConfig `yaml:"alerts"`
+}
+
+// NotifyAlertsConfig are the immediate accountability alerts.
+type NotifyAlertsConfig struct {
+	// WentDark emails when the agent is uninstalled or its heartbeat gaps during
+	// committed use — the dead-man's switch (only glockpeek can send it; a killed
+	// agent can't).
+	WentDark bool `yaml:"went_dark"`
+	// HighViolations emails once a digest window crosses this many violations.
+	// 0 disables it.
+	HighViolations int `yaml:"high_violations"`
 }
 
 // SyncConfig controls the glocker->glockpeek syncer. The agent keeps recording

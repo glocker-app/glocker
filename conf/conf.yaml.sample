@@ -251,6 +251,21 @@ sync:
   # encrypt_key_file: "/etc/glocker/e2e.key"   # optional; master key path (base64 of 32 bytes). Read only
                                           #   when encrypt is true. Defaults to /etc/glocker/e2e.key if unset.
 
+# ── Accountability notifications (sent by glockpeek, not the agent) ────────────
+# glockpeek emails an accountability buddy. Authored here but the SERVER sends it:
+# this stanza is synced to glockpeek in cleartext (it needs the addresses/cadence
+# to send). Content is counts + liveness only — glockpeek can't read your encrypted
+# records, so it reports "how much / went dark", never "what". Requires glockpeek's
+# mail to be configured (see conf/glockpeek.yaml.sample).
+notifications:
+  enabled: false
+  buddy_emails: []              # who gets the digest + alerts, e.g. ["friend@example.com"]
+  digest_every_hours: 24        # rolling summary cadence: 3, 6, 12, or 24. 0 = no periodic digest
+  digest_when_quiet: false      # true = also send an "all clear" when nothing happened
+  alerts:                       # fire immediately, not held for the next digest
+    went_dark: true             # agent uninstalled / heartbeat gap during use (the dead-man's switch)
+    high_violations: 0          # email once a window crosses N violations (0 = off)
+
 # ── Panic mode ────────────────────────────────────────────────────────────────
 # `glocker -panic N`: emergency offline enforcement. pm-suspend suspends until you
 # wake it; use rtcwake to auto-wake after the duration. Disable to refuse -panic.

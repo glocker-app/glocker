@@ -46,6 +46,19 @@ type configUpload struct {
 	Config        string `json:"config"`
 	BlocklistHash string `json:"blocklistHash,omitempty"`
 	Blocklist     string `json:"blocklist,omitempty"`
+	// Notify is the accountability-notification config, sent cleartext (glockpeek
+	// is the sender and must read whom/how-often to email). Absent on older agents.
+	Notify *notifyUpload `json:"notify,omitempty"`
+}
+
+// notifyUpload mirrors the agent's cleartext notification wire shape.
+type notifyUpload struct {
+	Enabled          bool     `json:"enabled"`
+	BuddyEmails      []string `json:"buddyEmails,omitempty"`
+	DigestEveryHours int      `json:"digestEveryHours"`
+	DigestWhenQuiet  bool     `json:"digestWhenQuiet"`
+	WentDark         bool     `json:"wentDark"`
+	HighViolations   int      `json:"highViolations"`
 }
 
 func handleConfigPost(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +92,18 @@ func handleConfigPost(w http.ResponseWriter, r *http.Request) {
 	// snapshot-only upload never touches the multi-MB column.
 	if in.BlocklistHash != "" && in.Blocklist != "" {
 		if err := db.SaveDeviceBlocklist(uid, dev, in.BlocklistHash, in.Blocklist); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	// Notification config (cleartext) is account-level; the latest sync wins.
+	if in.Notify != nil {
+		n := in.Notify
+		if err := db.SaveNotifyConfig(uid, store.NotifyConfig{
+			Enabled: n.Enabled, BuddyEmails: store.EncodeBuddies(n.BuddyEmails),
+			DigestEveryHours: n.DigestEveryHours, DigestWhenQuiet: n.DigestWhenQuiet,
+			WentDark: n.WentDark, HighViolations: n.HighViolations,
+		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
