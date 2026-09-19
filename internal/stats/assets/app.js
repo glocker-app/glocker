@@ -491,26 +491,25 @@ async function bootDashboard(me) {
     if (cell) showDay(Number(cell.dataset.ts));
   });
 
-  // Left-nav view switching drives the URL hash; the hashchange handler below
-  // (and the initial hash) is what actually applies the view — so deep links
-  // and browser back/forward all work.
+  // Left-nav view switching → clean URL paths via pushState. popstate (back/
+  // forward) and the initial path are what apply the view, so deep links and
+  // browser history all work.
   document.getElementById("nav").addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-view]");
-    if (!btn) return;
-    // Analytics routes to its current sub-tab hash (history/usage/tags) so the
-    // URL always names the sub-view and a refresh restores it.
-    if (btn.dataset.view === "analytics") { location.hash = state.analyticsTab || "history"; return; }
-    routeTo(btn.dataset.view);
+    if (btn) routeTo(btn.dataset.view);
   });
-  window.addEventListener("hashchange", () => setView(viewFromHash()));
+  window.addEventListener("popstate", () => setView(viewFromPath()));
 
-  // Analytics sub-tabs (History / Usage / Tags). Drive them through the URL hash
-  // so the selection lives in the address bar and a refresh restores it; setting
-  // the hash fires the hashchange handler, which applies it via setView ->
-  // setSubtab (setting it to the current value is a no-op).
+  // Analytics sub-tabs (History / Usage / Tags): each is its own clean path
+  // (/analytics/<tab>) so the selection lives in the address bar and a refresh
+  // restores it.
   document.getElementById("analytics-subtabs").addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-subtab]");
-    if (btn) location.hash = btn.dataset.subtab;
+    if (!btn) return;
+    state.analyticsTab = btn.dataset.subtab;
+    const path = "/analytics/" + btn.dataset.subtab;
+    if (location.pathname !== path) history.pushState({}, "", path);
+    setSubtab(btn.dataset.subtab);
   });
 
   // Mark a violation as a false positive from the day-detail hit list.
@@ -563,24 +562,47 @@ async function bootDashboard(me) {
   setupRules();
   renderFooter();
   render();
-  setView(viewFromHash()); // honour a deep-linked view like #usage on load
+  migrateLegacyHash();     // turn an old #usage-style bookmark into the clean URL
+  setView(viewFromPath()); // honour a deep-linked path like /analytics/usage on load
 }
 
-// The view named by the URL hash, or "overview" if absent/unknown. The Analytics
-// sub-tabs (#history / #usage / #tags) map to the Analytics view with that
-// sub-tab selected, so a deep link or a refresh restores it.
-function viewFromHash() {
-  let v = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
-  if (v === "history" || v === "usage" || v === "tags") { state.analyticsTab = v; v = "analytics"; }
+// The view named by the URL path, or "overview" if absent/unknown. Analytics
+// sub-tabs live at /analytics/<history|usage|tags>, so a deep link or refresh
+// restores the sub-view.
+function viewFromPath() {
+  const seg = location.pathname.split("/").filter(Boolean);
+  const v = seg[0] || "overview";
+  if (v === "analytics") {
+    const sub = seg[1];
+    if (sub === "history" || sub === "usage" || sub === "tags") state.analyticsTab = sub;
+    return "analytics";
+  }
   return VIEW_TITLES[v] ? v : "overview";
 }
 
-// Navigate to a view by updating the hash; the hashchange handler applies it.
-// If the hash already matches (e.g. re-clicking the current tab), apply directly
-// since no hashchange event would fire.
+// The canonical clean-URL path for a view (Analytics carries its sub-tab).
+function pathFor(view) {
+  if (view === "analytics") return "/analytics/" + (state.analyticsTab || "history");
+  return view === "overview" ? "/" : "/" + view;
+}
+
+// Navigate to a view by pushing its clean URL, then applying it (pushState does
+// not fire popstate, so apply directly). Re-clicking the current view is a no-op
+// push that still re-applies.
 function routeTo(view) {
-  if (viewFromHash() === view) setView(view);
-  else location.hash = view;
+  const path = pathFor(view);
+  if (location.pathname !== path) history.pushState({}, "", path);
+  setView(view);
+}
+
+// One-time migration for old #hash deep links (#usage, #config, …): rewrite them
+// to the equivalent clean URL so existing bookmarks keep working.
+function migrateLegacyHash() {
+  if (location.pathname !== "/" || !location.hash) return;
+  const h = decodeURIComponent(location.hash.replace(/^#\/?/, ""));
+  const sub = { history: "history", usage: "usage", tags: "tags" }[h];
+  const path = sub ? "/analytics/" + sub : (VIEW_TITLES[h] ? (h === "overview" ? "/" : "/" + h) : null);
+  if (path) history.replaceState({}, "", path);
 }
 
 function setView(view) {
