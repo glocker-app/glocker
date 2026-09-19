@@ -4,11 +4,34 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"strconv"
 	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// dedupLast collapses rows that share a conflict key to their last occurrence,
+// preserving first-seen order. Required before an ON CONFLICT DO UPDATE upsert:
+// Postgres rejects a batch that targets the same row twice ("cannot affect row a
+// second time", SQLSTATE 21000), and duplicate log records do occur (e.g. two
+// violations with identical ts|keyword|url hash to the same record_id).
+func dedupLast[T any](rows []T, key func(T) string) []T {
+	if len(rows) < 2 {
+		return rows
+	}
+	idx := make(map[string]int, len(rows))
+	out := make([]T, 0, len(rows))
+	for _, r := range rows {
+		if i, ok := idx[key(r)]; ok {
+			out[i] = r // keep the last value at the first-seen position
+		} else {
+			idx[key(r)] = len(out)
+			out = append(out, r)
+		}
+	}
+	return out
+}
 
 // hashURL returns a fixed-size, index-safe fingerprint of a URL. It backs the
 // violations/ignored unique index, which can't hold a raw URL (some exceed
@@ -120,6 +143,7 @@ func (db *DB) IngestViolations(userID, deviceID uint, rows []Violation) error {
 		rows[i].DeviceID = deviceID
 		rows[i].URLHash = hashURL(rows[i].URL)
 	}
+	rows = dedupLast(rows, func(v Violation) string { return v.RecordID })
 	// Upsert the content columns on conflict (not just insert-or-ignore) so a
 	// `glocker -resync` can overwrite a row's stored fields in place — e.g. to
 	// re-encrypt a field that used to ship in cleartext. record_id is the stable
@@ -141,6 +165,7 @@ func (db *DB) IngestUnblocks(userID, deviceID uint, rows []Unblock) error {
 		rows[i].UserID = userID
 		rows[i].DeviceID = deviceID
 	}
+	rows = dedupLast(rows, func(u Unblock) string { return u.RecordID })
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "record_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"restore_ts", "reason", "domain"}),
@@ -155,6 +180,7 @@ func (db *DB) IngestLifecycle(userID, deviceID uint, rows []LifecycleEvent) erro
 		rows[i].UserID = userID
 		rows[i].DeviceID = deviceID
 	}
+	rows = dedupLast(rows, func(l LifecycleEvent) string { return strconv.FormatInt(l.TS, 10) + "|" + l.Type })
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "ts"}, {Name: "type"}},
 		DoUpdates: clause.AssignmentColumns([]string{"reason", "note"}),
@@ -169,6 +195,7 @@ func (db *DB) IngestUsage(userID, deviceID uint, rows []UsageSample) error {
 		rows[i].UserID = userID
 		rows[i].DeviceID = deviceID
 	}
+	rows = dedupLast(rows, func(u UsageSample) string { return strconv.FormatInt(u.TS, 10) })
 	// On conflict, overwrite the content columns so a re-sync re-encrypts them
 	// (the whole point of `glocker -resync`). Previously DoNothing, which silently
 	// made a backfill a no-op for already-stored rows — so enabling encryption for
