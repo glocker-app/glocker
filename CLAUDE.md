@@ -423,7 +423,13 @@ Server started by internal/web/server.go:StartWebTrackingServer()
   minimal built-in defaults. `/api/me` returns `{auth}`
   so the frontend hides sign-out in single-user mode.
 - `stats.Register(mux, db, Options{SecureCookies})` mounts:
-  - `GET /` - dashboard (embedded frontend in `internal/stats/assets`) — **public**
+  - `GET /` (and the clean view URLs `/overview`, `/analytics`, `/analytics/<tab>`,
+    `/insights`, `/config`, `/devices`, `/users`) - the server-rendered SSR shell
+    (`internal/stats/templates/dashboard.html.tmpl`); app.js's client router shows
+    the right view from the path, so a deep link / refresh works — **public**
+  - `GET /settings/encryption` - server-rendered E2E setup page (SSR replacement
+    for the old standalone `setup-encryption.html`); gated (redirects to `/` if not
+    signed in), crypto stays client-side (`assets/encryption-setup.js`)
   - `POST /api/login` — **public**; `POST /api/logout`, `GET /api/me` — session
   - `GET /api/data` - full history (session-gated), unmanaged/downtime derived from
     lifecycle/heartbeat rows; ignored overlay filtered in `buildData`
@@ -450,10 +456,16 @@ Server started by internal/web/server.go:StartWebTrackingServer()
     `/api/tokens`, `/api/admin/users`, `/verify`, billing) — this list is not exhaustive.
   - Legacy `/stats`, `/stats/` 301-redirect to `/`. (The old
     `glocker.localhost/stats` alias in hosts.go is vestigial.)
-- The frontend lives solely in `internal/stats/assets/` (embedded via `go:embed`).
-  The old standalone `glockpeek-web/` node app was removed; there is no longer a
-  second copy to mirror. `app.js` gates on `GET /api/me` and shows a login screen
-  when unauthenticated.
+- The frontend is a **hybrid** (SSR/HTMX migration, in progress): the chrome is
+  server-rendered from `internal/stats/templates/*.tmpl` (Go `html/template`, via
+  `internal/stats/pages.go`), while the encrypted-analytics view stays a
+  client-side JS island (`internal/stats/assets/app.js` + Chart.js), because the
+  server can't see record content. Both are embedded via `go:embed`; no bundler,
+  no `node_modules` (the old `glockpeek-web/` node app was removed). Routing is
+  clean-URL/path-based (History API) with `app.js` still owning view-switching and,
+  for now, the embedded client login (it gates on `GET /api/me`). **Remaining
+  (stage 4, not yet done):** extract the login/register and config/devices/admin
+  flows into SSR templates. See `PLAN.md` (SSR/HTMX migration) for stage status.
 
 **Syncer (`internal/syncer/`, a goroutine in the glocker daemon):**
 - Wired in cmd/glocker/main.go under `cfg.Sync.Enabled`: `go syncer.New(cfg).Run()`.
