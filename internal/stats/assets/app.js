@@ -2905,14 +2905,10 @@ function renderUsageReadout(u, available) {
 
 // Like renderRanklist, but the value is a duration rather than a count.
 
-// The footer just shows the build tag now (git describe, from /api/me), so you
-// can tell what version the dashboard is running.
-function renderFooter() {
-  const el = document.getElementById("footer-version");
-  if (!el) return;
-  const v = state.me && state.me.version;
-  el.innerHTML = v ? `<span class="ver">${esc(v)}</span>` : "";
-}
+// The footer build tag is now server-rendered into the shell template
+// (dashboard.html.tmpl, injected from buildVersion), so there's nothing to do
+// here. Kept as a no-op so existing callers don't need touching.
+function renderFooter() { /* server-rendered */ }
 
 // ── Chart.js helpers ────────────────────────────────────
 function cssVar(name) {

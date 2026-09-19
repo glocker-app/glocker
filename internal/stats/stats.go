@@ -107,7 +107,18 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	// Login is also unauthenticated; throttle per IP to blunt password guessing
 	// while leaving room for a legitimate user's typos: a burst of 10, then ~10/min.
 	loginLimiter := newIPRateLimiter(rate.Every(6*time.Second), 10, time.Hour)
-	mux.Handle("/", fileServer)
+	// Root ("/") is now server-rendered from templates/dashboard.html.tmpl (the SSR
+	// shell); every other path under it is a static asset served by fileServer.
+	// The shell markup is byte-identical to the old index.html so app.js — which
+	// still owns the analytics island + client login — works unchanged; the server
+	// just renders the chrome and injects the build version.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		renderPage(w, "dashboard.html.tmpl", struct{ Version string }{buildVersion})
+	})
 	mux.HandleFunc("/api/login", rateLimited(loginLimiter, handleLogin))
 	mux.HandleFunc("/api/register", rateLimited(regLimiter, handleRegister))
 	mux.HandleFunc("/verify", handleVerify) // browser link from the email, not /api/
