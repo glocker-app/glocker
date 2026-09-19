@@ -335,11 +335,9 @@ async function bootDashboard(me) {
   state.me = me; // stash identity (billing flag, subStatus, deviceLimit) for the UI
   // Hosted is end-to-end-encrypted only: an account with no key vault must set a
   // passphrase before it can reach the dashboard. Both the fresh-load and the
-  // post-login paths funnel through here. (Temporary bounce to the standalone
-  // setup page; the planned HTMX/SSR migration replaces this with a real
-  // server-side /settings/encryption route and clean URL.)
+  // post-login paths funnel through here → the SSR encryption-setup route.
   if (me && me.auth && !me.e2e) {
-    location.href = "setup-encryption.html";
+    location.href = "/settings/encryption";
     return;
   }
   // If the account's data is encrypted, unlock the vault (prompt for passphrase)

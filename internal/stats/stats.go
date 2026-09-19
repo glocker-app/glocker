@@ -111,6 +111,8 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	mux.HandleFunc("/api/login", rateLimited(loginLimiter, handleLogin))
 	mux.HandleFunc("/api/register", rateLimited(regLimiter, handleRegister))
 	mux.HandleFunc("/verify", handleVerify) // browser link from the email, not /api/
+	// SSR pages (Go html/template; chrome only — client crypto/analytics stay JS).
+	mux.HandleFunc("/settings/encryption", handleEncryptionSetup)
 	if o.Captcha {
 		// Public: the signup captcha challenge (the frontend fetches + solves it).
 		mux.HandleFunc("/api/altcha", handleAltchaChallenge)
