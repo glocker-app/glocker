@@ -309,12 +309,13 @@ async function decryptData(data) {
         try {
           a[field] = td.decode(await decryptField(masterKey, a[field], te.encode(`${row.ts}|usage|${label}`)));
         } catch {
-          // The key is vault-verified, so a failure means a legacy row synced
-          // before this field was encrypted (still cleartext in the DB). Title
-          // shows the lock glyph as before; class/instance keep their cleartext
-          // value so pre-encryption history still classifies until a -resync
-          // overwrites those rows with ciphertext.
-          if (field === "title") { a.title = "🔒"; failures++; }
+          // No silent fallback: a field that won't decrypt shows the lock glyph
+          // and counts as a failure, so a still-cleartext (pre-encryption) or
+          // wrong-key row is visibly broken rather than passing as real data —
+          // that's how you can tell the encryption is actually in effect. Legacy
+          // rows read 🔒 until a `glocker -resync` re-encrypts them.
+          a[field] = "🔒";
+          failures++;
         }
       }
     }
