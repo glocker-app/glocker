@@ -63,6 +63,19 @@ func (db *DB) EnabledNotifyConfigs() ([]NotifyConfig, error) {
 	return out, err
 }
 
+// LatestHeartbeatTS returns the newest heartbeat timestamp (epoch ms) across all
+// of an account's devices, and whether the account has any heartbeat at all. Used
+// to detect "went dark": no heartbeat for a while means the agent is down.
+func (db *DB) LatestHeartbeatTS(userID uint) (int64, bool) {
+	var max *int64
+	err := db.Model(&Heartbeat{}).Where("user_id = ?", userID).
+		Select("MAX(ts)").Scan(&max).Error
+	if err != nil || max == nil {
+		return 0, false
+	}
+	return *max, true
+}
+
 // MarkDigestSent / MarkWentDarkSent / MarkHighViolSent stamp the throttle fields.
 func (db *DB) MarkDigestSent(userID uint, at int64) error {
 	return db.Model(&NotifyConfig{}).Where("user_id = ?", userID).Update("last_digest_at", at).Error

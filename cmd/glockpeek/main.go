@@ -31,6 +31,7 @@ import (
 
 	"glocker/internal/config"
 	"glocker/internal/mailer"
+	"glocker/internal/notifier"
 	"glocker/internal/stats"
 	"glocker/internal/store"
 )
@@ -155,10 +156,11 @@ func main() {
 		return
 	}
 
+	mailSvc := mailer.New(mailCfg)
 	opts := stats.Options{
 		Auth:          hosted,
 		SecureCookies: secureCookies,
-		Mailer:        mailer.New(mailCfg),
+		Mailer:        mailSvc,
 		AppURL:        appURL,
 		AdminEmail:        adminEmail,
 		Captcha:           captcha,
@@ -179,6 +181,11 @@ func main() {
 
 	mux := http.NewServeMux()
 	stats.Register(mux, db, opts)
+
+	// Accountability emails (periodic digest + went-dark alerts) run server-side —
+	// only glockpeek can send when the agent is dead. Reads each account's synced
+	// notification config; a no-op if mail is unconfigured or nobody opted in.
+	go notifier.New(db, mailSvc, appURL).Run()
 
 	// Note: the DSN is deliberately NOT logged — it can carry a database password.
 	log.Printf("glockpeek %s serving the dashboard at http://%s/ (%s); db driver %s", version, addr, desc, driver)

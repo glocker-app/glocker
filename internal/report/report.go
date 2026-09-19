@@ -51,8 +51,18 @@ type LifecycleLine struct {
 // Build assembles the report for userID over the 24 hours ending at end, i.e.
 // the window (end-24h, end]. It reads only stored records, so it works purely
 // from what the syncer has ingested.
+// Build is the 24-hour report (the default digest window).
 func Build(db *store.DB, userID uint, end time.Time) (Report, error) {
-	start := end.Add(-24 * time.Hour)
+	return BuildWindow(db, userID, end, 24*time.Hour)
+}
+
+// BuildWindow assembles the report for userID over (end-window, end]. It reads
+// only stored records, so it works purely from what the syncer ingested — the
+// COUNTS (Violations/Unblocks/UnmanagedMinutes) are correct even under E2E; the
+// ByKeyword/Domain detail is meaningful only in plaintext mode (ciphertext
+// otherwise), so a content-blind sender must ignore it.
+func BuildWindow(db *store.DB, userID uint, end time.Time, window time.Duration) (Report, error) {
+	start := end.Add(-window)
 	startMS, endMS := start.UnixMilli(), end.UnixMilli()
 	inWindow := func(ts int64) bool { return ts >= startMS && ts <= endMS }
 
