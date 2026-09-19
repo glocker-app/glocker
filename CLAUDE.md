@@ -130,11 +130,23 @@ glocker -uninstall "reason"
 
 ### Notifications
 - The agent sends **no notifications of its own** — no desktop toasts (the
-  `internal/notify` package was removed) and no email. Accountability
-  notifications and the daily report are glockpeek's job (`internal/mailer`,
-  server-side; `internal/report` builds the DB-backed daily report). Local
-  feedback on events comes from per-feature commands instead
-  (`domains.blocked_access_command`, the violation-tracking lock command, etc.).
+  `internal/notify` package was removed) and no email. Local feedback on events
+  comes from per-feature commands instead (`domains.blocked_access_command`, the
+  violation-tracking lock command, etc.).
+- **Accountability email is glockpeek's job** (only it can send when the agent is
+  dead). It's configured in the agent's `conf.yaml` `notifications:` stanza
+  (enabled, `buddy_emails`, `digest_every_hours`, `digest_when_quiet`,
+  `alerts.went_dark`/`high_violations`) but **authored-there, sent-by-glockpeek**:
+  the stanza rides the config sync as a **cleartext** `notify` field (outside the
+  encrypted snapshot blob, so glockpeek can read whom/how-often to email) and is
+  stored account-level in `store.NotifyConfig` (latest sync wins).
+  `internal/notifier` is the server-side scheduler (a goroutine in
+  `cmd/glockpeek`): it sends a periodic digest (`internal/report` counts —
+  `BuildWindow` over the cadence) and an immediate **went-dark** alert (newest
+  heartbeat older than 15m — the dead-man's switch). Emails are **content-free**:
+  under E2E glockpeek holds only ciphertext, so they carry counts + liveness,
+  never *what* was accessed. Buddy-readable content (multi-recipient encryption +
+  a buddy onboarding flow) is a separate, future feature.
 
 ### State Management (`internal/state/`)
 - **`state.go`** - Thread-safe global state
