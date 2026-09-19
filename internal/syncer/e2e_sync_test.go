@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"encoding/base64"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -74,6 +75,53 @@ func TestNewLoadsKeyAndEncrypts(t *testing.T) {
 	}
 	if got := s.enc("secret", 1, "violation", "url"); got == "secret" || got == "" {
 		t.Fatalf("expected encryption via the loaded key, got %q", got)
+	}
+}
+
+// TestUsageAppIdentitySealed guards that the app identity (class + instance),
+// not just the title, ships encrypted under the ts-bound aad the browser
+// decrypts with. Catches a regression that would leak which apps you run.
+func TestUsageAppIdentitySealed(t *testing.T) {
+	mk, _ := e2e.GenerateMasterKey()
+	c := newCapture(t)
+	dir := t.TempDir()
+	s := testSyncer(c.srv.URL, dir, "tok", c.srv.Client())
+	s.e2e, s.mk = true, mk
+	write(t, s.paths.usage,
+		`{"ts":"2026-07-07T15:36:11+05:30","idle_ms":5,"windows":[{"active":true,"class":"com.anthropic.Claude","instance":"com.anthropic.claude","title":"Claude"}]}`+"\n")
+
+	s.syncOnce()
+
+	posts := c.posts()
+	if len(posts) != 1 || len(posts[0].Usage) != 1 {
+		t.Fatalf("expected one usage row posted, got %+v", posts)
+	}
+	u := posts[0].Usage[0]
+	if u.ActiveClass == "com.anthropic.Claude" || u.ActiveInstance == "com.anthropic.claude" {
+		t.Fatalf("app identity shipped in cleartext: class=%q instance=%q", u.ActiveClass, u.ActiveInstance)
+	}
+	// Each field decrypts back with `${ts}|usage|${label}` — the exact aad the
+	// dashboard uses (internal/stats/assets/app.js decryptData).
+	dec := func(field, label string) string {
+		raw, err := base64.StdEncoding.DecodeString(field)
+		if err != nil || len(raw) < 12 {
+			t.Fatalf("%s not base64 ciphertext: %q (%v)", label, field, err)
+		}
+		aad := []byte(fmt.Sprintf("%d|usage|%s", u.TS, label))
+		pt, err := e2e.DecryptRecord(mk, e2e.Box{Nonce: raw[:12], Ct: raw[12:]}, aad)
+		if err != nil {
+			t.Fatalf("decrypt %s failed: %v", label, err)
+		}
+		return string(pt)
+	}
+	if got := dec(u.ActiveClass, "activeClass"); got != "com.anthropic.Claude" {
+		t.Errorf("activeClass decrypted = %q", got)
+	}
+	if got := dec(u.ActiveInstance, "activeInstance"); got != "com.anthropic.claude" {
+		t.Errorf("activeInstance decrypted = %q", got)
+	}
+	if got := dec(u.ActiveTitle, "activeTitle"); got != "Claude" {
+		t.Errorf("activeTitle decrypted = %q", got)
 	}
 }
 

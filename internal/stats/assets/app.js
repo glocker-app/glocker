@@ -293,17 +293,28 @@ async function decryptData(data) {
       }
     }
   }
-  // Usage nests the active window (active.title), sealed under the aad label
-  // "activeTitle"; class/instance stay plaintext for now.
+  // Usage nests the active window: title, class (app name) and instance are all
+  // sealed (aad labels activeTitle / activeClass / activeInstance).
+  const usageFields = [
+    ["title", "activeTitle"],
+    ["class", "activeClass"],
+    ["instance", "activeInstance"],
+  ];
   if (Array.isArray(data.usage)) {
     for (const row of data.usage) {
       const a = row.active;
-      if (a && a.title) {
+      if (!a) continue;
+      for (const [field, label] of usageFields) {
+        if (!a[field]) continue;
         try {
-          a.title = td.decode(await decryptField(masterKey, a.title, te.encode(`${row.ts}|usage|activeTitle`)));
+          a[field] = td.decode(await decryptField(masterKey, a[field], te.encode(`${row.ts}|usage|${label}`)));
         } catch {
-          a.title = "🔒";
-          failures++;
+          // The key is vault-verified, so a failure means a legacy row synced
+          // before this field was encrypted (still cleartext in the DB). Title
+          // shows the lock glyph as before; class/instance keep their cleartext
+          // value so pre-encryption history still classifies until a -resync
+          // overwrites those rows with ciphertext.
+          if (field === "title") { a.title = "🔒"; failures++; }
         }
       }
     }

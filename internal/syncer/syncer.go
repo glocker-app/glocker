@@ -486,10 +486,13 @@ func (s *Syncer) build() (Payload, map[string]int64) {
 			if r.TS <= cur {
 				continue
 			}
-			// The window title is the sensitive bit (document/URL/message text);
-			// class/instance (app names) stay clear for now. Encrypting them too is a
-			// follow-up that needs a coordinated agent+browser change + re-sync.
+			// Seal the whole active window: the title (document/URL/message text)
+			// and the app identity (class/instance, e.g. "com.anthropic.Claude") —
+			// the latter reveals which apps you run. Classification runs client-side
+			// after decryption now, so the server no longer needs the class in clear.
 			r.ActiveTitle = s.enc(r.ActiveTitle, r.TS, "usage", "activeTitle")
+			r.ActiveClass = s.enc(r.ActiveClass, r.TS, "usage", "activeClass")
+			r.ActiveInstance = s.enc(r.ActiveInstance, r.TS, "usage", "activeInstance")
 			p.Usage = append(p.Usage, r)
 			max["usage"] = maxi(max["usage"], r.TS)
 		}
