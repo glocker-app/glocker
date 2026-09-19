@@ -120,14 +120,19 @@ func (db *DB) IngestViolations(userID, deviceID uint, rows []Violation) error {
 		rows[i].DeviceID = deviceID
 		rows[i].URLHash = hashURL(rows[i].URL)
 	}
+	// Upsert the content columns on conflict (not just insert-or-ignore) so a
+	// `glocker -resync` can overwrite a row's stored fields in place — e.g. to
+	// re-encrypt a field that used to ship in cleartext. record_id is the stable
+	// dedup key (HMAC over plaintext), so the natural key doesn't move.
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "record_id"}},
-		DoNothing: true,
+		DoUpdates: clause.AssignmentColumns([]string{"keyword", "url", "type", "domain", "url_hash"}),
 	}).CreateInBatches(rows, 500).Error
 }
 
-// IngestUnblocks upserts unblock events; on conflict updates restore_ts+reason so
-// a later sync can close an unblock that was open when first sent.
+// IngestUnblocks upserts unblock events; on conflict updates the mutable/content
+// columns (restore_ts to close an open unblock, and reason/domain so a re-sync can
+// re-encrypt them).
 func (db *DB) IngestUnblocks(userID, deviceID uint, rows []Unblock) error {
 	if len(rows) == 0 {
 		return nil
@@ -138,7 +143,7 @@ func (db *DB) IngestUnblocks(userID, deviceID uint, rows []Unblock) error {
 	}
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "record_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"restore_ts", "reason"}),
+		DoUpdates: clause.AssignmentColumns([]string{"restore_ts", "reason", "domain"}),
 	}).CreateInBatches(rows, 500).Error
 }
 
@@ -152,7 +157,7 @@ func (db *DB) IngestLifecycle(userID, deviceID uint, rows []LifecycleEvent) erro
 	}
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "ts"}, {Name: "type"}},
-		DoNothing: true,
+		DoUpdates: clause.AssignmentColumns([]string{"reason", "note"}),
 	}).CreateInBatches(rows, 500).Error
 }
 
@@ -164,9 +169,13 @@ func (db *DB) IngestUsage(userID, deviceID uint, rows []UsageSample) error {
 		rows[i].UserID = userID
 		rows[i].DeviceID = deviceID
 	}
+	// On conflict, overwrite the content columns so a re-sync re-encrypts them
+	// (the whole point of `glocker -resync`). Previously DoNothing, which silently
+	// made a backfill a no-op for already-stored rows — so enabling encryption for
+	// active_class/instance never took effect on history until this changed.
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "ts"}},
-		DoNothing: true,
+		DoUpdates: clause.AssignmentColumns([]string{"idle_ms", "active_class", "active_instance", "active_title", "window_count"}),
 	}).CreateInBatches(rows, 500).Error
 }
 

@@ -63,6 +63,12 @@ func TestIngestIdempotent(t *testing.T) {
 	if len(us) != 1 {
 		t.Errorf("want 1 usage sample, got %d", len(us))
 	}
+	// A re-push of the same (user, ts) overwrites the content in place — this is
+	// what lets `glocker -resync` re-encrypt a field. (Was DoNothing, which left
+	// the old value and silently no-op'd the backfill.)
+	if len(us) == 1 && us[0].ActiveClass != "firefox" {
+		t.Errorf("re-ingest should overwrite active_class, got %q (want firefox)", us[0].ActiveClass)
+	}
 }
 
 // TestTenantIsolation is the crux of the multi-tenant model: one account never
