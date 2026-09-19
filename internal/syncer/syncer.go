@@ -373,27 +373,128 @@ func (s *Syncer) seedCursors() {
 
 // syncOnce builds a payload of records newer than the cursors and posts it.
 // Cursors only advance on a successful post, so a failed cycle is retried whole.
+// backfillChunk caps how many records go in one /api/ingest POST. A large
+// backfill (a full -resync, or a first sync against an empty glockpeek) is split
+// into several requests that each finish well under the client's 30s timeout, and
+// progress persists per chunk (each chunk advances the cursor on success). A
+// normal incremental tick is a single small chunk — same as before.
+const backfillChunk = 5000
+
 func (s *Syncer) syncOnce() {
-	p, maxTS := s.build()
+	p, _ := s.build()
 	if p.empty() {
 		return
 	}
-	if err := s.post(p); err != nil {
-		slog.Warn("syncer post failed; will retry", "error", err)
-		state.RecordSyncError(err.Error()) // surfaced by `glocker -status`
-		return
+	chunks := chunkPayload(p, backfillChunk)
+	total := 0
+	for _, c := range chunks {
+		total += c.count
 	}
-	for src, ts := range maxTS {
-		if ts > s.cursors[src] {
-			s.cursors[src] = ts
+	multi := len(chunks) > 1
+	if multi {
+		slog.Info("syncer: backfill starting", "records", total, "chunks", len(chunks))
+	}
+	pushed := 0
+	for i, c := range chunks {
+		if err := s.post(c.p); err != nil {
+			slog.Warn("syncer post failed; will retry", "error", err, "pushed", pushed, "of", total)
+			state.RecordSyncError(err.Error()) // surfaced by `glocker -status`
+			return                             // cursors for pushed chunks already advanced; the rest retry
+		}
+		for src, ts := range c.perSrc {
+			if ts > s.cursors[src] {
+				s.cursors[src] = ts
+			}
+		}
+		pushed += c.count
+		state.RecordSync(c.counts(), s.cursors) // surfaced by `glocker -status`
+		if multi {
+			slog.Info("syncer: backfill progress",
+				"chunk", fmt.Sprintf("%d/%d", i+1, len(chunks)),
+				"records", c.count, "from", fmtTS(c.minTS), "to", fmtTS(c.maxTS),
+				"pushed", pushed, "total", total, "pct", pushed*100/total)
+		} else {
+			slog.Debug("syncer pushed batch", "counts", c.counts())
 		}
 	}
-	counts := map[string]int{
-		"violations": len(p.Violations), "unblocks": len(p.Unblocks),
-		"lifecycle": len(p.Lifecycle), "usage": len(p.Usage), "heartbeat": len(p.Heartbeat),
+	if multi {
+		slog.Info("syncer: backfill complete", "records", pushed)
 	}
-	state.RecordSync(counts, s.cursors) // surfaced by `glocker -status`
-	slog.Debug("syncer pushed batch", "counts", counts)
+}
+
+func fmtTS(ms int64) string {
+	if ms == 0 {
+		return "-"
+	}
+	return time.UnixMilli(ms).Format("2006-01-02 15:04:05")
+}
+
+// payloadChunk is a slice of a payload plus the metadata the sync loop logs and
+// uses to advance cursors after a good post.
+type payloadChunk struct {
+	p      Payload
+	count  int
+	minTS  int64
+	maxTS  int64
+	perSrc map[string]int64 // max TS per source within this chunk
+}
+
+func (c payloadChunk) counts() map[string]int {
+	return map[string]int{
+		"violations": len(c.p.Violations), "unblocks": len(c.p.Unblocks),
+		"lifecycle": len(c.p.Lifecycle), "usage": len(c.p.Usage), "heartbeat": len(c.p.Heartbeat),
+	}
+}
+
+// chunkPayload splits p into chunks of at most `size` records, keeping each
+// source's records together and in time order — so a chunk's per-source records
+// are a contiguous ascending run and its max TS is a safe cursor advance.
+func chunkPayload(p Payload, size int) []payloadChunk {
+	var chunks []payloadChunk
+	cur := payloadChunk{p: Payload{Encrypted: p.Encrypted}, perSrc: map[string]int64{}}
+	flush := func() {
+		if cur.count > 0 {
+			chunks = append(chunks, cur)
+			cur = payloadChunk{p: Payload{Encrypted: p.Encrypted}, perSrc: map[string]int64{}}
+		}
+	}
+	add := func(src string, ts int64) {
+		cur.count++
+		if cur.minTS == 0 || ts < cur.minTS {
+			cur.minTS = ts
+		}
+		if ts > cur.maxTS {
+			cur.maxTS = ts
+		}
+		if ts > cur.perSrc[src] {
+			cur.perSrc[src] = ts
+		}
+		if cur.count >= size {
+			flush()
+		}
+	}
+	for _, v := range p.Violations {
+		cur.p.Violations = append(cur.p.Violations, v)
+		add("reports", v.TS)
+	}
+	for _, u := range p.Unblocks {
+		cur.p.Unblocks = append(cur.p.Unblocks, u)
+		add("unblocks", u.TS)
+	}
+	for _, l := range p.Lifecycle {
+		cur.p.Lifecycle = append(cur.p.Lifecycle, l)
+		add("lifecycle", l.TS)
+	}
+	for _, h := range p.Heartbeat {
+		cur.p.Heartbeat = append(cur.p.Heartbeat, h)
+		add("heartbeat", h.TS)
+	}
+	for _, r := range p.Usage {
+		cur.p.Usage = append(cur.p.Usage, r)
+		add("usage", r.TS)
+	}
+	flush()
+	return chunks
 }
 
 // build assembles the payload from the logs, filtered to TS >= each cursor, and
