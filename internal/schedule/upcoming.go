@@ -1,7 +1,11 @@
-// Package schedule looks a short way into the future and reports which
-// enforcement decisions are about to flip. Nothing here enforces anything; it
-// exists so `glocker -status` can warn "youtube.com blocks in 7 minutes"
-// instead of only describing the present.
+// Package schedule looks a short way into the future and reports what is about
+// to be taken away: a domain that starts blocking, a program that becomes
+// killable, sudo locking. Nothing here enforces anything; it exists so
+// `glocker -status` can warn "youtube.com blocks in 7 minutes" instead of only
+// describing the present.
+//
+// Loosening is deliberately NOT reported — when something frees up is what
+// `-info` is for, and it isn't something to watch out for.
 package schedule
 
 import (
@@ -30,32 +34,22 @@ const (
 	KindSudo
 )
 
-// Change is one enforcement decision flipping at a known time.
+// Change is one enforcement decision tightening at a known time.
 type Change struct {
-	At       time.Time
-	Kind     Kind
-	Name     string // domain or program; empty for sudo
-	Blocking bool   // true: enforcement starts, false: it lifts
+	At   time.Time
+	Kind Kind
+	Name string // domain or program; empty for sudo
 }
 
 // Verb describes the change in one word, from the user's point of view.
 func (c Change) Verb() string {
 	switch c.Kind {
 	case KindProgram:
-		if c.Blocking {
-			return "kill"
-		}
-		return "allow"
+		return "kill"
 	case KindSudo:
-		if c.Blocking {
-			return "lock"
-		}
-		return "unlock"
+		return "lock"
 	default:
-		if c.Blocking {
-			return "block"
-		}
-		return "unblock"
+		return "block"
 	}
 }
 
@@ -67,9 +61,10 @@ func (c Change) Label() string {
 	return c.Name
 }
 
-// Upcoming returns every enforcement change due within horizon of now, earliest
-// first. Only the FIRST flip per domain/program is reported: the point is to
-// answer "what is about to happen", not to enumerate a whole schedule.
+// Upcoming returns every enforcement restriction that STARTS within horizon of
+// now, earliest first — one entry per domain/program, at its first such moment.
+// Something already in force is not reported (there is nothing to warn about),
+// and neither is anything loosening.
 //
 // Each mechanism is asked the same question it answers during enforcement, just
 // with a future timestamp, so the preview can't drift from what will actually
@@ -93,8 +88,8 @@ func Upcoming(cfg *config.Config, now time.Time, horizon time.Duration) []Change
 				}
 				return enforcement.IsDomainBlockedAt(d, t)
 			}
-			if at, blocking, ok := firstChange(now, horizon, blockedAt); ok {
-				changes = append(changes, Change{At: at, Kind: KindDomain, Name: d.Name, Blocking: blocking})
+			if at, ok := firstTightening(now, horizon, blockedAt); ok {
+				changes = append(changes, Change{At: at, Kind: KindDomain, Name: d.Name})
 			}
 		}
 	}
@@ -106,16 +101,16 @@ func Upcoming(cfg *config.Config, now time.Time, horizon time.Duration) []Change
 				continue
 			}
 			killedAt := func(t time.Time) bool { return monitoring.ShouldKill(p, t) }
-			if at, blocking, ok := firstChange(now, horizon, killedAt); ok {
-				changes = append(changes, Change{At: at, Kind: KindProgram, Name: p.Name, Blocking: blocking})
+			if at, ok := firstTightening(now, horizon, killedAt); ok {
+				changes = append(changes, Change{At: at, Kind: KindProgram, Name: p.Name})
 			}
 		}
 	}
 
 	if cfg.Sudoers.Enabled {
 		lockedAt := func(t time.Time) bool { return !enforcement.IsSudoAllowed(cfg, t) }
-		if at, blocking, ok := firstChange(now, horizon, lockedAt); ok {
-			changes = append(changes, Change{At: at, Kind: KindSudo, Blocking: blocking})
+		if at, ok := firstTightening(now, horizon, lockedAt); ok {
+			changes = append(changes, Change{At: at, Kind: KindSudo})
 		}
 	}
 
@@ -131,16 +126,21 @@ func Upcoming(cfg *config.Config, now time.Time, horizon time.Duration) []Change
 	return changes
 }
 
-// firstChange walks minute boundaries from now to now+horizon and returns the
-// first one at which state differs from its value now, along with that new
-// value. ok is false if nothing changes inside the horizon.
-func firstChange(now time.Time, horizon time.Duration, state func(time.Time) bool) (time.Time, bool, bool) {
-	current := state(now)
+// firstTightening walks minute boundaries from now to now+horizon and returns
+// the first RISING edge of restricted — the first minute it holds having not
+// held the minute before. Looking for the edge rather than the first flip of any
+// kind matters: a domain that unblocks in 3 minutes and re-blocks in 10 must
+// report the re-block, which filtering "first flip" down to tightenings
+// afterwards would have thrown away with the unblock.
+func firstTightening(now time.Time, horizon time.Duration, restricted func(time.Time) bool) (time.Time, bool) {
+	prev := restricted(now)
 	deadline := now.Add(horizon)
 	for t := now.Truncate(step).Add(step); !t.After(deadline); t = t.Add(step) {
-		if state(t) != current {
-			return t, !current, true
+		cur := restricted(t)
+		if cur && !prev {
+			return t, true
 		}
+		prev = cur
 	}
-	return time.Time{}, false, false
+	return time.Time{}, false
 }

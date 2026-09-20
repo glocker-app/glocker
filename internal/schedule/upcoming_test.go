@@ -33,7 +33,7 @@ func TestUpcomingDomainBlockStarts(t *testing.T) {
 		t.Fatalf("want 1 change, got %d (%+v)", len(got), got)
 	}
 	c := got[0]
-	if !c.Blocking || c.Name != "youtube.com" || c.Verb() != "block" {
+	if c.Name != "youtube.com" || c.Verb() != "block" {
 		t.Errorf("unexpected change: %+v (verb %q)", c, c.Verb())
 	}
 	if want := base.Add(7 * time.Minute); !c.At.Equal(want) {
@@ -41,17 +41,31 @@ func TestUpcomingDomainBlockStarts(t *testing.T) {
 	}
 }
 
-func TestUpcomingDomainBlockLifts(t *testing.T) {
-	// Window is already running and ends in 5 minutes.
+func TestUpcomingIgnoresBlocksLifting(t *testing.T) {
+	// Window is already running and ends in 5 minutes. Something freeing up is
+	// not something to watch out for, so it must not be listed.
 	cfg := domainCfg(config.Domain{Name: "reddit.com", BlockWindows: []config.TimeWindow{win(-30, 5)}})
+
+	if got := Upcoming(cfg, base, DefaultHorizon); len(got) != 0 {
+		t.Errorf("want no changes for a block that only lifts, got %+v", got)
+	}
+}
+
+// A block that lifts and then comes back inside the horizon must still report
+// the re-block — the reason Upcoming looks for rising edges rather than
+// filtering "the first flip" down to tightenings after the fact.
+func TestUpcomingReportsReblockAfterALift(t *testing.T) {
+	cfg := domainCfg(config.Domain{Name: "reddit.com", BlockWindows: []config.TimeWindow{
+		win(-30, 3),  // running now, ends in 3 minutes
+		win(10, 120), // back on in 10
+	}})
 
 	got := Upcoming(cfg, base, DefaultHorizon)
 	if len(got) != 1 {
 		t.Fatalf("want 1 change, got %d (%+v)", len(got), got)
 	}
-	// The window is inclusive of its end minute, so the block lifts the minute after.
-	if c := got[0]; c.Blocking || c.Verb() != "unblock" || !c.At.Equal(base.Add(6*time.Minute)) {
-		t.Errorf("unexpected change: %+v (verb %q)", c, c.Verb())
+	if c := got[0]; c.Verb() != "block" || !c.At.Equal(base.Add(10*time.Minute)) {
+		t.Errorf("unexpected change: %+v", c)
 	}
 }
 
@@ -89,10 +103,10 @@ func TestUpcomingProgramKillAndSudoLock(t *testing.T) {
 		t.Fatalf("want 2 changes, got %d (%+v)", len(got), got)
 	}
 	// Earliest first: sudo locks at +4, steam becomes killable at +11.
-	if c := got[0]; c.Kind != KindSudo || !c.Blocking || c.Verb() != "lock" || c.Label() != "sudo" {
+	if c := got[0]; c.Kind != KindSudo || c.Verb() != "lock" || c.Label() != "sudo" {
 		t.Errorf("first change: %+v (verb %q)", c, c.Verb())
 	}
-	if c := got[1]; c.Kind != KindProgram || !c.Blocking || c.Verb() != "kill" || c.Name != "steam" {
+	if c := got[1]; c.Kind != KindProgram || c.Verb() != "kill" || c.Name != "steam" {
 		t.Errorf("second change: %+v (verb %q)", c, c.Verb())
 	}
 	if !got[0].At.Before(got[1].At) {
@@ -125,7 +139,7 @@ func TestUpcomingProgramExtensionLapsing(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("want 1 change, got %d (%+v)", len(got), got)
 	}
-	if c := got[0]; !c.Blocking || c.Name != "firefox-esr" || !c.At.Equal(base.Add(8*time.Minute)) {
+	if c := got[0]; c.Name != "firefox-esr" || !c.At.Equal(base.Add(8*time.Minute)) {
 		t.Errorf("unexpected change: %+v", c)
 	}
 }

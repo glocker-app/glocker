@@ -29,16 +29,16 @@ func TestRenderUpcomingNothingScheduled(t *testing.T) {
 func TestRenderUpcomingLines(t *testing.T) {
 	now := time.Date(2026, 9, 21, 10, 0, 40, 0, time.Local)
 	out := renderPlain([]schedule.Change{
-		{At: now.Add(6*time.Minute + 20*time.Second), Kind: schedule.KindDomain, Name: "youtube.com", Blocking: true},
-		{At: now.Add(9 * time.Minute), Kind: schedule.KindProgram, Name: "steam", Blocking: false},
-		{At: now.Add(12 * time.Minute), Kind: schedule.KindSudo, Blocking: true},
+		{At: now.Add(6*time.Minute + 20*time.Second), Kind: schedule.KindDomain, Name: "youtube.com"},
+		{At: now.Add(9 * time.Minute), Kind: schedule.KindProgram, Name: "steam"},
+		{At: now.Add(12 * time.Minute), Kind: schedule.KindSudo},
 	}, now)
 
 	for _, want := range []string{
 		"changes        3",
-		"block   youtube.com",
-		"allow   steam",
-		"lock    sudo",
+		"block  youtube.com",
+		"kill   steam",
+		"lock   sudo",
 		// 6m20s away must round UP, so the countdown never overstates the time left.
 		"in  7m",
 		"in 12m",
@@ -54,7 +54,7 @@ func TestRenderUpcomingCapsTheList(t *testing.T) {
 	var changes []schedule.Change
 	for i := 0; i < 9; i++ {
 		changes = append(changes, schedule.Change{
-			At: now.Add(time.Duration(i+1) * time.Minute), Kind: schedule.KindDomain, Name: "d.example", Blocking: true,
+			At: now.Add(time.Duration(i+1) * time.Minute), Kind: schedule.KindDomain, Name: "d.example",
 		})
 	}
 	out := renderPlain(changes, now)

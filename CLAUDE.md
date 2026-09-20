@@ -156,12 +156,15 @@ glocker -uninstall "reason"
   - `sync.RWMutex` for concurrency safety
 
 ### Near-future preview (`internal/schedule/`)
-- **`upcoming.go`** - `Upcoming(cfg, now, horizon)` - which enforcement decisions
-  flip inside the next `DefaultHorizon` (15m), used by the `upcoming` section of
+- **`upcoming.go`** - `Upcoming(cfg, now, horizon)` - which restrictions START
+  inside the next `DefaultHorizon` (15m), used by the `upcoming` section of
   `-status`. It scans minute by minute and asks each mechanism the same question
   it answers during enforcement, just with a future timestamp
   (`enforcement.IsDomainBlockedAt`, `monitoring.ShouldKill`,
   `enforcement.IsSudoAllowed`), so the preview can't drift from reality.
+  Loosening is **not** reported — when something frees up is what `-info` is for.
+  It looks for RISING edges rather than the first flip of any kind, so a domain
+  that unblocks in 3 minutes and re-blocks in 10 still reports the re-block.
 
 ### Utilities (`internal/utils/`)
 - **`time.go`** - Time window evaluation

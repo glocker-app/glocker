@@ -241,10 +241,10 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 	return f.close() + "\nEND\n"
 }
 
-// renderUpcoming writes the near-future enforcement changes into the status
-// frame: a count, then one line per change with its wall-clock time, what it
-// does, and how long away it is. Tightening changes (a block starting, a program
-// becoming killable, sudo locking) are red; loosening ones green.
+// renderUpcoming writes the near-future restrictions into the status frame: a
+// count, then one line per change with its wall-clock time, how long away it is,
+// and what it does. Everything listed is something being taken away, so every
+// line is red — schedule.Upcoming reports no loosening (that's `-info`).
 func renderUpcoming(f *frame, changes []schedule.Change, now time.Time) {
 	if len(changes) == 0 {
 		f.row("changes", dim("none scheduled"))
@@ -258,18 +258,12 @@ func renderUpcoming(f *frame, changes []schedule.Change, now time.Time) {
 			f.detail(dim(fmt.Sprintf("… and %d more", len(changes)-maxShown)))
 			break
 		}
-		verb := padRight(c.Verb(), 8)
-		if c.Blocking {
-			verb = alert(verb)
-		} else {
-			verb = good(verb)
-		}
 		// Round the countdown UP: a change 6m20s away is "in 7m", never "in 6m",
 		// so the number is never optimistic about how long you have. It sits in a
 		// fixed column next to the wall clock, leaving the variable-length domain
 		// or program name last where it can run long without breaking alignment.
 		mins := int((c.At.Sub(now) + time.Minute - 1) / time.Minute)
-		f.detail(dim(c.At.Format("15:04")) + dim(fmt.Sprintf("  in %2dm   ", mins)) + verb + c.Label())
+		f.detail(dim(c.At.Format("15:04")) + dim(fmt.Sprintf("  in %2dm   ", mins)) + alert(padRight(c.Verb(), 7)) + c.Label())
 	}
 }
 
