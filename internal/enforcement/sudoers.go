@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"slices"
 	"strings"
 	"time"
 
@@ -110,27 +109,8 @@ func IsSudoAllowed(cfg *config.Config, now time.Time) bool {
 		return true // If not enabled, don't restrict
 	}
 
-	currentDay := now.Weekday().String()[:3]
-	currentTime := now.Format("15:04")
-
-	// Check if current time falls within any allow window
-	for _, window := range cfg.Sudoers.AllowWindows {
-		// For midnight-crossing windows, check previous day for early morning times
-		dayToCheck := currentDay
-		if window.Start > window.End && currentTime <= window.End {
-			dayToCheck = now.AddDate(0, 0, -1).Weekday().String()[:3]
-		}
-
-		if !slices.Contains(window.Days, dayToCheck) {
-			continue
-		}
-
-		if utils.IsInTimeWindow(currentTime, window.Start, window.End) {
-			return true
-		}
-	}
-
-	return false
+	// Empty allow windows means sudo is never permitted.
+	return utils.InAnyWindow(cfg.Sudoers.AllowWindows, now)
 }
 
 // CreateSudoersBackup creates a backup of the sudoers file before modification.

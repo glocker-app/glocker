@@ -12,6 +12,7 @@ import (
 	"glocker/internal/enforcement"
 	"glocker/internal/monitoring"
 	"glocker/internal/reports"
+	"glocker/internal/schedule"
 	"glocker/internal/state"
 	"glocker/internal/syncer"
 	"glocker/internal/web"
@@ -133,6 +134,13 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 		}
 	}
 
+	// What's about to change. Time-windowed domains, programs and sudo are
+	// invisible in a snapshot of "now" — this looks a quarter-hour ahead so a
+	// block that is minutes away is something you can plan around rather than
+	// walk into.
+	f.section("upcoming", fmt.Sprintf(" · next %dm", int(schedule.DefaultHorizon.Minutes())))
+	renderUpcoming(f, schedule.Upcoming(cfg, now, schedule.DefaultHorizon), now)
+
 	// Show violation tracking status
 	if cfg.ViolationTracking.Enabled {
 		violations := state.GetViolations()
@@ -231,6 +239,36 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 	}
 
 	return f.close() + "\nEND\n"
+}
+
+// renderUpcoming writes the near-future enforcement changes into the status
+// frame: a count, then one line per change with its wall-clock time, what it
+// does, and how long away it is. Tightening changes (a block starting, a program
+// becoming killable, sudo locking) are red; loosening ones green.
+func renderUpcoming(f *frame, changes []schedule.Change, now time.Time) {
+	if len(changes) == 0 {
+		f.row("changes", dim("none scheduled"))
+		return
+	}
+	f.row("changes", fmt.Sprintf("%d", len(changes)))
+
+	const maxShown = 6
+	for i, c := range changes {
+		if i == maxShown {
+			f.detail(dim(fmt.Sprintf("… and %d more", len(changes)-maxShown)))
+			break
+		}
+		verb := padRight(c.Verb(), 8)
+		if c.Blocking {
+			verb = alert(verb)
+		} else {
+			verb = good(verb)
+		}
+		// Round the countdown UP: a change 6m20s away is "in 7m", never "in 6m",
+		// so the number is never optimistic about how long you have.
+		mins := int((c.At.Sub(now) + time.Minute - 1) / time.Minute)
+		f.detail(dim(c.At.Format("15:04")) + "  " + verb + c.Label() + dim(fmt.Sprintf("   in %dm", mins)))
+	}
 }
 
 // formatSyncCounts renders per-source sync counts in a stable order, skipping

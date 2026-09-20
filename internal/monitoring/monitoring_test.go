@@ -104,10 +104,8 @@ func TestShouldKill_ActiveExtensionKeepsExtendibleProgramAlive(t *testing.T) {
 	}
 
 	now := time.Now()
-	currentDay := now.Weekday().String()[:3]
-	currentTime := now.Format("15:04")
 
-	if !shouldKill(prog, now, currentDay, currentTime) {
+	if !ShouldKill(prog, now) {
 		t.Fatal("baseline: program should be killed without an active extension")
 	}
 
@@ -120,7 +118,7 @@ func TestShouldKill_ActiveExtensionKeepsExtendibleProgramAlive(t *testing.T) {
 		t.Fatalf("AddProgramExtension: %v", err)
 	}
 
-	if shouldKill(prog, now, currentDay, currentTime) {
+	if ShouldKill(prog, now) {
 		t.Error("active extension should suppress the kill")
 	}
 }
@@ -153,7 +151,7 @@ func TestShouldKill_ActiveExtensionIgnoredWhenNotExtendible(t *testing.T) {
 		t.Fatalf("AddProgramExtension: %v", err)
 	}
 
-	if !shouldKill(prog, now, now.Weekday().String()[:3], now.Format("15:04")) {
+	if !ShouldKill(prog, now) {
 		t.Error("non-extendible program must be killed even with a stale grant")
 	}
 }

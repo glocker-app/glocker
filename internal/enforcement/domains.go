@@ -119,6 +119,18 @@ func GetDomainsToBlock(cfg *config.Config, now time.Time) []string {
 	return blocked
 }
 
+// IsDomainBlockedAt reports whether a single domain's configured block windows
+// cover the instant t, ignoring temporary unblocks. It is the window half of the
+// rule GetDomainsToBlock applies: no block windows at all means always blocked,
+// otherwise blocked only inside a window. Taking t as an argument lets callers
+// ask about a future minute (the -status upcoming-changes preview).
+func IsDomainBlockedAt(domain config.Domain, t time.Time) bool {
+	if len(domain.BlockWindows) == 0 {
+		return true
+	}
+	return utils.InAnyWindow(domain.BlockWindows, t)
+}
+
 // IsTempUnblocked checks if a domain is currently temporarily unblocked.
 // Returns true if the domain has an active temporary unblock that hasn't expired.
 func IsTempUnblocked(domain string, now time.Time) bool {

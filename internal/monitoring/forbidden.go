@@ -5,7 +5,6 @@ import (
 	"log"
 	"log/slog"
 	"os/exec"
-	"slices"
 	"strings"
 	"time"
 
@@ -35,24 +34,24 @@ func MonitorForbiddenPrograms(cfg *config.Config) {
 		slog.Debug("Checking for forbidden programs", "current_day", currentDay, "current_time", currentTime)
 
 		for _, program := range cfg.Programs.List {
-			if shouldKill(program, now, currentDay, currentTime) {
+			if ShouldKill(program, now) {
 				killMatchingProcesses(cfg, program.Name)
 			}
 		}
 	}
 }
 
-// shouldKill is the full kill decision for a single program: it consults
-// the configured windows and then defers to any active runtime extension.
-func shouldKill(program config.ForbiddenProgram, now time.Time, currentDay, currentTime string) bool {
-	if !isProgramForbidden(program, now, currentDay, currentTime) {
+// ShouldKill is the full kill decision for a single program at time now: it
+// consults the configured windows and then defers to any active runtime
+// extension. Exported so the schedule package can ask the same question about a
+// future minute (see internal/schedule).
+func ShouldKill(program config.ForbiddenProgram, now time.Time) bool {
+	if !isProgramForbidden(program, now) {
 		return false
 	}
-	if program.Extendible {
-		if _, active := state.GetActiveExtension(program.Name); active {
-			slog.Debug("Program kept alive by active extension", "program", program.Name)
-			return false
-		}
+	if program.Extendible && state.ExtensionActiveAt(program.Name, now) {
+		slog.Debug("Program kept alive by active extension", "program", program.Name)
+		return false
 	}
 	return true
 }
@@ -61,14 +60,14 @@ func shouldKill(program config.ForbiddenProgram, now time.Time, currentDay, curr
 // Precedence: a matching kill window always wins. If only allow windows are
 // set, the program is forbidden outside them. If both lists are empty, the
 // program is always forbidden (legacy default).
-func isProgramForbidden(program config.ForbiddenProgram, now time.Time, currentDay, currentTime string) bool {
-	if inAnyWindow(program.KillWindows, now, currentDay, currentTime) {
+func isProgramForbidden(program config.ForbiddenProgram, now time.Time) bool {
+	if utils.InAnyWindow(program.KillWindows, now) {
 		slog.Debug("Program is forbidden in current kill window", "program", program.Name)
 		return true
 	}
 
 	if len(program.AllowWindows) > 0 {
-		if inAnyWindow(program.AllowWindows, now, currentDay, currentTime) {
+		if utils.InAnyWindow(program.AllowWindows, now) {
 			return false
 		}
 		slog.Debug("Program is forbidden outside its allow windows", "program", program.Name)
@@ -80,27 +79,6 @@ func isProgramForbidden(program config.ForbiddenProgram, now time.Time, currentD
 		return true
 	}
 
-	return false
-}
-
-// inAnyWindow reports whether the current time falls inside any of the given
-// windows, honoring day-of-week membership and overnight wraparound.
-func inAnyWindow(windows []config.TimeWindow, now time.Time, currentDay, currentTime string) bool {
-	for _, window := range windows {
-		dayToCheck := currentDay
-		if window.Start > window.End && currentTime <= window.End {
-			// We're in the early-morning portion of a window that started yesterday.
-			dayToCheck = now.AddDate(0, 0, -1).Weekday().String()[:3]
-		}
-
-		if !slices.Contains(window.Days, dayToCheck) {
-			continue
-		}
-
-		if utils.IsInTimeWindow(currentTime, window.Start, window.End) {
-			return true
-		}
-	}
 	return false
 }
 

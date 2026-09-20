@@ -94,6 +94,21 @@ func GetActiveExtension(program string) (ProgramExtension, bool) {
 	return ProgramExtension{}, false
 }
 
+// ExtensionActiveAt reports whether program has a runtime grant still covering
+// the instant at. Unlike GetActiveExtension it takes the time as an argument, so
+// callers can ask about a future minute (the -status upcoming-changes preview
+// needs to know when a grant lapses and the program becomes killable again).
+func ExtensionActiveAt(program string, at time.Time) bool {
+	programExtensionsMutex.RLock()
+	defer programExtensionsMutex.RUnlock()
+	for _, ext := range programExtensions {
+		if ext.Program == program && at.Before(ext.ExpiresAt) {
+			return true
+		}
+	}
+	return false
+}
+
 // GetLastExtensionGrant returns the most recent grant time for a program,
 // regardless of whether the grant is still active. Used to enforce the
 // rolling-24h cooldown.

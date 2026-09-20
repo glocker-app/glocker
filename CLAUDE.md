@@ -65,6 +65,7 @@ glocker -uninstall "reason"
   - `ProcessBlockAppRequest()` - In-memory forbidden-program add
   - `ProcessExtendRequest()` - One-hour runtime grant for an extendible program
   - `ProcessPanicRequest()` - Panic mode activation
+  - `renderUpcoming()` - the `upcoming · next 15m` section (see `internal/schedule`)
   - `formatTimeWindows()` - Helper for time window display
 - **`commands_test.go`** - Unit tests for CLI commands
 
@@ -154,11 +155,20 @@ glocker -uninstall "reason"
   - Temporary unblocks tracking
   - `sync.RWMutex` for concurrency safety
 
+### Near-future preview (`internal/schedule/`)
+- **`upcoming.go`** - `Upcoming(cfg, now, horizon)` - which enforcement decisions
+  flip inside the next `DefaultHorizon` (15m), used by the `upcoming` section of
+  `-status`. It scans minute by minute and asks each mechanism the same question
+  it answers during enforcement, just with a future timestamp
+  (`enforcement.IsDomainBlockedAt`, `monitoring.ShouldKill`,
+  `enforcement.IsSudoAllowed`), so the preview can't drift from reality.
+
 ### Utilities (`internal/utils/`)
-- **`utils.go`** - Shared utility functions
-  - Time window evaluation
-  - String processing helpers
-  - File operations
+- **`time.go`** - Time window evaluation
+  - `IsInTimeWindow()` - HH:MM containment, handles overnight wraparound
+  - `InAnyWindow(windows, t)` - the shared day-of-week + wraparound check used by
+    domain, program and sudo window evaluation
+- **`fs.go`** / **`network.go`** - file and network helpers
 
 ### Browser Extension (`extensions/firefox/`)
 - **`manifest.json`** - Firefox extension manifest
@@ -541,6 +551,7 @@ glocker/
 │   ├── install/                # Installation and uninstallation
 │   ├── ipc/                    # Unix socket server
 │   ├── monitoring/             # Background monitoring tasks
+│   ├── schedule/               # Near-future preview of window flips (-status)
 │   ├── state/                  # Thread-safe global state
 │   ├── syncer/                 # Ships local records to glockpeek
 │   ├── stats/ + store/         # glockpeek dashboard + DB layer
@@ -553,10 +564,12 @@ glocker/
 
 **Package Dependencies:**
 - `main` imports all packages for orchestration
-- `cli` imports `config`, `enforcement`, `state`
+- `cli` imports `config`, `enforcement`, `monitoring`, `schedule`, `state`
+- `schedule` imports `config`, `enforcement`, `monitoring`
 - `ipc` imports `cli`, `config`, `enforcement`, `install`
 - `enforcement` imports `config`, `state`, `utils`
-- `monitoring` imports `config`, `state`
+- `monitoring` imports `config`, `state`, `utils`
+- `utils` imports `config` (for `TimeWindow`) and nothing else
 - `web` imports `config`, `monitoring`, `state`
 
 When searching for functionality:
