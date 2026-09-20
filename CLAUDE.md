@@ -478,6 +478,16 @@ Server started by internal/web/server.go:StartWebTrackingServer()
     `/api/tokens`, `/api/admin/users`, `/verify`, billing) — this list is not exhaustive.
   - Legacy `/stats`, `/stats/` 301-redirect to `/`. (The old
     `glocker.localhost/stats` alias in hosts.go is vestigial.)
+- **Boot path (first load).** Everything sensitive arrives sealed, so the browser
+  must open every field before a single chart can be drawn. `app.js` collects one
+  "job" per sealed field up front (`collectDecryptJobs`), which both gives the
+  total and lets it run `DECRYPT_BATCH`-sized `Promise.all` batches instead of
+  awaiting each field — WebCrypto runs off the main thread, so the batches really
+  overlap, and `e2e-crypto.js` memoises the imported `CryptoKey` per key-bytes
+  object so a big load pays `importKey` once, not once per field. The loading
+  screen is a progress dial (`.boot` in `dashboard.html.tmpl` / styles.css, driven
+  by `bootPhase` / `bootProgress`): an indeterminate sweep for phases with no
+  countable work, a real fraction for the decrypt.
 - The frontend is a **hybrid** (SSR/HTMX migration, in progress): the chrome is
   server-rendered from `internal/stats/templates/*.tmpl` (Go `html/template`, via
   `internal/stats/pages.go`), while the encrypted-analytics view stays a

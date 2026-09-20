@@ -267,60 +267,133 @@ async function unlockVault() {
   }
 }
 
-// decryptData decrypts every encrypted field of the fetched data in place, so all
-// downstream aggregation/categorization sees plaintext (exactly as before E2E).
-// A field that fails to decrypt (e.g. data encrypted under a different key) is
-// marked with a lock glyph; the count of failures is returned.
-async function decryptData(data) {
-  if (!masterKey || !data) return 0;
-  const td = new TextDecoder();
-  const te = new TextEncoder();
-  let failures = 0;
+// Usage nests its active window, so the JSON path (active.title) and the aad
+// label the agent sealed under (activeTitle) differ — the flat collections in
+// ENC_FIELDS use one name for both.
+const USAGE_ENC_FIELDS = [
+  ["title", "activeTitle"],
+  ["class", "activeClass"],
+  ["instance", "activeInstance"],
+];
+
+// collectDecryptJobs walks the fetched data and returns one job per sealed
+// field: the object holding it, the key to overwrite, and the aad it was sealed
+// under. Collecting first means the total is known before any work starts (so
+// the boot dial can show a real fraction) and the opens can be run in parallel
+// batches rather than one await at a time.
+function collectDecryptJobs(data) {
+  const jobs = [];
   for (const [coll, spec] of Object.entries(ENC_FIELDS)) {
     const rows = data[coll];
     if (!Array.isArray(rows)) continue;
     for (const row of rows) {
       for (const f of spec.fields) {
-        const val = row[f];
-        if (!val) continue; // empty fields were sent unencrypted
-        try {
-          const aad = te.encode(`${row.ts}|${spec.kind}|${f}`);
-          row[f] = td.decode(await decryptField(masterKey, val, aad));
-        } catch {
-          row[f] = "🔒";
-          failures++;
-        }
+        if (!row[f]) continue; // empty fields were sent unencrypted
+        jobs.push({ obj: row, key: f, aad: `${row.ts}|${spec.kind}|${f}` });
       }
     }
   }
-  // Usage nests the active window: title, class (app name) and instance are all
-  // sealed (aad labels activeTitle / activeClass / activeInstance).
-  const usageFields = [
-    ["title", "activeTitle"],
-    ["class", "activeClass"],
-    ["instance", "activeInstance"],
-  ];
   if (Array.isArray(data.usage)) {
     for (const row of data.usage) {
       const a = row.active;
       if (!a) continue;
-      for (const [field, label] of usageFields) {
+      for (const [field, label] of USAGE_ENC_FIELDS) {
         if (!a[field]) continue;
-        try {
-          a[field] = td.decode(await decryptField(masterKey, a[field], te.encode(`${row.ts}|usage|${label}`)));
-        } catch {
-          // No silent fallback: a field that won't decrypt shows the lock glyph
-          // and counts as a failure, so a still-cleartext (pre-encryption) or
-          // wrong-key row is visibly broken rather than passing as real data —
-          // that's how you can tell the encryption is actually in effect. Legacy
-          // rows read 🔒 until a `glocker -resync` re-encrypts them.
-          a[field] = "🔒";
-          failures++;
-        }
+        jobs.push({ obj: a, key: field, aad: `${row.ts}|usage|${label}` });
       }
     }
   }
+  return jobs;
+}
+
+// How many fields to open at once. WebCrypto runs off the main thread, so a
+// batch genuinely overlaps instead of just queueing; awaiting between batches
+// also yields to the event loop, which is what lets the boot dial paint.
+const DECRYPT_BATCH = 256;
+
+// decryptData decrypts every encrypted field of the fetched data in place, so all
+// downstream aggregation/categorization sees plaintext (exactly as before E2E).
+// A field that fails to decrypt (e.g. data encrypted under a different key) is
+// marked with a lock glyph; the count of failures is returned.
+//
+// onProgress(done, total, final) is called after each batch, if given.
+async function decryptData(data, onProgress) {
+  if (!masterKey || !data) return 0;
+  const td = new TextDecoder();
+  const te = new TextEncoder();
+  const jobs = collectDecryptJobs(data);
+  let failures = 0;
+
+  if (onProgress) onProgress(0, jobs.length, false);
+  for (let i = 0; i < jobs.length; i += DECRYPT_BATCH) {
+    const batch = jobs.slice(i, i + DECRYPT_BATCH);
+    await Promise.all(batch.map(async (job) => {
+      try {
+        job.obj[job.key] = td.decode(await decryptField(masterKey, job.obj[job.key], te.encode(job.aad)));
+      } catch {
+        // No silent fallback: a field that won't decrypt shows the lock glyph
+        // and counts as a failure, so a still-cleartext (pre-encryption) or
+        // wrong-key row is visibly broken rather than passing as real data —
+        // that's how you can tell the encryption is actually in effect. Legacy
+        // rows read 🔒 until a `glocker -resync` re-encrypts them.
+        job.obj[job.key] = "🔒";
+        failures++;
+      }
+    }));
+    const done = i + batch.length;
+    if (onProgress) onProgress(done, jobs.length, done >= jobs.length);
+  }
   return failures;
+}
+
+// ── Boot dial ───────────────────────────────────────────
+// The first load can't render anything until every sealed field has been opened
+// in the browser, which on a long history is tens of thousands of AES-GCM opens.
+// These drive the ring on the loading screen (markup in dashboard.html.tmpl,
+// styling under "Boot dial" in styles.css) so that wait is legible instead of a
+// static "decrypting data…".
+const bootUI = { root: null, pct: null, phase: null, count: null, lastPaint: 0 };
+
+function bootEls() {
+  if (!bootUI.root) {
+    bootUI.root = document.querySelector("#loading .boot");
+    bootUI.pct = document.getElementById("boot-pct");
+    bootUI.phase = document.getElementById("boot-phase");
+    bootUI.count = document.getElementById("boot-count");
+  }
+  return bootUI.root;
+}
+
+// bootPhase names what we are waiting on and returns the dial to its
+// indeterminate sweep — the phase has started but nothing has counted the work
+// in it yet.
+function bootPhase(label) {
+  if (!bootEls()) return;
+  bootUI.phase.textContent = label;
+  bootUI.count.textContent = "";
+  bootUI.pct.textContent = "—";
+  bootUI.root.classList.add("indeterminate");
+  bootUI.root.style.setProperty("--p", "0");
+  bootUI.root.setAttribute("aria-valuenow", "0");
+  bootUI.lastPaint = 0;
+}
+
+// bootProgress paints the fraction. decryptData reports after every batch —
+// hundreds of calls on a real history — so painting is throttled to ~15fps;
+// numbers changing faster than that are unreadable anyway. final always paints,
+// so the dial can never stop short of 100%.
+function bootProgress(done, total, final) {
+  if (!bootEls() || total <= 0) return;
+  const now = performance.now();
+  if (!final && now - bootUI.lastPaint < 66) return;
+  bootUI.lastPaint = now;
+
+  const frac = Math.min(1, done / total);
+  bootUI.root.classList.remove("indeterminate");
+  bootUI.root.style.setProperty("--p", frac.toFixed(4));
+  bootUI.pct.textContent = Math.floor(frac * 100);
+  bootUI.count.textContent = `${done.toLocaleString()} / ${total.toLocaleString()} fields`;
+  bootUI.root.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
 }
 
 async function bootDashboard(me) {
@@ -343,15 +416,19 @@ async function bootDashboard(me) {
   // If the account's data is encrypted, unlock the vault (prompt for passphrase)
   // so records can be decrypted below. Done before any data is rendered.
   if (me && me.encrypted) {
+    bootPhase("unlocking vault");
     await unlockVault();
   }
+  bootPhase("fetching records");
   try {
     const res = await fetch("api/data");
     if (res.status === 401) { showLogin(); return; }
     if (!res.ok) throw new Error(`server returned ${res.status}`);
     state.data = await res.json();
-    // Decrypt in the browser before any aggregation sees the records.
-    const failed = await decryptData(state.data);
+    // Decrypt in the browser before any aggregation sees the records. This is
+    // the long pole on a big history, so it's the phase that gets a real count.
+    bootPhase("decrypting");
+    const failed = await decryptData(state.data, bootProgress);
     if (failed > 0) {
       console.warn(`glockpeek: ${failed} field(s) could not be decrypted — the installed agent key may not match this vault.`);
     }
@@ -359,6 +436,7 @@ async function bootDashboard(me) {
     showError(`Could not load logs: ${err.message}`);
     return;
   }
+  bootPhase("applying rules");
   // Tag registry (shared Glocker:* system tags + this account's own), then the
   // rules that attach them. Both non-fatal if missing. Matching stays client-side.
   try {

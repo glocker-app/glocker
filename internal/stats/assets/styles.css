@@ -795,6 +795,115 @@ canvas { max-height: 260px; }
 }
 .error { color: var(--danger); flex-direction: column; gap: 10px; text-align: center; padding: 20px; }
 
+/* ── Boot dial ────────────────────────────────────────────
+   The first load decrypts every sealed field in the browser, so on a long
+   history there is a genuine wait. Rather than an unmoving "decrypting data…",
+   a hairline ring reports the real fraction: an unhurried sweep while the
+   records are still in flight (.indeterminate, no total known yet), then a
+   filling arc once app.js can count the work. Deliberately quiet — one hue,
+   hairline strokes, no bounce. --p is the 0..1 fill, set from JS. */
+.boot {
+  --p: 0;
+  --arc: 339.292; /* 2πr for r=54, in user units = px at this viewBox scale */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
+.boot-dial {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  display: grid;
+  place-items: center;
+}
+/* A slow breath of light behind the dial, so a long decrypt never looks frozen
+   even while the arc sits between batches. */
+.boot-dial::before {
+  content: "";
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(47, 158, 143, 0.16), transparent 68%);
+  animation: boot-breathe 3.2s ease-in-out infinite;
+}
+
+.boot-ring {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg); /* start the arc at 12 o'clock */
+  overflow: visible;
+}
+.boot-track, .boot-arc {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.boot-track { stroke: var(--line-2); }
+.boot-arc {
+  stroke: var(--safe);
+  stroke-dasharray: var(--arc);
+  stroke-dashoffset: calc(var(--arc) * (1 - var(--p)));
+  filter: drop-shadow(0 0 5px rgba(47, 158, 143, 0.45));
+  /* Progress arrives in batches, not per field — glide between them so the arc
+     reads as continuous motion instead of a series of jumps. */
+  transition: stroke-dashoffset 0.28s linear;
+}
+/* No total yet: a short arc sweeping the ring, at a pace that suggests work
+   rather than urgency. */
+.boot.indeterminate .boot-arc {
+  stroke-dasharray: 52 var(--arc);
+  stroke-dashoffset: 0;
+  transition: none;
+  transform-origin: 50% 50%;
+  animation: boot-sweep 1.6s cubic-bezier(0.5, 0.1, 0.4, 0.9) infinite;
+}
+
+.boot-pct {
+  position: relative;
+  font-family: var(--mono);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums; /* the ring must not twitch as digits change */
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--ink);
+}
+.boot-pct::after { content: "%"; font-size: 13px; color: var(--ink-faint); margin-left: 2px; }
+.boot.indeterminate .boot-pct::after { content: ""; } /* no "—%" */
+
+.boot-phase {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.boot-count {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  min-height: 1.2em; /* reserve the line so the dial doesn't shift when it fills */
+}
+
+@keyframes boot-sweep { to { transform: rotate(360deg); } }
+@keyframes boot-fade { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@keyframes boot-breathe {
+  0%, 100% { opacity: 0.45; transform: scale(0.96); }
+  50%      { opacity: 1;    transform: scale(1.04); }
+}
+
+/* Reduced motion: keep the readout, drop the movement. The arc still fills, it
+   just snaps to each batch instead of gliding, and the sweep becomes a pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .boot-dial::before { animation: none; opacity: 0.6; }
+  .boot-arc { transition: none; }
+  .boot.indeterminate .boot-arc { animation: boot-fade 2s ease-in-out infinite; }
+}
+
 /* staggered reveal of the active view's panels (re-runs on each view switch) */
 .view.active > * { animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 .view.active > *:nth-child(1) { animation-delay: 0.02s; }

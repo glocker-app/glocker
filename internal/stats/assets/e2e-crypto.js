@@ -82,17 +82,34 @@ async function recoveryKEK(raw) {
   return new Uint8Array(bits);
 }
 
+// importKey is not free, and the dashboard opens tens of thousands of fields
+// under the SAME master key on a first load. Memoise the imported CryptoKey per
+// key-bytes object so that costs once rather than once per field. A WeakMap
+// keyed on the Uint8Array means the CryptoKey is dropped with the key material
+// it came from, and two different keys can never collide in the cache.
+const keyCache = new WeakMap();
+function aesKey(keyBytes) {
+  let k = keyCache.get(keyBytes);
+  if (!k) {
+    // Cache the promise, not the resolved key: concurrent callers (a batched
+    // decrypt starts hundreds at once) then share one import instead of racing.
+    k = crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["encrypt", "decrypt"]);
+    keyCache.set(keyBytes, k);
+  }
+  return k;
+}
+
 // seal/open produce/consume Go's Box layout: a 12-byte nonce and ciphertext with
 // the 16-byte GCM tag appended (WebCrypto and Go GCM agree on that layout).
 async function seal(keyBytes, plaintext, aad) {
-  const key = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["encrypt"]);
+  const key = await aesKey(keyBytes);
   const nonce = rand(NONCE_LEN);
   const ct = new Uint8Array(await crypto.subtle.encrypt(
     { name: "AES-GCM", iv: nonce, additionalData: aad, tagLength: 128 }, key, plaintext));
   return { nonce, ct };
 }
 async function open(keyBytes, box, aad) {
-  const key = await crypto.subtle.importKey("raw", keyBytes, "AES-GCM", false, ["decrypt"]);
+  const key = await aesKey(keyBytes);
   return new Uint8Array(await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: box.nonce, additionalData: aad, tagLength: 128 }, key, box.ct));
 }

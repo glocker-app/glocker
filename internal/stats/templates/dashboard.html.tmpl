@@ -412,7 +412,22 @@
     </form>
   </div>
 
-  <div id="loading" class="loading">decrypting data&hellip;</div>
+  <!-- Boot screen. Everything arrives sealed, so there is a real wait here on a
+       long history; the dial reports it rather than hiding it. app.js drives the
+       phase label, the --p fill fraction and the counter (see bootProgress). -->
+  <div id="loading" class="loading">
+    <div class="boot indeterminate" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Preparing your dashboard">
+      <div class="boot-dial">
+        <svg class="boot-ring" viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="boot-track" cx="60" cy="60" r="54" />
+          <circle class="boot-arc" cx="60" cy="60" r="54" />
+        </svg>
+        <div class="boot-pct" id="boot-pct">&mdash;</div>
+      </div>
+      <div class="boot-phase" id="boot-phase">connecting</div>
+      <div class="boot-count" id="boot-count"></div>
+    </div>
+  </div>
   <div id="error" class="error" hidden></div>
 
   <script src="chart.umd.min.js"></script>
