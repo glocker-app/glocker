@@ -40,7 +40,8 @@ func TestRenderUpcomingLines(t *testing.T) {
 		"allow   steam",
 		"lock    sudo",
 		// 6m20s away must round UP, so the countdown never overstates the time left.
-		"in 7m",
+		"in  7m",
+		"in 12m",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)

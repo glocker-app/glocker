@@ -265,9 +265,11 @@ func renderUpcoming(f *frame, changes []schedule.Change, now time.Time) {
 			verb = good(verb)
 		}
 		// Round the countdown UP: a change 6m20s away is "in 7m", never "in 6m",
-		// so the number is never optimistic about how long you have.
+		// so the number is never optimistic about how long you have. It sits in a
+		// fixed column next to the wall clock, leaving the variable-length domain
+		// or program name last where it can run long without breaking alignment.
 		mins := int((c.At.Sub(now) + time.Minute - 1) / time.Minute)
-		f.detail(dim(c.At.Format("15:04")) + "  " + verb + c.Label() + dim(fmt.Sprintf("   in %dm", mins)))
+		f.detail(dim(c.At.Format("15:04")) + dim(fmt.Sprintf("  in %2dm   ", mins)) + verb + c.Label())
 	}
 }
 
