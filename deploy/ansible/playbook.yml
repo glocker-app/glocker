@@ -92,14 +92,16 @@
       ansible.builtin.stat:
         path: /usr/local/bin/glockpeek
       register: glockpeek_bin
-    - name: Write glockpeek config
-      ansible.builtin.template:
-        src: glockpeek.yaml.j2
-        dest: /etc/glocker/glockpeek.yaml
-        owner: root
-        group: glockpeek
-        mode: "0640"      # secret DSN — readable by the service user only
-      notify: restart glockpeek
+    # NOTE: /etc/glocker/glockpeek.yaml is NOT managed here — it holds DB/mail/
+    # billing secrets and is shipped from the (gitignored) conf/glockpeek.yaml by
+    # `make deploy` / `make deploy-config`, like the agent's config. Ansible only
+    # provisions the box (postgres, caddy, the service user, systemd). Ensure the
+    # directory exists so the deploy has somewhere to install it.
+    - name: Ensure the glocker config directory exists
+      ansible.builtin.file:
+        path: /etc/glocker
+        state: directory
+        mode: "0755"
     - name: Remove the retired agent-style config (glockpeek reads glockpeek.yaml now)
       ansible.builtin.file:
         path: /etc/glocker/config.yaml

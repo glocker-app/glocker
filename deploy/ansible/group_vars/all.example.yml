@@ -16,10 +16,8 @@ pg_password: "CHANGE-ME"        # secret — vault this
 admin_user: "admin"
 admin_password: "CHANGE-ME"     # secret — vault this
 
-# Outbound email for account verification (Mailgun). SERVER-SIDE ONLY — this key
-# never leaves the glockpeek host. region is "us" or "eu" (match your Mailgun domain).
-mail_enabled: true
-mail_domain: "mg.example.com"
-mail_api_key: "CHANGE-ME"       # secret — vault this
-mail_from: "noreply@mg.example.com"
-mail_region: "us"
+# NOTE: the glockpeek app config (mode, DB DSN, mail, billing) is NO LONGER
+# rendered by Ansible. It lives in the gitignored conf/glockpeek.yaml (see
+# conf/glockpeek.yaml.sample) and is shipped by `make deploy` / `make
+# deploy-config`. Ansible only provisions the box (postgres, caddy, service user,
+# systemd). Put the Mailgun key etc. there, not here.

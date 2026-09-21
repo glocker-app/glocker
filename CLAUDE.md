@@ -433,9 +433,15 @@ Server started by internal/web/server.go:StartWebTrackingServer()
 **Stats dashboard (`internal/stats/` + `internal/store/`, served by the standalone
 `glockpeek` process):**
 - Served by **`cmd/glockpeek`** as its own binary + systemd service
-  (`extras/glockpeek.service`), NOT by the glocker daemon. Reads
-  `/etc/glocker/config.yaml` for `glockpeek_listen` (default `127.0.0.1:4317`),
-  `database` (driver+DSN), and `glockpeek_secure_cookies`.
+  (`extras/glockpeek.service`), NOT by the glocker daemon. Reads its **own**
+  config `/etc/glocker/glockpeek.yaml` (`config.GlockpeekConfigFile`, nested under
+  a single `glockpeek:` stanza) for `listen` (default `127.0.0.1:4317`),
+  `database` (driver+DSN), `secure_cookies`, `mail`, `billing`, etc. This file is
+  **hand-managed, not Ansible-templated**: it holds DB/mail/billing secrets and is
+  the gitignored `conf/glockpeek.yaml` (sample: `conf/glockpeek.yaml.sample`),
+  shipped to the box by `make deploy` (binary + config) or `make deploy-config`
+  (config only). Ansible (`deploy/ansible/`) only provisions the box — postgres,
+  caddy, the service user, systemd — never this config.
 - **DB-backed, multi-tenant.** `internal/store` is a GORM layer (sqlite via
   pure-Go `glebarez/sqlite`, or postgres) — the dashboard no longer parses log
   files. Every stats row carries a `UserID`; all reads/ingest are scoped to the

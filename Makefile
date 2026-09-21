@@ -1,4 +1,4 @@
-.PHONY: build-all install full-install security-check update-blocklists test release deploy deploy-full deploy-rules deploy-landing deploy-extension db-backup db-restore help
+.PHONY: build-all install full-install security-check update-blocklists test release deploy deploy-config deploy-full deploy-rules deploy-landing deploy-extension db-backup db-restore help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -53,17 +53,27 @@ DEPLOY_HOST ?= glockerapp.com
 
 deploy-full: deploy deploy-landing deploy-extension ## Full deploy: dashboard binary + landing page + extension
 
-deploy: ## Deploy the glockpeek dashboard binary to the VPS
+deploy: ## Deploy the glockpeek dashboard binary + server config to the VPS
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy DEPLOY_HOST=my.example.com"; exit 1; }
+	@test -f conf/glockpeek.yaml || { echo "conf/glockpeek.yaml not found (gitignored server config with secrets) — create it from conf/glockpeek.yaml.sample"; exit 1; }
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o dist/glockpeek ./cmd/glockpeek
 	scp dist/glockpeek $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.new
-	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -m 0755 /tmp/glockpeek.new /usr/local/bin/glockpeek && rm -f /tmp/glockpeek.new && sudo systemctl restart glockpeek && sleep 2 && systemctl is-active glockpeek'
+	scp conf/glockpeek.yaml $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.yaml.new
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -m 0755 /tmp/glockpeek.new /usr/local/bin/glockpeek && sudo install -o root -g glockpeek -m 0640 /tmp/glockpeek.yaml.new /etc/glocker/glockpeek.yaml && rm -f /tmp/glockpeek.new /tmp/glockpeek.yaml.new && sudo systemctl restart glockpeek && sleep 2 && systemctl is-active glockpeek'
+
+# Ship ONLY the server config (conf/glockpeek.yaml) and restart — for a config
+# tweak (e.g. enabling mail) without rebuilding/shipping the binary.
+deploy-config: ## Ship just the glockpeek server config and restart
+	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-config DEPLOY_HOST=my.example.com"; exit 1; }
+	@test -f conf/glockpeek.yaml || { echo "conf/glockpeek.yaml not found (gitignored server config with secrets) — create it from conf/glockpeek.yaml.sample"; exit 1; }
+	scp conf/glockpeek.yaml $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.yaml.new
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -o root -g glockpeek -m 0640 /tmp/glockpeek.yaml.new /etc/glocker/glockpeek.yaml && rm -f /tmp/glockpeek.yaml.new && sudo systemctl restart glockpeek && sleep 2 && systemctl is-active glockpeek'
 
 # Ship the curated Glocker starter rules (tags.json, hosted-only + gitignored)
 # and load them into the default-rules template so NEW accounts seed from them.
 # Idempotent (replaces the table); run after `deploy` (needs the new binary's
 # -import-rules). Existing accounts are untouched. glockpeek reads the DB DSN
-# from /etc/glocker/config.yaml, so no -db/-driver needed on the box.
+# from /etc/glocker/glockpeek.yaml, so no -db/-driver needed on the box.
 deploy-rules: ## Load tags.json into the hosted default-rules template (run after deploy)
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST"; exit 1; }
 	@test -f tags.json || { echo "tags.json not found (hosted-only asset, gitignored)"; exit 1; }

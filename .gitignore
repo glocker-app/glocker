@@ -5,6 +5,8 @@
 /glockdoc
 /e2ekit
 conf/conf.yaml
+# glockpeek server config — holds DB/mail/billing secrets; shipped by `make deploy`.
+conf/glockpeek.yaml
 # Generated blocklists (large); keep the directory in the repo via .gitkeep.
 conf/conf.d/*.yaml
 sync-findings.md
