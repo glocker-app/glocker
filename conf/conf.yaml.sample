@@ -257,7 +257,7 @@ sync:
 # to send). Content is counts + liveness only — glockpeek can't read your encrypted
 # records, so it reports "how much / went dark", never "what". Requires glockpeek's
 # mail to be configured (see conf/glockpeek.yaml.sample).
-notifications:
+accountability:
   enabled: false
   buddy_emails: []              # who gets the digest + alerts, e.g. ["friend@example.com"]
   digest_every_hours: 24        # rolling summary cadence: 3, 6, 12, or 24. 0 = no periodic digest

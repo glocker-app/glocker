@@ -268,24 +268,24 @@ type Config struct {
 	// separate file (see GlockpeekConfig / GlockpeekConfigFile).
 	Sync SyncConfig `yaml:"sync"`
 
-	// Notifications configures glockpeek's accountability emails (a buddy digest +
+	// Accountability configures glockpeek's accountability emails (a buddy digest +
 	// went-dark / high-violation alerts). Authored here for consistency with the
 	// rest of the config, but ACTED ON BY GLOCKPEEK — the agent sends no mail. The
 	// stanza rides the config sync to the server in cleartext (buddy addresses and
 	// cadence are routing metadata the server must see, like the account's own
 	// email) and glockpeek's scheduler sends.
-	Notifications NotificationsConfig `yaml:"notifications"`
+	Accountability AccountabilityConfig `yaml:"accountability"`
 
 	// Panic mode.
 	Panic PanicConfig `yaml:"panic"`
 }
 
-// NotificationsConfig drives glockpeek's accountability emails. glockpeek is the
+// AccountabilityConfig drives glockpeek's accountability emails. glockpeek is the
 // sender (the agent holds no Mailgun key); this is synced cleartext so the server
 // can read whom and how often to email. Content is counts + liveness only — the
 // server can't read encrypted record content, so it can't say *what* was
 // accessed; buddy-readable content is a separate multi-recipient feature.
-type NotificationsConfig struct {
+type AccountabilityConfig struct {
 	Enabled bool `yaml:"enabled"`
 	// BuddyEmails receive the digest + alerts. From is always glockpeek's
 	// configured sender (glockerapp.com).
@@ -297,11 +297,11 @@ type NotificationsConfig struct {
 	// (an "all clear" liveness ping) rather than skipping empty windows.
 	DigestWhenQuiet bool `yaml:"digest_when_quiet"`
 	// Alerts fire immediately, not held for the next digest.
-	Alerts NotifyAlertsConfig `yaml:"alerts"`
+	Alerts AccountabilityAlertsConfig `yaml:"alerts"`
 }
 
-// NotifyAlertsConfig are the immediate accountability alerts.
-type NotifyAlertsConfig struct {
+// AccountabilityAlertsConfig are the immediate accountability alerts.
+type AccountabilityAlertsConfig struct {
 	// WentDark emails when the agent is uninstalled or its heartbeat gaps during
 	// committed use — the dead-man's switch (only glockpeek can send it; a killed
 	// agent can't).

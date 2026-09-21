@@ -102,15 +102,15 @@ type configUpload struct {
 	Config        string `json:"config"`
 	BlocklistHash string `json:"blocklistHash,omitempty"`
 	Blocklist     string `json:"blocklist,omitempty"`
-	// Notify is the accountability-notification config, sent CLEARTEXT (not part of
+	// Accountability is the accountability-email config, sent CLEARTEXT (not part of
 	// the encrypted Config blob) because glockpeek is the sender and must read whom
 	// and how often to email. It's routing metadata, not record content.
-	Notify *notifyUpload `json:"notify,omitempty"`
+	Accountability *accountabilityUpload `json:"accountability,omitempty"`
 }
 
-// notifyUpload is the wire shape of NotificationsConfig (flattened, plain JSON so
-// the agent stays GORM-free). glockpeek decodes it in handleConfig.
-type notifyUpload struct {
+// accountabilityUpload is the wire shape of AccountabilityConfig (flattened, plain
+// JSON so the agent stays GORM-free). glockpeek decodes it in handleConfig.
+type accountabilityUpload struct {
 	Enabled          bool     `json:"enabled"`
 	BuddyEmails      []string `json:"buddyEmails,omitempty"`
 	DigestEveryHours int      `json:"digestEveryHours"`
@@ -119,9 +119,9 @@ type notifyUpload struct {
 	HighViolations   int      `json:"highViolations"`
 }
 
-func notifyFromConfig(cfg *config.Config) *notifyUpload {
-	n := cfg.Notifications
-	return &notifyUpload{
+func accountabilityFromConfig(cfg *config.Config) *accountabilityUpload {
+	n := cfg.Accountability
+	return &accountabilityUpload{
 		Enabled:          n.Enabled,
 		BuddyEmails:      n.BuddyEmails,
 		DigestEveryHours: n.DigestEveryHours,
@@ -236,9 +236,9 @@ func (s *Syncer) syncConfig() bool {
 	// The notification config rides along cleartext; fold it into the hash so a
 	// change to it (which never touches the encrypted snapshot) still triggers an
 	// upload rather than being short-circuited as "unchanged".
-	notify := notifyFromConfig(s.cfg)
-	notifyJSON, _ := json.Marshal(notify)
-	sum := sha256.Sum256(append(append([]byte{}, plaintext...), notifyJSON...))
+	acct := accountabilityFromConfig(s.cfg)
+	acctJSON, _ := json.Marshal(acct)
+	sum := sha256.Sum256(append(append([]byte{}, plaintext...), acctJSON...))
 	hash := hex.EncodeToString(sum[:])
 
 	// The blocklist is reconciled independently — it's multi-MB and changes rarely
@@ -268,7 +268,7 @@ func (s *Syncer) syncConfig() bool {
 		return false
 	}
 	up.Config, up.Encrypted = blob, encrypted
-	up.Notify = notify // cleartext, alongside the encrypted snapshot
+	up.Accountability = acct // cleartext, alongside the encrypted snapshot
 
 	// Attach the blocklist only when it changed. A seal failure here doesn't sink
 	// the snapshot upload — the blocklist just retries next tick.

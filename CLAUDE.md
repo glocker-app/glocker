@@ -147,10 +147,10 @@ glocker -uninstall "reason"
   comes from per-feature commands instead (`domains.blocked_access_command`, the
   violation-tracking lock command, etc.).
 - **Accountability email is glockpeek's job** (only it can send when the agent is
-  dead). It's configured in the agent's `conf.yaml` `notifications:` stanza
+  dead). It's configured in the agent's `conf.yaml` `accountability:` stanza
   (enabled, `buddy_emails`, `digest_every_hours`, `digest_when_quiet`,
   `alerts.went_dark`/`high_violations`) but **authored-there, sent-by-glockpeek**:
-  the stanza rides the config sync as a **cleartext** `notify` field (outside the
+  the stanza rides the config sync as a **cleartext** `accountability` field (outside the
   encrypted snapshot blob, so glockpeek can read whom/how-often to email) and is
   stored account-level in `store.NotifyConfig` (latest sync wins).
   `internal/notifier` is the server-side scheduler (a goroutine in

@@ -46,13 +46,13 @@ type configUpload struct {
 	Config        string `json:"config"`
 	BlocklistHash string `json:"blocklistHash,omitempty"`
 	Blocklist     string `json:"blocklist,omitempty"`
-	// Notify is the accountability-notification config, sent cleartext (glockpeek
+	// Accountability is the accountability-email config, sent cleartext (glockpeek
 	// is the sender and must read whom/how-often to email). Absent on older agents.
-	Notify *notifyUpload `json:"notify,omitempty"`
+	Accountability *accountabilityUpload `json:"accountability,omitempty"`
 }
 
-// notifyUpload mirrors the agent's cleartext notification wire shape.
-type notifyUpload struct {
+// accountabilityUpload mirrors the agent's cleartext accountability wire shape.
+type accountabilityUpload struct {
 	Enabled          bool     `json:"enabled"`
 	BuddyEmails      []string `json:"buddyEmails,omitempty"`
 	DigestEveryHours int      `json:"digestEveryHours"`
@@ -96,9 +96,9 @@ func handleConfigPost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// Notification config (cleartext) is account-level; the latest sync wins.
-	if in.Notify != nil {
-		n := in.Notify
+	// Accountability config (cleartext) is account-level; the latest sync wins.
+	if in.Accountability != nil {
+		n := in.Accountability
 		if err := db.SaveNotifyConfig(uid, store.NotifyConfig{
 			Enabled: n.Enabled, BuddyEmails: store.EncodeBuddies(n.BuddyEmails),
 			DigestEveryHours: n.DigestEveryHours, DigestWhenQuiet: n.DigestWhenQuiet,
