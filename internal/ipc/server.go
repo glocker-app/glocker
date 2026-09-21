@@ -193,6 +193,15 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 			} else {
 				conn.Write([]byte("ERROR: syncer is not running (sync disabled, or encryption key unusable)\n"))
 			}
+		case "test-email":
+			// Ask glockpeek (the only party that can send) to fire a test
+			// accountability email to the account's buddies. Synchronous: report
+			// glockpeek's result back to the CLI.
+			if msg, err := syncer.SendTestEmail(cfg); err != nil {
+				conn.Write([]byte("ERROR: " + err.Error() + "\n"))
+			} else {
+				conn.Write([]byte("OK: " + msg + "\n"))
+			}
 		case "add-keyword":
 			if len(parts) != 2 {
 				conn.Write([]byte("ERROR: Invalid format. Use 'add-keyword:keywords'\n"))

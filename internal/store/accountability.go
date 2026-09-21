@@ -55,6 +55,14 @@ func (db *DB) SaveAccountabilityConfig(userID uint, n AccountabilityConfig) erro
 	}).Create(&n).Error
 }
 
+// GetAccountabilityConfig returns one account's stored config. It errors (gorm
+// ErrRecordNotFound) when no config has synced yet for the account.
+func (db *DB) GetAccountabilityConfig(userID uint) (AccountabilityConfig, error) {
+	var c AccountabilityConfig
+	err := db.Where("user_id = ?", userID).First(&c).Error
+	return c, err
+}
+
 // EnabledAccountabilityConfigs returns every account's notification settings that are
 // enabled with at least one recipient — the scheduler's work list.
 func (db *DB) EnabledAccountabilityConfigs() ([]AccountabilityConfig, error) {

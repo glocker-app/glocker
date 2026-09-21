@@ -163,6 +163,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 
 	// Token-gated: the syncer's ingest endpoint.
 	mux.HandleFunc("/api/ingest", requireToken(handleIngest))
+	mux.HandleFunc("/api/test-email", requireToken(handleTestEmail))
 }
 
 func handleData(w http.ResponseWriter, r *http.Request) {

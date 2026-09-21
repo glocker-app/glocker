@@ -48,7 +48,7 @@ glocker -uninstall "reason"
   - Command-line flag definitions (`-status`, `-watch`, `-info`, `-version`, `-connect`,
     `-extend`, `-purge`, `-security-check`, `-install`, `-uninstall`, `-note`, `-daemon`,
     `-block`, `-block-app`, `-unblock`, `-add-keyword`, `-panic`, `-lock`, `-force`,
-    `-resync` [+`-resync-since`])
+    `-resync` [+`-resync-since`], `-test-email`)
   - Flag handlers with socket communication
   - Default behavior: show status or help
   - Daemon startup logic
@@ -104,6 +104,7 @@ glocker -uninstall "reason"
     - `lock` - Force sudoers lock
     - `add-keyword` - Add monitoring keywords
     - `resync` - Rewind the syncer's cursors and backfill (re-push local records to glockpeek, overwriting its copies); optional `:sinceMS` payload
+    - `test-email` - Ask glockpeek to send a test accountability email to the account's buddies (via `syncer.SendTestEmail` → `POST /api/test-email`); confirms mail delivery. glockpeek sends — the agent can't.
     - `uninstall` - Uninstall glocker
   - `processLockRequest()` - Lock processor
   - `processAddKeywordRequest()` - Keyword processor
@@ -365,7 +366,7 @@ type ForbiddenProgram struct {
 - Client sends command via Unix socket at `/var/glocker/glocker.sock`
 - Format: `"action:payload\n"` (e.g., `"block:example.com\n"`)
 - Server processes command and returns response
-- Commands: `ping`, `status`, `info`, `unblock`, `block`, `block-app`, `panic`, `extend`, `lock`, `add-keyword`, `resync`, `uninstall`
+- Commands: `ping`, `status`, `info`, `unblock`, `block`, `block-app`, `panic`, `extend`, `lock`, `add-keyword`, `resync`, `test-email`, `uninstall`
 - Multi-line responses end with `"END"`
 
 ### Important Files and Paths

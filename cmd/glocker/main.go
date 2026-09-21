@@ -98,6 +98,7 @@ func main() {
 	lockFlag := flag.Bool("lock", false, "Immediately lock sudoers access (ignores time windows)")
 	resyncFlag := flag.Bool("resync", false, "Re-push local records to glockpeek (backfill), overwriting its copies — use after a fix like enabling encryption for a field. Watch it with `glocker -status`/`-watch`.")
 	resyncSince := flag.String("resync-since", "", "With -resync: only re-push records on/after this local date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM). Empty = full history.")
+	testEmailFlag := flag.Bool("test-email", false, "Send a test accountability email via glockpeek to your configured buddy_emails, to confirm mail delivery works.")
 	securityCheckFlag := flag.Bool("security-check", false, "Report bypass/recovery routes (root login, recovery mode, extra sudoers, SSH root, autologin); read-only")
 	connectFlag := flag.Bool("connect", false, "Connect this machine to your dashboard's encryption: fetch your key vault, unlock it with your passphrase, and install the key so synced data is end-to-end encrypted")
 	connectForce := flag.Bool("force", false, "With -connect: replace an existing key even if it differs from your vault (WARNING: makes data encrypted under the old key unreadable)")
@@ -549,6 +550,23 @@ func main() {
 		}
 		log.Printf("%s", strings.TrimSpace(response))
 		log.Println("Watch it push with `glocker -status` (or `glocker -watch`).")
+		return
+	}
+
+	if *testEmailFlag {
+		// glockpeek is the only party that can send accountability email, so this
+		// asks the daemon (which holds the sync URL/token) to trigger it there.
+		conn, err := net.Dial("unix", ipc.SocketPath)
+		if err != nil {
+			log.Fatalf("Failed to connect to glocker service: %v", err)
+		}
+		defer conn.Close()
+		conn.Write([]byte("test-email\n"))
+		response, err := bufio.NewReader(conn).ReadString('\n')
+		if err != nil {
+			log.Fatalf("Failed to read response: %v", err)
+		}
+		log.Printf("%s", strings.TrimSpace(response))
 		return
 	}
 

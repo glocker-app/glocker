@@ -324,6 +324,32 @@ paths:
           description: Missing or invalid ingest token
         "422":
           description: require_encryption is on but the snapshot is not encrypted
+  /api/test-email:
+    post:
+      summary: Send a test accountability email (agent-triggered)
+      description: >
+        Asks glockpeek to send a clearly-marked test email to the authenticated
+        account's synced buddy_emails, so an operator can confirm accountability
+        mail is deliverable before relying on it. glockpeek is the only party that
+        can send (the agent holds no mail key), so `glocker -test-email` is really
+        this call, made by the daemon with its ingest token. Ingest-token gated,
+        and it only ever mails the account's own configured buddies — never an
+        address in the request — so it cannot be used as an open relay.
+      operationId: sendTestEmail
+      responses:
+        "200":
+          description: Test email sent; body names the addresses it went to.
+          content:
+            text/plain:
+              schema: { type: string }
+        "401":
+          description: Missing or invalid ingest token
+        "422":
+          description: No accountability config synced, or no buddy_emails configured
+        "502":
+          description: The mailer accepted no recipient (delivery failed)
+        "503":
+          description: glockpeek mail is not configured
   /api/billing/checkout:
     post:
       summary: Start a checkout for the paid tier (Merchant-of-Record, Polar)
