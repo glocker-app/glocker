@@ -8,6 +8,18 @@ Glocker is a Linux-based distraction blocking system written in Go. It blocks di
 
 **Architecture:** Modular Go application with packages in `internal/` directory (see File Map below)
 
+## Working conventions
+
+- **Keep `PLAN.md` current.** When an item is closed, update `PLAN.md` to reflect
+  it (flip the checkbox, add the commit ref / one-line result). If unsure whether
+  an item is actually closed, ask first; update it once given the go-ahead.
+- **Cleartext residuals are a settled decision, not an open risk.** The metadata
+  that stays clear on glockpeek — `recordId` (HMAC), `idle_ms`, `window_count`,
+  `violation.type`, `lifecycle.type`/`reason`, and the structural `ts` /
+  `heartbeat.alive` / `restore_ts` — is consciously accepted and documented in
+  `docs/habits.md`. Content is sealed; this metadata is not identity/content.
+  Don't keep re-raising it as a concern.
+
 ## Build and Test Commands
 
 ```bash
