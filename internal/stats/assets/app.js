@@ -688,8 +688,7 @@ function setView(view) {
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.dataset.view === view));
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   document.getElementById("view-title").textContent = VIEW_TITLES[view] || view;
-  const rr = document.getElementById("range-readout");
-  if (rr) rr.hidden = view !== "analytics"; // lives in the Analytics Range panel
+  // Range readouts (Analytics + Insights) are populated/shown by updateRangeReadout.
   if (view === "analytics") setSubtab(state.analyticsTab || "history");
   if (view === "config") renderConfig();
   if (view === "insights") renderInsights();
@@ -813,14 +812,14 @@ function windowBounds() {
   return { start: state.winStart, end: state.winEnd };
 }
 
-// updateRangeReadout writes the selected range into the readout at the top-right
-// of the Range panel header.
+// updateRangeReadout writes the selected range into every Range-panel readout
+// (Analytics + Insights share the same strip component, each with its own readout).
 function updateRangeReadout() {
-  const el = document.getElementById("range-readout");
-  if (!el || state.winStart == null) return;
+  if (state.winStart == null) return;
   const fmt = (ts) => new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
   const days = Math.round((state.winEnd - state.winStart) / DAY);
-  el.innerHTML = `<span class="rr-from">${fmt(state.winStart)}</span><span class="rr-arrow">→</span><span class="rr-to">${fmt(state.winEnd)}</span><span class="rr-days">${days}d</span>`;
+  const html = `<span class="rr-from">${fmt(state.winStart)}</span><span class="rr-arrow">→</span><span class="rr-to">${fmt(state.winEnd)}</span><span class="rr-days">${days}d</span>`;
+  document.querySelectorAll(".range-readout").forEach((el) => { el.innerHTML = html; el.hidden = false; });
 }
 
 const within = (ts, b) => ts >= b.start && ts <= b.end;
@@ -1293,6 +1292,7 @@ function renderTimeline(canvasId = "chart-timeline") {
   ], { underlay, overlay });
 
   wireBrush(document.getElementById(canvasId));
+  updateRangeReadout(); // keep this strip's from→to readout in sync
 }
 
 // stripChart: a compact multi-line sparkline (shared Y, integer axis) with the

@@ -296,14 +296,28 @@
         </section><!-- /view analytics -->
 
         <section class="view" data-view="insights">
+          <!-- Same Range strip as Analytics: brush to pick the window insights
+               are computed over. -->
           <section class="panel strip-panel">
-            <div class="panel-head">
-              <h2>Insights</h2>
-              <p class="panel-sub"><span id="insights-sub"></span></p>
+            <div class="panel-head range-head">
+              <div>
+                <h2>Range</h2>
+                <p class="panel-sub">Drag to pick the window.</p>
+              </div>
+              <div id="insights-range-readout" class="range-readout" hidden></div>
             </div>
             <div class="spark-wrap"><canvas id="insights-timeline"></canvas></div>
+            <div class="tl-legend">
+              <span class="tl-key"><span class="tl-sw tl-line"></span> violations/day</span>
+              <span class="tl-key"><span class="tl-sw tl-line2"></span> unblocks/day</span>
+              <span class="tl-key"><span class="tl-sw tl-band"></span> unmanaged</span>
+            </div>
           </section>
           <section class="panel">
+            <div class="panel-head">
+              <h2>Suggestions</h2>
+              <p class="panel-sub"><span id="insights-sub"></span></p>
+            </div>
             <p id="insights-noconfig" class="insight-noconfig" hidden></p>
             <div class="insights-body">
               <div class="insight-side">
