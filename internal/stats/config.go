@@ -99,7 +99,7 @@ func handleConfigPost(w http.ResponseWriter, r *http.Request) {
 	// Accountability config (cleartext) is account-level; the latest sync wins.
 	if in.Accountability != nil {
 		n := in.Accountability
-		if err := db.SaveNotifyConfig(uid, store.NotifyConfig{
+		if err := db.SaveAccountabilityConfig(uid, store.AccountabilityConfig{
 			Enabled: n.Enabled, BuddyEmails: store.EncodeBuddies(n.BuddyEmails),
 			DigestEveryHours: n.DigestEveryHours, DigestWhenQuiet: n.DigestWhenQuiet,
 			WentDark: n.WentDark, HighViolations: n.HighViolations,

@@ -1,4 +1,4 @@
-package notifier
+package accountability
 
 import (
 	"context"
@@ -30,12 +30,12 @@ func newDB(t *testing.T) *store.DB {
 	return db
 }
 
-func fixedNotifier(db *store.DB, fm *fakeMailer, now time.Time) *Notifier {
-	return &Notifier{db: db, mail: fm, now: func() time.Time { return now }}
+func fixedNotifier(db *store.DB, fm *fakeMailer, now time.Time) *Scheduler {
+	return &Scheduler{db: db, mail: fm, now: func() time.Time { return now }}
 }
 
-func cfg(uid uint, mut func(*store.NotifyConfig)) store.NotifyConfig {
-	c := store.NotifyConfig{
+func cfg(uid uint, mut func(*store.AccountabilityConfig)) store.AccountabilityConfig {
+	c := store.AccountabilityConfig{
 		UserID: uid, Enabled: true,
 		BuddyEmails: store.EncodeBuddies([]string{"buddy@example.com"}),
 	}
@@ -56,7 +56,7 @@ func TestDigestCountsAndContentFree(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = db.IngestUnblocks(uid, 0, []store.Unblock{{TS: now.Add(-2 * time.Hour).UnixMilli(), RecordID: "u1", Domain: "x.example", Reason: "work"}})
-	if err := db.SaveNotifyConfig(uid, cfg(uid, func(c *store.NotifyConfig) { c.DigestEveryHours = 24 })); err != nil {
+	if err := db.SaveAccountabilityConfig(uid, cfg(uid, func(c *store.AccountabilityConfig) { c.DigestEveryHours = 24 })); err != nil {
 		t.Fatal(err)
 	}
 
@@ -78,7 +78,7 @@ func TestDigestCountsAndContentFree(t *testing.T) {
 			t.Errorf("digest leaked content %q", leak)
 		}
 	}
-	if c, _ := db.EnabledNotifyConfigs(); c[0].LastDigestAt == 0 {
+	if c, _ := db.EnabledAccountabilityConfigs(); c[0].LastDigestAt == 0 {
 		t.Error("LastDigestAt not stamped")
 	}
 }
@@ -88,7 +88,7 @@ func TestDigestSkipsQuietButStamps(t *testing.T) {
 	db := newDB(t)
 	const uid = 1
 	now := time.Now().UTC()
-	_ = db.SaveNotifyConfig(uid, cfg(uid, func(c *store.NotifyConfig) { c.DigestEveryHours = 24 }))
+	_ = db.SaveAccountabilityConfig(uid, cfg(uid, func(c *store.AccountabilityConfig) { c.DigestEveryHours = 24 }))
 
 	fm := &fakeMailer{}
 	fixedNotifier(db, fm, now).tick(now)
@@ -96,7 +96,7 @@ func TestDigestSkipsQuietButStamps(t *testing.T) {
 	if len(fm.sent) != 0 {
 		t.Fatalf("quiet window should send nothing, got %d", len(fm.sent))
 	}
-	if c, _ := db.EnabledNotifyConfigs(); c[0].LastDigestAt == 0 {
+	if c, _ := db.EnabledAccountabilityConfigs(); c[0].LastDigestAt == 0 {
 		t.Error("cadence should advance even on a quiet skip")
 	}
 }
@@ -106,7 +106,7 @@ func TestDigestWhenQuietSends(t *testing.T) {
 	db := newDB(t)
 	const uid = 1
 	now := time.Now().UTC()
-	_ = db.SaveNotifyConfig(uid, cfg(uid, func(c *store.NotifyConfig) { c.DigestEveryHours = 24; c.DigestWhenQuiet = true }))
+	_ = db.SaveAccountabilityConfig(uid, cfg(uid, func(c *store.AccountabilityConfig) { c.DigestEveryHours = 24; c.DigestWhenQuiet = true }))
 
 	fm := &fakeMailer{}
 	fixedNotifier(db, fm, now).tick(now)
@@ -123,7 +123,7 @@ func TestDigestHighViolationsFlag(t *testing.T) {
 	for i := 0; i < 25; i++ {
 		_ = db.IngestViolations(uid, 0, []store.Violation{{TS: now.Add(-time.Duration(i) * time.Minute).UnixMilli(), RecordID: fmt.Sprintf("r%d", i), Keyword: "k"}})
 	}
-	_ = db.SaveNotifyConfig(uid, cfg(uid, func(c *store.NotifyConfig) { c.DigestEveryHours = 24; c.HighViolations = 20 }))
+	_ = db.SaveAccountabilityConfig(uid, cfg(uid, func(c *store.AccountabilityConfig) { c.DigestEveryHours = 24; c.HighViolations = 20 }))
 
 	fm := &fakeMailer{}
 	fixedNotifier(db, fm, now).tick(now)
@@ -138,7 +138,7 @@ func TestWentDarkOncePerEpisode(t *testing.T) {
 	const uid = 1
 	now := time.Now().UTC()
 	_ = db.IngestHeartbeats(uid, 0, []store.Heartbeat{{TS: now.Add(-30 * time.Minute).UnixMilli(), Alive: true}})
-	_ = db.SaveNotifyConfig(uid, cfg(uid, func(c *store.NotifyConfig) { c.WentDark = true }))
+	_ = db.SaveAccountabilityConfig(uid, cfg(uid, func(c *store.AccountabilityConfig) { c.WentDark = true }))
 
 	fm := &fakeMailer{}
 	n := fixedNotifier(db, fm, now)
@@ -170,8 +170,8 @@ func TestDigestNotDue(t *testing.T) {
 	db := newDB(t)
 	const uid = 1
 	now := time.Now().UTC()
-	c := cfg(uid, func(c *store.NotifyConfig) { c.DigestEveryHours = 24 })
-	_ = db.SaveNotifyConfig(uid, c)
+	c := cfg(uid, func(c *store.AccountabilityConfig) { c.DigestEveryHours = 24 })
+	_ = db.SaveAccountabilityConfig(uid, c)
 	_ = db.MarkDigestSent(uid, now.Add(-2*time.Hour).UnixMilli()) // last sent 2h ago, window 24h
 
 	fm := &fakeMailer{}

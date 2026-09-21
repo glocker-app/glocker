@@ -7,12 +7,12 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// NotifyConfig is an account's accountability-notification settings, synced from
+// AccountabilityConfig is an account's accountability-notification settings, synced from
 // the agent's conf.yaml (cleartext — glockpeek is the sender and must read whom
 // and how often to email). Account-level: authored per-device, but the digest is
-// an account roll-up, so the latest sync wins (SaveNotifyConfig upserts the config
+// an account roll-up, so the latest sync wins (SaveAccountabilityConfig upserts the config
 // columns, leaving the scheduler's Last* bookkeeping untouched).
-type NotifyConfig struct {
+type AccountabilityConfig struct {
 	UserID uint `gorm:"primaryKey" json:"-"`
 
 	// Synced from conf.yaml.
@@ -32,7 +32,7 @@ type NotifyConfig struct {
 }
 
 // Buddies decodes the stored buddy-email list.
-func (n NotifyConfig) Buddies() []string {
+func (n AccountabilityConfig) Buddies() []string {
 	var out []string
 	if n.BuddyEmails != "" {
 		_ = json.Unmarshal([]byte(n.BuddyEmails), &out)
@@ -40,10 +40,10 @@ func (n NotifyConfig) Buddies() []string {
 	return out
 }
 
-// SaveNotifyConfig upserts the account's notification settings from a config sync.
+// SaveAccountabilityConfig upserts the account's notification settings from a config sync.
 // It writes only the synced columns — the scheduler's Last* bookkeeping is left
 // alone so re-syncing the same config never resets the throttle.
-func (db *DB) SaveNotifyConfig(userID uint, n NotifyConfig) error {
+func (db *DB) SaveAccountabilityConfig(userID uint, n AccountabilityConfig) error {
 	n.UserID = userID
 	n.UpdatedAt = time.Now()
 	return db.Clauses(clause.OnConflict{
@@ -55,10 +55,10 @@ func (db *DB) SaveNotifyConfig(userID uint, n NotifyConfig) error {
 	}).Create(&n).Error
 }
 
-// EnabledNotifyConfigs returns every account's notification settings that are
+// EnabledAccountabilityConfigs returns every account's notification settings that are
 // enabled with at least one recipient — the scheduler's work list.
-func (db *DB) EnabledNotifyConfigs() ([]NotifyConfig, error) {
-	var out []NotifyConfig
+func (db *DB) EnabledAccountabilityConfigs() ([]AccountabilityConfig, error) {
+	var out []AccountabilityConfig
 	err := db.Where("enabled = ? AND buddy_emails <> '' AND buddy_emails <> '[]'", true).Find(&out).Error
 	return out, err
 }
@@ -78,16 +78,16 @@ func (db *DB) LatestHeartbeatTS(userID uint) (int64, bool) {
 
 // MarkDigestSent / MarkWentDarkSent / MarkHighViolSent stamp the throttle fields.
 func (db *DB) MarkDigestSent(userID uint, at int64) error {
-	return db.Model(&NotifyConfig{}).Where("user_id = ?", userID).Update("last_digest_at", at).Error
+	return db.Model(&AccountabilityConfig{}).Where("user_id = ?", userID).Update("last_digest_at", at).Error
 }
 func (db *DB) MarkWentDarkSent(userID uint, at int64) error {
-	return db.Model(&NotifyConfig{}).Where("user_id = ?", userID).Update("last_went_dark_at", at).Error
+	return db.Model(&AccountabilityConfig{}).Where("user_id = ?", userID).Update("last_went_dark_at", at).Error
 }
 func (db *DB) MarkHighViolSent(userID uint, at int64) error {
-	return db.Model(&NotifyConfig{}).Where("user_id = ?", userID).Update("last_high_viol_at", at).Error
+	return db.Model(&AccountabilityConfig{}).Where("user_id = ?", userID).Update("last_high_viol_at", at).Error
 }
 
-// encodeBuddies is a helper for callers building a NotifyConfig from a wire list.
+// encodeBuddies is a helper for callers building a AccountabilityConfig from a wire list.
 func EncodeBuddies(emails []string) string {
 	if len(emails) == 0 {
 		return "[]"

@@ -1,11 +1,11 @@
-// Package notifier is glockpeek's accountability-email sender. It runs server-side
+// Package scheduler is glockpeek's accountability-email sender. It runs server-side
 // (glockpeek is the only party that can send when the agent is dead) and reads the
-// per-account NotifyConfig synced from the agent's conf.yaml. Emails are
+// per-account AccountabilityConfig synced from the agent's conf.yaml. Emails are
 // content-free by necessity — under E2E glockpeek holds only ciphertext, so it can
 // report counts and liveness ("14 violations, went dark 2h"), never *what* was
 // accessed. Buddy-readable content is a separate multi-recipient-encryption
 // feature.
-package notifier
+package accountability
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 	"glocker/internal/store"
 )
 
-// Mailer is the slice of *mailer.Mailer the notifier needs (so tests can fake it).
+// Mailer is the slice of *mailer.Mailer the scheduler needs (so tests can fake it).
 type Mailer interface {
 	Send(ctx context.Context, to, subject, textBody, htmlBody string) error
 }
@@ -30,23 +30,23 @@ const (
 	tickEvery = 5 * time.Minute
 )
 
-// Notifier sends the digests and alerts.
-type Notifier struct {
+// Scheduler sends the digests and alerts.
+type Scheduler struct {
 	db     *store.DB
 	mail   Mailer
 	appURL string
 	now    func() time.Time // injectable for tests
 }
 
-// New builds a notifier. mail may be a disabled mailer (Send is then a no-op),
+// New builds a scheduler. mail may be a disabled mailer (Send is then a no-op),
 // in which case the scheduler runs but sends nothing.
-func New(db *store.DB, mail Mailer, appURL string) *Notifier {
-	return &Notifier{db: db, mail: mail, appURL: appURL, now: time.Now}
+func New(db *store.DB, mail Mailer, appURL string) *Scheduler {
+	return &Scheduler{db: db, mail: mail, appURL: appURL, now: time.Now}
 }
 
 // Run loops forever, checking due work every tickEvery. Cheap — it only touches
 // accounts that opted in. Start it in a goroutine.
-func (n *Notifier) Run() {
+func (n *Scheduler) Run() {
 	t := time.NewTicker(tickEvery)
 	defer t.Stop()
 	n.tick(n.now())
@@ -56,10 +56,10 @@ func (n *Notifier) Run() {
 }
 
 // tick does one pass over the opted-in accounts.
-func (n *Notifier) tick(now time.Time) {
-	cfgs, err := n.db.EnabledNotifyConfigs()
+func (n *Scheduler) tick(now time.Time) {
+	cfgs, err := n.db.EnabledAccountabilityConfigs()
 	if err != nil {
-		slog.Warn("notifier: listing configs failed", "err", err)
+		slog.Warn("scheduler: listing configs failed", "err", err)
 		return
 	}
 	for _, c := range cfgs {
@@ -68,7 +68,7 @@ func (n *Notifier) tick(now time.Time) {
 }
 
 // process handles one account's due alerts + digest.
-func (n *Notifier) process(c store.NotifyConfig, now time.Time) {
+func (n *Scheduler) process(c store.AccountabilityConfig, now time.Time) {
 	to := c.Buddies()
 	if len(to) == 0 {
 		return
@@ -97,7 +97,7 @@ func (n *Notifier) process(c store.NotifyConfig, now time.Time) {
 		if due {
 			rep, err := report.BuildWindow(n.db, c.UserID, now, window)
 			if err != nil {
-				slog.Warn("notifier: building report failed", "user", c.UserID, "err", err)
+				slog.Warn("scheduler: building report failed", "user", c.UserID, "err", err)
 				return
 			}
 			quiet := rep.Violations == 0 && rep.Unblocks == 0 && rep.UnmanagedMinutes == 0
@@ -113,7 +113,7 @@ func (n *Notifier) process(c store.NotifyConfig, now time.Time) {
 }
 
 // send emails every recipient; returns true if at least one send didn't error.
-func (n *Notifier) send(to []string, subject, text, html string) bool {
+func (n *Scheduler) send(to []string, subject, text, html string) bool {
 	ok := false
 	for _, addr := range to {
 		addr = strings.TrimSpace(addr)
@@ -121,7 +121,7 @@ func (n *Notifier) send(to []string, subject, text, html string) bool {
 			continue
 		}
 		if err := n.mail.Send(context.Background(), addr, subject, text, html); err != nil {
-			slog.Warn("notifier: send failed", "to", addr, "err", err)
+			slog.Warn("scheduler: send failed", "to", addr, "err", err)
 			continue
 		}
 		ok = true

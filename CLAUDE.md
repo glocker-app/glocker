@@ -152,8 +152,8 @@ glocker -uninstall "reason"
   `alerts.went_dark`/`high_violations`) but **authored-there, sent-by-glockpeek**:
   the stanza rides the config sync as a **cleartext** `accountability` field (outside the
   encrypted snapshot blob, so glockpeek can read whom/how-often to email) and is
-  stored account-level in `store.NotifyConfig` (latest sync wins).
-  `internal/notifier` is the server-side scheduler (a goroutine in
+  stored account-level in `store.AccountabilityConfig` (latest sync wins).
+  `internal/accountability` is the server-side scheduler (a goroutine in
   `cmd/glockpeek`): it sends a periodic digest (`internal/report` counts —
   `BuildWindow` over the cadence) and an immediate **went-dark** alert (newest
   heartbeat older than 15m — the dead-man's switch). Emails are **content-free**:

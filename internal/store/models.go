@@ -287,7 +287,7 @@ func AllModels() []any {
 		&Heartbeat{}, &Rule{}, &TagColor{}, &IgnoredViolation{},
 		&SyncStatus{}, &KeyVault{}, &DeviceConfig{},
 		&Tag{}, &TagOverride{}, &RuleTag{}, &DefaultRule{},
-		&NotifyConfig{},
+		&AccountabilityConfig{},
 	}
 }
 
