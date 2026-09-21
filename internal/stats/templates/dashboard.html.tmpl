@@ -39,7 +39,6 @@
       </ul>
 
       <div class="sidebar-foot">
-        <div id="range-readout" class="range-readout" hidden></div>
         <button id="refresh-btn" class="refresh-btn" type="button" title="Refresh data"></button>
         <hr class="foot-sep" />
         <span id="footer-version" class="src">{{ if .Version }}<span class="ver">{{ .Version }}</span>{{ end }}</span>
@@ -100,9 +99,12 @@
 
           <!-- Shared range selector (History/Usage): brush to pick the window. -->
           <section class="panel strip-panel">
-            <div class="panel-head">
-              <h2>Range</h2>
-              <p class="panel-sub">Drag to pick the window.</p>
+            <div class="panel-head range-head">
+              <div>
+                <h2>Range</h2>
+                <p class="panel-sub">Drag to pick the window.</p>
+              </div>
+              <div id="range-readout" class="range-readout" hidden></div>
             </div>
             <div class="spark-wrap"><canvas id="chart-timeline"></canvas></div>
             <div class="tl-legend">

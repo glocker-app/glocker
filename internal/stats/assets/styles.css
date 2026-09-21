@@ -586,14 +586,18 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
    (a plain block collapsed the gaps — notably under the usage stat tiles). */
 .subview.active { display: flex; flex-direction: column; gap: 22px; }
 
-/* Selected-window readout — lives bottom-left in the (sticky) sidebar footer,
-   so it stays visible while scrolling. Shown only on Analytics. */
+/* Range panel header: title/subtitle on the left, the selected-window readout on
+   the right. */
+.range-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+/* Selected-window readout — sits top-right of the Range panel, showing the picked
+   from → to span. Shown only on Analytics. */
 .range-readout {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
-  font-family: var(--mono); font-size: 11px; color: var(--ink-dim);
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 7px;
+  font-family: var(--mono); font-size: 15px; color: var(--ink);
+  white-space: nowrap; text-align: right;
 }
 .range-readout .rr-arrow { color: var(--ink-faint); }
-.range-readout .rr-days { color: var(--signal); margin-left: 2px; }
+.range-readout .rr-days { color: var(--signal); margin-left: 3px; font-weight: 600; }
 
 /* Account menu — traditional top-right dropdown (Sign out, …). */
 .account { position: relative; }

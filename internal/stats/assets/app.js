@@ -689,7 +689,7 @@ function setView(view) {
   document.querySelectorAll("#nav button").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
   document.getElementById("view-title").textContent = VIEW_TITLES[view] || view;
   const rr = document.getElementById("range-readout");
-  if (rr) rr.hidden = view !== "analytics" && view !== "insights"; // Analytics + Insights use the window
+  if (rr) rr.hidden = view !== "analytics"; // lives in the Analytics Range panel
   if (view === "analytics") setSubtab(state.analyticsTab || "history");
   if (view === "config") renderConfig();
   if (view === "insights") renderInsights();
@@ -813,8 +813,8 @@ function windowBounds() {
   return { start: state.winStart, end: state.winEnd };
 }
 
-// updateRangeReadout writes the selected range into the floating overlay, which
-// is fixed-positioned so it stays visible while you scroll the detail views.
+// updateRangeReadout writes the selected range into the readout at the top-right
+// of the Range panel header.
 function updateRangeReadout() {
   const el = document.getElementById("range-readout");
   if (!el || state.winStart == null) return;
