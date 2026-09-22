@@ -17,8 +17,7 @@
   "permissions": [
     "webRequest",
     "webRequestBlocking",
-    "<all_urls>",
-    "storage"
+    "<all_urls>"
   ],
   
   "incognito": "spanning",
