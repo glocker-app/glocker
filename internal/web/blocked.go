@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"html"
 	"net/http"
 	"time"
 )
@@ -24,21 +25,28 @@ func HandleBlockedPageRequest(w http.ResponseWriter, r *http.Request) {
 	if domain == "" {
 		domain = "this site"
 	}
-	if matchedDomain == "" {
-		matchedDomain = domain
-	}
 	if reason == "" {
 		reason = "This content has been blocked by Glocker."
 	}
 
-	// Set content type
-	w.Header().Set("Content-Type", "text/html")
+	// charset so the 🚫 (and any non-ASCII) renders instead of mojibake.
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
+
+	// These are reflected from the query string into the page, so HTML-escape them
+	// to prevent reflected XSS — any site can navigate the browser to
+	// /blocked?reason=<script>… on this local origin.
+	// Only show the matched-rule line when a real rule was passed (domain blocks).
+	// Keyword blocks pass none, so it would just echo the "this site" fallback.
+	matchedInfo := ""
+	if matchedDomain != "" {
+		matchedInfo = fmt.Sprintf(`<p class="matched">Matched blocking rule: %s</p>`, html.EscapeString(matchedDomain))
+	}
 
 	// Add original URL info if provided
 	originalURLInfo := ""
 	if originalURL != "" {
-		originalURLInfo = fmt.Sprintf(`<p class="matched">Original URL: %s</p>`, originalURL)
+		originalURLInfo = fmt.Sprintf(`<p class="matched">Original URL: %s</p>`, html.EscapeString(originalURL))
 	}
 
 	// Generate the blocked page HTML
@@ -117,13 +125,13 @@ func HandleBlockedPageRequest(w http.ResponseWriter, r *http.Request) {
     <div class="container">
         <h1>🚫 Site Blocked</h1>
         <p>Access to <span class="domain">%s</span> has been blocked by Glocker.</p>
-        <p class="matched">Matched blocking rule: %s</p>
+        %s
         %s
         <div class="reason">%s</div>
         <p class="time">Blocked at: %s</p>
     </div>
 </body>
-</html>`, domain, matchedDomain, originalURLInfo, reason, time.Now().Format("2006-01-02 15:04:05"))
+</html>`, html.EscapeString(domain), matchedInfo, originalURLInfo, html.EscapeString(reason), time.Now().Format("2006-01-02 15:04:05"))
 
 	w.Write([]byte(blockedPage))
 }

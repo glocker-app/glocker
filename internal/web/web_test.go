@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -203,6 +204,33 @@ func TestHandleBlockedPageRequest_DefaultValues(t *testing.T) {
 	body := w.Body.String()
 	if !strings.Contains(body, "this site") {
 		t.Error("Should use default domain 'this site'")
+	}
+}
+
+// The reflected query params must be HTML-escaped — any site can navigate the
+// browser to /blocked?reason=<script>… on this local origin (reflected XSS).
+func TestHandleBlockedPageRequest_EscapesParams(t *testing.T) {
+	q := url.Values{}
+	q.Set("domain", "<script>a</script>")
+	q.Set("matched", "<b>m</b>")
+	q.Set("reason", `"><img src=x onerror=alert(1)>`)
+	q.Set("url", "<i>u</i>")
+	req := httptest.NewRequest("GET", "/blocked?"+q.Encode(), nil)
+	w := httptest.NewRecorder()
+
+	HandleBlockedPageRequest(w, req)
+
+	body := w.Body.String()
+	for _, raw := range []string{"<script>a</script>", "<b>m</b>", "<img src=x onerror=", "<i>u</i>"} {
+		if strings.Contains(body, raw) {
+			t.Errorf("unescaped reflected param in page (XSS): %q", raw)
+		}
+	}
+	if !strings.Contains(body, "&lt;script&gt;") {
+		t.Error("expected the script param to be HTML-escaped")
+	}
+	if w.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want text/html; charset=utf-8", w.Header().Get("Content-Type"))
 	}
 }
 
