@@ -1,3 +1,7 @@
+// Debug logging — off by default. Flip to true to trace matching in the console.
+const DEBUG = false;
+function dbg() { if (DEBUG) console.log.apply(console, arguments); }
+
 // Page content analysis - will be populated from background script
 let contentKeywords = ['trigger1', 'trigger2']; // fallback defaults
 let whitelist = ['github.com', 'stackoverflow.com', 'docs.google.com']; // fallback defaults
@@ -24,7 +28,7 @@ function compileContentKeywordRegexes() {
       regex: new RegExp('\\b' + escapedKeyword + '\\b', 'i')
     };
   });
-  console.log('Compiled regex patterns for', contentKeywordRegexes.length, 'content keywords');
+  dbg('Compiled regex patterns for', contentKeywordRegexes.length, 'content keywords');
 }
 
 // Compile whitelist patterns into regex patterns for performance
@@ -55,12 +59,12 @@ function compileWhitelistRegexes() {
       regex: regex
     };
   });
-  console.log('Compiled regex patterns for', whitelistRegexes.length, 'whitelist patterns');
+  dbg('Compiled regex patterns for', whitelistRegexes.length, 'whitelist patterns');
 }
 
 // Request keywords from background script
 async function fetchKeywords() {
-  console.log('Requesting keywords from background script...');
+  dbg('Requesting keywords from background script...');
   try {
     const response = await browser.runtime.sendMessage({
       type: 'GET_KEYWORDS'
@@ -70,23 +74,23 @@ async function fetchKeywords() {
       if (response.contentKeywords && Array.isArray(response.contentKeywords)) {
         contentKeywords = response.contentKeywords;
         compileContentKeywordRegexes();
-        console.log('Updated content keywords from background:', contentKeywords);
+        dbg('Updated content keywords from background:', contentKeywords);
       } else {
-        console.log('No valid content_keywords in response, using defaults');
+        dbg('No valid content_keywords in response, using defaults');
       }
 
       if (response.whitelist && Array.isArray(response.whitelist)) {
         whitelist = response.whitelist;
         compileWhitelistRegexes();
-        console.log('Updated whitelist from background:', whitelist);
+        dbg('Updated whitelist from background:', whitelist);
       } else {
-        console.log('No valid whitelist in response, using defaults');
+        dbg('No valid whitelist in response, using defaults');
       }
 
       return response;
     }
   } catch (error) {
-    console.log('Keywords request error:', error);
+    dbg('Keywords request error:', error);
   }
   return null;
 }
@@ -97,19 +101,19 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Skip processing if already cleaned up
     if (isCleanedUp) return;
 
-    console.log('Received keyword update from background:', message.contentKeywords);
+    dbg('Received keyword update from background:', message.contentKeywords);
     contentKeywords = message.contentKeywords;
     compileContentKeywordRegexes();
 
     if (message.whitelist && Array.isArray(message.whitelist)) {
-      console.log('Received whitelist update from background:', message.whitelist);
+      dbg('Received whitelist update from background:', message.whitelist);
       whitelist = message.whitelist;
       compileWhitelistRegexes();
     }
 
     // Re-analyze current page with new keywords
     if (document.readyState === 'complete' && !isCleanedUp) {
-      console.log('Re-analyzing page content with updated keywords');
+      dbg('Re-analyzing page content with updated keywords');
       analyzeContent();
     }
   }
@@ -118,11 +122,11 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Comprehensive cleanup function
 function cleanup() {
   if (isCleanedUp) {
-    console.log('Already cleaned up, skipping');
+    dbg('Already cleaned up, skipping');
     return;
   }
   
-  console.log('Cleaning up glocker extension resources');
+  dbg('Cleaning up glocker extension resources');
   isCleanedUp = true;
   
   // Cancel any pending debounced analysis
@@ -140,7 +144,7 @@ function cleanup() {
   // Clear keyword arrays to free memory
   contentKeywords = null;
   
-  console.log('Cleanup completed');
+  dbg('Cleanup completed');
 }
 
 // Set up cleanup on multiple events to ensure it runs
@@ -167,7 +171,7 @@ function isCurrentURLWhitelisted() {
   
   for (let whitelistData of whitelistRegexes) {
     if (whitelistData.regex.test(currentURL) || whitelistData.regex.test(currentHostname)) {
-      console.log("Current URL is whitelisted:", currentURL, "matched pattern:", whitelistData.pattern);
+      dbg("Current URL is whitelisted:", currentURL, "matched pattern:", whitelistData.pattern);
       return true;
     }
   }
@@ -177,44 +181,46 @@ function isCurrentURLWhitelisted() {
 function analyzeContent() {
   // Skip if already cleaned up or no keywords
   if (isCleanedUp || !contentKeywords) {
-    console.log('Skipping analysis - cleaned up or no keywords');
+    dbg('Skipping analysis - cleaned up or no keywords');
     return;
   }
   
-  console.log('analyzeContent() called for URL:', window.location.href);
+  dbg('analyzeContent() called for URL:', window.location.href);
   
   // Skip localhost pages: prevents redirect loops, and stops the glocker
   // dashboard (glocker.localhost/stats) from catching itself — it displays the
   // very keywords it records. Covers 127.0.0.1, localhost, and any *.localhost.
   const host = window.location.hostname.toLowerCase();
   if (host === '127.0.0.1' || host === 'localhost' || host.endsWith('.localhost')) {
-    console.log('Skipping localhost/dashboard analysis:', host);
+    dbg('Skipping localhost/dashboard analysis:', host);
     return;
   }
   
   // Check if current URL is whitelisted - if so, skip all content analysis
   if (isCurrentURLWhitelisted()) {
-    console.log('Current URL is whitelisted, skipping content analysis');
+    dbg('Current URL is whitelisted, skipping content analysis');
     return;
   }
   
-  const text = document.body ? document.body.textContent.toLowerCase() : '';
+  // The keyword/whitelist regexes are case-insensitive ('i'), so scan the raw
+  // textContent — no need to allocate a lowercased copy of the whole page.
+  const text = document.body ? document.body.textContent : '';
   
   // Check if content has changed since last analysis
   const contentHash = generateContentHash(text);
   if (contentHash === lastContentHash) {
-    console.log('Content unchanged since last analysis, skipping');
+    dbg('Content unchanged since last analysis, skipping');
     return;
   }
   lastContentHash = contentHash;
   
-  console.log('Analyzing content, text length:', text.length);
-  console.log('Current keywords to check:', contentKeywords);
+  dbg('Analyzing content, text length:', text.length);
+  dbg('Current keywords to check:', contentKeywords);
   
   for (let keywordData of contentKeywordRegexes) {
-    console.log('Checking for keyword:', keywordData.keyword);
+    dbg('Checking for keyword:', keywordData.keyword);
     if (keywordData.regex.test(text)) {
-      console.log('KEYWORD MATCH FOUND:', keywordData.keyword);
+      dbg('KEYWORD MATCH FOUND:', keywordData.keyword);
       const reportData = {
         url: window.location.href,
         domain: window.location.hostname,
@@ -222,25 +228,25 @@ function analyzeContent() {
         timestamp: Date.now()
       };
       
-      console.log('Sending report:', reportData);
+      dbg('Sending report:', reportData);
       fetch('http://127.0.0.1/report', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify(reportData)
       }).catch((error) => {
-        console.log('Report send failed:', error);
+        dbg('Report send failed:', error);
       });
       
       // Redirect to blocked page with reason
       const reason = encodeURIComponent(`Page content contains blocked keyword: "${keywordData.keyword}"`);
       const domain = encodeURIComponent(window.location.hostname);
-      console.log('Redirecting to blocked page with reason:', reason);
+      dbg('Redirecting to blocked page with reason:', reason);
       window.location.replace(`http://127.0.0.1/blocked?reason=${reason}&domain=${domain}`);
       
       break; // Only report once per page
     }
   }
-  console.log('Content analysis complete, no matches found');
+  dbg('Content analysis complete, no matches found');
 }
 
 // Helper function to check if a node contains meaningful text content
@@ -265,7 +271,7 @@ function hasTextChanges(mutations) {
     // Check for text content changes
     if (mutation.type === 'characterData') {
       if (mutation.target.textContent.trim().length > 0) {
-        console.log('Text content changed:', mutation.target.textContent.substring(0, 50) + '...');
+        dbg('Text content changed:', mutation.target.textContent.substring(0, 50) + '...');
         return true;
       }
     }
@@ -275,7 +281,7 @@ function hasTextChanges(mutations) {
       // Check added nodes
       for (let node of mutation.addedNodes) {
         if (hasTextContent(node)) {
-          console.log('Text content added via new node:', node.textContent.substring(0, 50) + '...');
+          dbg('Text content added via new node:', node.textContent.substring(0, 50) + '...');
           return true;
         }
       }
@@ -283,7 +289,7 @@ function hasTextChanges(mutations) {
       // Check if removed nodes had significant text (for dynamic content replacement)
       for (let node of mutation.removedNodes) {
         if (hasTextContent(node)) {
-          console.log('Text content removed, may indicate dynamic replacement');
+          dbg('Text content removed, may indicate dynamic replacement');
           return true;
         }
       }
@@ -296,11 +302,11 @@ function hasTextChanges(mutations) {
 function setupContentMonitoring() {
   // Skip if already cleaned up
   if (isCleanedUp) {
-    console.log('Skipping content monitoring setup - cleaned up');
+    dbg('Skipping content monitoring setup - cleaned up');
     return;
   }
   
-  console.log('Setting up content monitoring...');
+  dbg('Setting up content monitoring...');
   
   // Clean up existing observer if any
   if (window.glockerObserver) {
@@ -326,7 +332,7 @@ function setupContentMonitoring() {
       contentDebounceTimer = setTimeout(() => {
         contentDebounceTimer = null;
         if (!isCleanedUp) {
-          console.log('Debounced content analysis triggered');
+          dbg('Debounced content analysis triggered');
           analyzeContent();
         }
       }, DEBOUNCE_MS);
@@ -335,7 +341,7 @@ function setupContentMonitoring() {
   
   // Start observing changes to the entire document
   const targetNode = document.body || document.documentElement;
-  console.log('Starting MutationObserver on:', targetNode.tagName);
+  dbg('Starting MutationObserver on:', targetNode.tagName);
   observer.observe(targetNode, {
     childList: true,
     subtree: true,
@@ -344,11 +350,11 @@ function setupContentMonitoring() {
   
   // Store observer reference for cleanup
   window.glockerObserver = observer;
-  console.log('Content monitoring setup complete');
+  dbg('Content monitoring setup complete');
 }
 
-console.log("Content script starting on:", window.location.href);
-console.log("Document ready state:", document.readyState);
+dbg("Content script starting on:", window.location.href);
+dbg("Document ready state:", document.readyState);
 
 // Compile initial regex patterns
 compileContentKeywordRegexes();
@@ -356,18 +362,18 @@ compileWhitelistRegexes();
 
 // Initialize keywords on startup
 fetchKeywords().then((data) => {
-  console.log('Keywords fetch completed, data:', data);
+  dbg('Keywords fetch completed, data:', data);
   
   // Run content analysis after keywords are loaded
   if (document.readyState === 'loading') {
-    console.log('Document still loading, waiting for DOMContentLoaded');
+    dbg('Document still loading, waiting for DOMContentLoaded');
     document.addEventListener('DOMContentLoaded', setupContentMonitoring);
   } else {
-    console.log('Document already loaded, setting up monitoring immediately');
+    dbg('Document already loaded, setting up monitoring immediately');
     setupContentMonitoring();
   }
 }).catch((error) => {
-  console.log('Keywords fetch failed, using defaults:', error);
+  dbg('Keywords fetch failed, using defaults:', error);
   
   // Still try to analyze with default keywords
   setupContentMonitoring();

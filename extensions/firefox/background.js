@@ -1,3 +1,7 @@
+// Debug logging — off by default. Flip to true to trace matching in the console.
+const DEBUG = false;
+function dbg() { if (DEBUG) console.log.apply(console, arguments); }
+
 // Performance optimization configuration
 const PERFORMANCE_CONFIG = {
   // File extensions to skip (resources that don't need keyword checking)
@@ -90,7 +94,7 @@ function compileKeywordRegexes() {
     };
   });
   
-  console.log('Compiled regex patterns for', urlKeywordRegexes.length, 'URL keywords,', contentKeywordRegexes.length, 'content keywords, and', whitelistRegexes.length, 'whitelist patterns');
+  dbg('Compiled regex patterns for', urlKeywordRegexes.length, 'URL keywords,', contentKeywordRegexes.length, 'content keywords, and', whitelistRegexes.length, 'whitelist patterns');
 }
 
 // Update browser action icon based on connection status
@@ -120,15 +124,15 @@ async function fetchKeywords() {
       const data = await response.json();
       if (data.url_keywords && Array.isArray(data.url_keywords)) {
         urlKeywords = data.url_keywords;
-        console.log('Updated URL keywords from server:', urlKeywords);
+        dbg('Updated URL keywords from server:', urlKeywords);
       }
       if (data.content_keywords && Array.isArray(data.content_keywords)) {
         contentKeywords = data.content_keywords;
-        console.log('Updated content keywords from server:', contentKeywords);
+        dbg('Updated content keywords from server:', contentKeywords);
       }
       if (data.whitelist && Array.isArray(data.whitelist)) {
         whitelist = data.whitelist;
-        console.log('Updated whitelist from server:', whitelist);
+        dbg('Updated whitelist from server:', whitelist);
       }
       
       // Recompile regex patterns with new keywords
@@ -147,7 +151,7 @@ async function fetchKeywords() {
       updateStatusIcon();
     }
   } catch (error) {
-    console.log('Failed to fetch keywords from server, using defaults:', error);
+    dbg('Failed to fetch keywords from server, using defaults:', error);
     glockerConnected = false;
     updateStatusIcon();
   }
@@ -171,7 +175,7 @@ function broadcastKeywordsToContentScripts() {
 
 // Set up SSE connection for real-time keyword updates
 function setupSSEConnection() {
-  console.log('Setting up centralized SSE connection for keyword updates...');
+  dbg('Setting up centralized SSE connection for keyword updates...');
   
   // Clean up existing connection if any
   if (window.backgroundSSE) {
@@ -182,7 +186,7 @@ function setupSSEConnection() {
   const eventSource = new EventSource('http://127.0.0.1/keywords-stream');
   
   eventSource.onopen = function(event) {
-    console.log('SSE connection opened');
+    dbg('SSE connection opened');
     glockerConnected = true;
     updateStatusIcon();
   };
@@ -191,26 +195,26 @@ function setupSSEConnection() {
     // Skip processing if cleaned up
     if (backgroundCleanedUp) return;
     
-    console.log('SSE message received:', event.data);
+    dbg('SSE message received:', event.data);
     try {
       const data = JSON.parse(event.data);
       let updated = false;
       
       if (data.url_keywords && Array.isArray(data.url_keywords)) {
         urlKeywords = data.url_keywords;
-        console.log('Updated URL keywords via SSE:', urlKeywords);
+        dbg('Updated URL keywords via SSE:', urlKeywords);
         updated = true;
       }
       
       if (data.content_keywords && Array.isArray(data.content_keywords)) {
         contentKeywords = data.content_keywords;
-        console.log('Updated content keywords via SSE:', contentKeywords);
+        dbg('Updated content keywords via SSE:', contentKeywords);
         updated = true;
       }
       
       if (data.whitelist && Array.isArray(data.whitelist)) {
         whitelist = data.whitelist;
-        console.log('Updated whitelist via SSE:', whitelist);
+        dbg('Updated whitelist via SSE:', whitelist);
         updated = true;
       }
       
@@ -220,12 +224,12 @@ function setupSSEConnection() {
         broadcastKeywordsToContentScripts();
       }
     } catch (error) {
-      console.log('Failed to parse SSE message:', error);
+      dbg('Failed to parse SSE message:', error);
     }
   };
   
   eventSource.onerror = function(event) {
-    console.log('SSE connection error:', event);
+    dbg('SSE connection error:', event);
     glockerConnected = false;
     updateStatusIcon();
     // Connection will automatically retry unless cleaned up
@@ -254,7 +258,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function cleanupBackground() {
   if (backgroundCleanedUp) return;
   
-  console.log('Cleaning up background script resources');
+  dbg('Cleaning up background script resources');
   backgroundCleanedUp = true;
   
   // Close SSE connection
@@ -270,14 +274,14 @@ function cleanupBackground() {
   // Clear URL cache
   urlCheckCache.clear();
   
-  console.log('Background cleanup completed');
+  dbg('Background cleanup completed');
 }
 
 // Set up cleanup for background script
 browser.runtime.onSuspend.addListener(cleanupBackground);
 
 // Initialize on startup
-console.log('Extension starting - always active');
+dbg('Extension starting - always active');
 
 // Initialize status icon and keywords on startup
 updateStatusIcon();
@@ -326,7 +330,7 @@ function hostOf(u) {
 function isWhitelisted(url) {
   for (let whitelistData of whitelistRegexes) {
     if (whitelistData.regex.test(url)) {
-      console.log("URL is whitelisted:", url, "matched pattern:", whitelistData.pattern);
+      dbg("URL is whitelisted:", url, "matched pattern:", whitelistData.pattern);
       return true;
     }
   }
@@ -369,7 +373,7 @@ browser.webRequest.onBeforeRequest.addListener(
     const cachedResult = getCachedResult(urlToCheck);
     if (cachedResult !== undefined) {
       if (cachedResult.blocked) {
-        console.log("URL blocked (cached):", urlToCheck, "keyword:", cachedResult.keyword);
+        dbg("URL blocked (cached):", urlToCheck, "keyword:", cachedResult.keyword);
         const reason = encodeURIComponent(`URL contains blocked keyword: "${cachedResult.keyword}"`);
         const domain = encodeURIComponent(hostOf(urlToCheck));
         return {redirectUrl: `http://127.0.0.1/blocked?reason=${reason}&domain=${domain}`};
@@ -379,16 +383,16 @@ browser.webRequest.onBeforeRequest.addListener(
     
     // Check if URL is whitelisted - if so, skip all blocking logic
     if (isWhitelisted(urlToCheck)) {
-      console.log("URL is whitelisted, skipping blocking logic:", urlToCheck);
+      dbg("URL is whitelisted, skipping blocking logic:", urlToCheck);
       setCachedResult(urlToCheck, { blocked: false });
       return;
     }
     
-    console.log("Checking URL:", urlToCheck, "against", urlKeywordRegexes.length, "patterns");
+    dbg("Checking URL:", urlToCheck, "against", urlKeywordRegexes.length, "patterns");
     
     for (let keywordData of urlKeywordRegexes) {
       if (keywordData.regex.test(urlToCheck)) {
-        console.log("Found ", keywordData.keyword, " in ", urlToCheck);
+        dbg("Found ", keywordData.keyword, " in ", urlToCheck);
         
         // Cache the blocked result
         setCachedResult(urlToCheck, { blocked: true, keyword: keywordData.keyword });
