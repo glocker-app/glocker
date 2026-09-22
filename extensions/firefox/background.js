@@ -316,6 +316,12 @@ function shouldSkipURL(url, requestType) {
   return false;
 }
 
+// hostOf returns the hostname of a URL for the blocked page's "Access to X" line
+// (empty on a parse failure — the page then falls back to "this site").
+function hostOf(u) {
+  try { return new URL(u).hostname; } catch (e) { return ""; }
+}
+
 // Check if URL is whitelisted
 function isWhitelisted(url) {
   for (let whitelistData of whitelistRegexes) {
@@ -365,7 +371,8 @@ browser.webRequest.onBeforeRequest.addListener(
       if (cachedResult.blocked) {
         console.log("URL blocked (cached):", urlToCheck, "keyword:", cachedResult.keyword);
         const reason = encodeURIComponent(`URL contains blocked keyword: "${cachedResult.keyword}"`);
-        return {redirectUrl: `http://127.0.0.1/blocked?reason=${reason}`};
+        const domain = encodeURIComponent(hostOf(urlToCheck));
+        return {redirectUrl: `http://127.0.0.1/blocked?reason=${reason}&domain=${domain}`};
       }
       return; // URL was checked before and not blocked
     }
@@ -399,7 +406,8 @@ browser.webRequest.onBeforeRequest.addListener(
         
         // Redirect to blocked page with reason
         const reason = encodeURIComponent(`URL contains blocked keyword: "${keywordData.keyword}"`);
-        return {redirectUrl: `http://127.0.0.1/blocked?reason=${reason}`};
+        const domain = encodeURIComponent(hostOf(urlToCheck));
+        return {redirectUrl: `http://127.0.0.1/blocked?reason=${reason}&domain=${domain}`};
       }
     }
     

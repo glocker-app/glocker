@@ -105,7 +105,8 @@ function analyzeContent() {
         }),
       }).catch(() => {});
       const reason = encodeURIComponent(`Page content contains blocked keyword: "${k.keyword}"`);
-      window.location.replace(`http://127.0.0.1/blocked?reason=${reason}`);
+      const domain = encodeURIComponent(window.location.hostname);
+      window.location.replace(`http://127.0.0.1/blocked?reason=${reason}&domain=${domain}`);
       break; // report once per page
     }
   }
