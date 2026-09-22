@@ -132,7 +132,13 @@ sign-extension: ## Sign the Firefox extension via AMO (needs web-ext + AMO_JWT_*
 	 if ls extensions/firefox/web-ext-artifacts/*-$$ver.xpi >/dev/null 2>&1; then \
 	   echo "manifest version $$ver already has a signed .xpi — bump \"version\" in extensions/firefox/manifest.json first"; exit 1; fi; \
 	 echo "signing version $$ver…"
+	@dirty=$$(git status --porcelain -- . ':(exclude)extensions/firefox/build-info.js' | head -1); \
+	 base=$$(git rev-parse --short HEAD 2>/dev/null || echo dev); \
+	 tag=$$base$${dirty:+-dirty}; \
+	 printf 'var GLOCKER_BUILD = { commit: "%s" };\n' "$$tag" > extensions/firefox/build-info.js; \
+	 echo "stamped build-info.js: $$tag"
 	cd extensions/firefox && web-ext sign --channel=unlisted --api-key="$$AMO_JWT_ISSUER" --api-secret="$$AMO_JWT_SECRET"
+	@git checkout -- extensions/firefox/build-info.js 2>/dev/null || true
 
 # Sign then publish in one step.
 release-extension: sign-extension deploy-extension ## Sign the Firefox extension and publish it

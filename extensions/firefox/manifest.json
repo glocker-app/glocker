@@ -23,7 +23,7 @@
   "incognito": "spanning",
   
   "background": {
-    "scripts": ["background.js"]
+    "scripts": ["build-info.js", "background.js"]
   },
   
   "content_scripts": [{

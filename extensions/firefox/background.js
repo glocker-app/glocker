@@ -97,6 +97,14 @@ function compileKeywordRegexes() {
   dbg('Compiled regex patterns for', urlKeywordRegexes.length, 'URL keywords,', contentKeywordRegexes.length, 'content keywords, and', whitelistRegexes.length, 'whitelist patterns');
 }
 
+// buildTag reports which build is running: manifest version + the commit stamped
+// in at sign time (build-info.js), e.g. "v2.5 (a1b2c3d)". "dev" for unsigned runs.
+function buildTag() {
+  const v = browser.runtime.getManifest().version;
+  const c = (typeof GLOCKER_BUILD !== 'undefined' && GLOCKER_BUILD.commit) ? GLOCKER_BUILD.commit : 'dev';
+  return `v${v} (${c})`;
+}
+
 // Update browser action icon based on connection status
 function updateStatusIcon() {
   let title, badgeText, badgeColor;
@@ -111,7 +119,7 @@ function updateStatusIcon() {
     badgeColor = '#F44336'; // Red for disconnected
   }
 
-  browser.browserAction.setTitle({ title: title });
+  browser.browserAction.setTitle({ title: title + ' — ' + buildTag() });
   browser.browserAction.setBadgeText({ text: badgeText });
   browser.browserAction.setBadgeBackgroundColor({ color: badgeColor });
 }
@@ -280,8 +288,9 @@ function cleanupBackground() {
 // Set up cleanup for background script
 browser.runtime.onSuspend.addListener(cleanupBackground);
 
-// Initialize on startup
-dbg('Extension starting - always active');
+// Initialize on startup. One always-on line so you can confirm which build is
+// live (the rest of the logging is DEBUG-gated).
+console.info('Glocker extension ' + buildTag());
 
 // Initialize status icon and keywords on startup
 updateStatusIcon();
