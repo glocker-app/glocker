@@ -1,4 +1,4 @@
-.PHONY: build-all install full-install security-check update-blocklists test release deploy deploy-config deploy-full deploy-rules deploy-landing deploy-extension db-backup db-restore help
+.PHONY: build-all install full-install security-check update-blocklists test release deploy deploy-config deploy-full deploy-rules deploy-landing sign-extension release-extension deploy-extension db-backup db-restore help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -116,6 +116,27 @@ deploy-landing: ## Deploy the static landing page to the apex web root
 # machine without a locally built artifact. Signing is a separate, manual, one-off
 # step (`web-ext sign --channel unlisted` in extensions/firefox/); this only ships
 # the newest signed .xpi already in web-ext-artifacts/. Re-run after re-signing.
+# Sign the Firefox extension via Mozilla's AMO API (unlisted self-distribution),
+# dropping the signed .xpi into extensions/firefox/web-ext-artifacts/. Automated —
+# no human review for unlisted. Needs:
+#   - web-ext            (npm i -g web-ext)
+#   - AMO_JWT_ISSUER / AMO_JWT_SECRET in the env
+#     (addons.mozilla.org → Developer Hub → Manage API Keys; keep them out of git)
+# AMO rejects a version it has already signed, so the "version" in
+# extensions/firefox/manifest.json must be bumped first — `make sign-extension`
+# does that check for you. Then `make deploy-extension` ships it.
+sign-extension: ## Sign the Firefox extension via AMO (needs web-ext + AMO_JWT_* env)
+	@command -v web-ext >/dev/null || { echo "web-ext not found — install with: npm i -g web-ext"; exit 1; }
+	@test -n "$$AMO_JWT_ISSUER" -a -n "$$AMO_JWT_SECRET" || { echo "set AMO_JWT_ISSUER and AMO_JWT_SECRET (addons.mozilla.org → Developer Hub → Manage API Keys)"; exit 1; }
+	@ver=$$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' extensions/firefox/manifest.json | head -1); \
+	 if ls extensions/firefox/web-ext-artifacts/*-$$ver.xpi >/dev/null 2>&1; then \
+	   echo "manifest version $$ver already has a signed .xpi — bump \"version\" in extensions/firefox/manifest.json first"; exit 1; fi; \
+	 echo "signing version $$ver…"
+	cd extensions/firefox && web-ext sign --channel=unlisted --api-key="$$AMO_JWT_ISSUER" --api-secret="$$AMO_JWT_SECRET"
+
+# Sign then publish in one step.
+release-extension: sign-extension deploy-extension ## Sign the Firefox extension and publish it
+
 deploy-extension: ## Publish the signed Firefox extension xpi to the site
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-extension DEPLOY_HOST=my.example.com"; exit 1; }
 	@xpi=$$(ls -t extensions/firefox/web-ext-artifacts/*.xpi 2>/dev/null | head -1); \
