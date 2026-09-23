@@ -60,7 +60,6 @@ func digestEmail(rep report.Report, highViol int, who string) (subject, text, ht
 	if heavy {
 		lines = append(lines, "", fmt.Sprintf("Crosses the alert threshold of %d.", highViol))
 	}
-	lines = append(lines, "", "Counts only — content stays encrypted.")
 	text = strings.Join(lines, "\n") + "\n"
 
 	stat := func(label, val string) string {
@@ -79,7 +78,6 @@ func digestEmail(rep report.Report, highViol int, who string) (subject, text, ht
 	if heavy {
 		fmt.Fprintf(&b, `<div style="margin-top:14px;padding:9px 12px;background:#fdecea;border-radius:6px;color:#b3261e;font-weight:600">Crosses the alert threshold of %d.</div>`, highViol)
 	}
-	b.WriteString(`<div style="margin-top:16px;color:#9ca3af;font-size:12px">Counts only — content stays encrypted.</div>`)
 	html = emailShell(who, b.String())
 	return
 }
@@ -91,14 +89,13 @@ func wentDarkEmail(lastSeen, now time.Time, who string) (subject, text, html str
 	subject = withWho("⚠ glockpeek — the agent went dark", who)
 
 	text = fmt.Sprintf(
-		"glocker stopped checking in.\n\nLast heartbeat: %s (%s ago).\n\nProtection may be off.\n",
+		"glocker stopped checking in.\n\nLast heartbeat: %s (%s ago).\n",
 		stamp, ago)
 
 	inner := `<div style="display:inline-block;padding:4px 11px;background:#fef3c7;color:#92400e;border-radius:6px;font-weight:600;font-size:13px">⚠ Agent went dark</div>` +
 		`<p style="margin:15px 0 6px;font-weight:600;font-size:15px">glocker stopped checking in.</p>` +
 		fmt.Sprintf(`<p style="margin:0;color:#555">Last heartbeat: <strong>%s</strong> (%s ago).</p>`,
-			htmlpkg.EscapeString(stamp), htmlpkg.EscapeString(ago)) +
-		`<p style="margin:12px 0 0;color:#555">Protection may be off.</p>`
+			htmlpkg.EscapeString(stamp), htmlpkg.EscapeString(ago))
 	html = emailShell(who, inner)
 	return
 }
