@@ -44,6 +44,15 @@ func New(db *store.DB, mail Mailer, appURL string) *Scheduler {
 	return &Scheduler{db: db, mail: mail, appURL: appURL, now: time.Now}
 }
 
+// accountEmail returns the account's login email to label the digest/alert, or ""
+// if it can't be resolved (never blocks a send).
+func (n *Scheduler) accountEmail(uid uint) string {
+	if u, err := n.db.UserByID(uid); err == nil {
+		return u.Email
+	}
+	return ""
+}
+
 // Run loops forever, checking due work every tickEvery. Cheap — it only touches
 // accounts that opted in. Start it in a goroutine.
 func (n *Scheduler) Run() {
@@ -74,6 +83,7 @@ func (n *Scheduler) process(c store.AccountabilityConfig, now time.Time) {
 		return
 	}
 	nowMS := now.UnixMilli()
+	who := n.accountEmail(c.UserID) // identify whose machine, for the subject/header
 
 	// Went-dark alert — the dead-man's switch. Fire once per dark episode: we've
 	// already alerted for this episode if LastWentDarkAt is newer than the most
@@ -82,7 +92,7 @@ func (n *Scheduler) process(c store.AccountabilityConfig, now time.Time) {
 		if last, ok := n.db.LatestHeartbeatTS(c.UserID); ok {
 			dark := now.Sub(time.UnixMilli(last)) > darkAfter
 			if dark && c.LastWentDarkAt <= last {
-				subj, text, html := wentDarkEmail(time.UnixMilli(last), now)
+				subj, text, html := wentDarkEmail(time.UnixMilli(last), now, who)
 				if n.send(to, subj, text, html) {
 					_ = n.db.MarkWentDarkSent(c.UserID, nowMS)
 				}
@@ -102,7 +112,7 @@ func (n *Scheduler) process(c store.AccountabilityConfig, now time.Time) {
 			}
 			quiet := rep.Violations == 0 && rep.Unblocks == 0 && rep.UnmanagedMinutes == 0
 			if !quiet || c.DigestWhenQuiet {
-				subj, text, html := digestEmail(rep, c.HighViolations)
+				subj, text, html := digestEmail(rep, c.HighViolations, who)
 				n.send(to, subj, text, html)
 			}
 			// Stamp even when we skipped a quiet window, so the cadence clock

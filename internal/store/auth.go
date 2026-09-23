@@ -240,3 +240,12 @@ func (db *DB) UserByEmail(email string) (*User, error) {
 	}
 	return &u, nil
 }
+
+// UserByID looks up a user by primary key.
+func (db *DB) UserByID(id uint) (*User, error) {
+	var u User
+	if err := db.First(&u, id).Error; err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
