@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -29,31 +30,19 @@ func handleTestEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	uid := userFrom(r).ID
-	cfg, err := db.GetAccountabilityConfig(uid)
-	if err != nil {
+	// Route through the REAL digest pathway (report → template → send the scheduler
+	// uses), so the test exercises the live path rather than a bespoke message.
+	to, err := accountability.New(db, mail, "").SendDigestNow(uid)
+	switch {
+	case errors.Is(err, accountability.ErrNoConfig):
 		http.Error(w, "no accountability config has synced yet for this account — reinstall the agent with the accountability stanza set", http.StatusUnprocessableEntity)
 		return
-	}
-	buddies := cfg.Buddies()
-	if len(buddies) == 0 {
+	case errors.Is(err, accountability.ErrNoBuddies):
 		http.Error(w, "no buddy_emails in the synced accountability config — set them in conf.yaml and reinstall", http.StatusUnprocessableEntity)
 		return
-	}
-
-	var sent int
-	var firstErr error
-	for _, to := range buddies {
-		if err := accountability.SendTestEmail(mail, to); err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
-		}
-		sent++
-	}
-	if sent == 0 {
-		http.Error(w, "send failed: "+firstErr.Error(), http.StatusBadGateway)
+	case err != nil:
+		http.Error(w, "send failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	fmt.Fprintf(w, "sent a test email to %d buddy address(es): %s\n", sent, strings.Join(buddies, ", "))
+	fmt.Fprintf(w, "sent the digest to %d buddy address(es): %s\n", len(to), strings.Join(to, ", "))
 }
