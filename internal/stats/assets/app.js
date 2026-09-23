@@ -3659,6 +3659,19 @@ function renderConfigCard(c, cfg, locked) {
   if (g.checkIntervalSec != null) gRows.push(cfgRow("Check interval", `${g.checkIntervalSec} s`));
   if (gRows.length) side.push(cfgSection("Guardrails", cfgRows(gRows)));
 
+  // Accountability email (glockpeek sends the digest + alerts). Shown once set up.
+  const ac = cfg.accountability || {};
+  if (ac.enabled || (ac.buddies || []).length) {
+    const acRows = [cfgRow("Status", ac.enabled ? "on" : "off")];
+    if ((ac.buddies || []).length) acRows.push(cfgRow("Buddies", ac.buddies.map(escHtml).join(", ")));
+    acRows.push(cfgRow("Digest", ac.digestEveryHours > 0 ? `every ${ac.digestEveryHours}h${ac.digestWhenQuiet ? " (incl. quiet)" : ""}` : "off"));
+    const alerts = [];
+    if (ac.wentDark) alerts.push("went-dark");
+    if (ac.highViolations > 0) alerts.push(`high (${ac.highViolations})`);
+    acRows.push(cfgRow("Alerts", alerts.length ? alerts.join(", ") : "none"));
+    side.push(cfgSection("Accountability", cfgRows(acRows)));
+  }
+
   // Keywords — the comma lists want the wide column.
   const kw = cfg.keywords || {};
   const kwRows = [];

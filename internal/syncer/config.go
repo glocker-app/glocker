@@ -29,11 +29,20 @@ import (
 const maxTimeBasedDomains = 50 // cap the spelled-out time-based domains in the blob
 
 type cfgSnapshot struct {
-	Services   cfgServices   `json:"services"`
-	Keywords   cfgKeywords   `json:"keywords"`
-	Programs   cfgPrograms   `json:"programs"`
-	Domains    cfgDomains    `json:"domains"`
-	Guardrails cfgGuardrails `json:"guardrails"`
+	Services       cfgServices       `json:"services"`
+	Keywords       cfgKeywords       `json:"keywords"`
+	Programs       cfgPrograms       `json:"programs"`
+	Domains        cfgDomains        `json:"domains"`
+	Guardrails     cfgGuardrails     `json:"guardrails"`
+	Accountability cfgAccountability `json:"accountability"`
+}
+type cfgAccountability struct {
+	Enabled          bool     `json:"enabled"`
+	Buddies          []string `json:"buddies"`
+	DigestEveryHours int      `json:"digestEveryHours"`
+	DigestWhenQuiet  bool     `json:"digestWhenQuiet"`
+	WentDark         bool     `json:"wentDark"`
+	HighViolations   int      `json:"highViolations"`
 }
 
 type cfgServices struct {
@@ -204,6 +213,14 @@ func buildConfigSnapshot(cfg *config.Config) cfgSnapshot {
 			ViolationWindowMin: cfg.ViolationTracking.TimeWindowMinutes,
 			PanicDurationMin:   cfg.Panic.Duration,
 			CheckIntervalSec:   cfg.Programs.CheckInterval,
+		},
+		Accountability: cfgAccountability{
+			Enabled:          cfg.Accountability.Enabled,
+			Buddies:          cfg.Accountability.BuddyEmails,
+			DigestEveryHours: cfg.Accountability.DigestEveryHours,
+			DigestWhenQuiet:  cfg.Accountability.DigestWhenQuiet,
+			WentDark:         cfg.Accountability.Alerts.WentDark,
+			HighViolations:   cfg.Accountability.Alerts.HighViolations,
 		},
 	}
 }
