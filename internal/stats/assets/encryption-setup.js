@@ -8,6 +8,29 @@ const $ = (id) => document.getElementById(id);
 const show = (id) => $(id).classList.remove("hidden");
 const hide = (id) => $(id).classList.add("hidden");
 
+// The vault's KDF is PBKDF2 (not memory-hard), so its strength rests on the
+// passphrase. Gate NIST 800-63B style — length + a common-password blocklist, no
+// composition rules — and steer toward a multi-word passphrase. Returns an error
+// string, or null when acceptable.
+const WEAK_PASSPHRASES = new Set([
+  "password", "passw0rd", "passphrase", "letmein", "welcome", "qwerty", "dragon",
+  "monkey", "iloveyou", "admin", "abc123", "changeme", "glocker", "secret",
+  "111111", "000000", "123456", "1234567", "12345678", "123456789", "1234567890",
+  "qwertyuiop", "correcthorsebatterystaple",
+]);
+function passphraseProblem(p) {
+  if (p.length < 12) {
+    return "Use at least 12 characters — four random words make a strong, memorable passphrase.";
+  }
+  if (WEAK_PASSPHRASES.has(p.toLowerCase().replace(/\s+/g, ""))) {
+    return "That's a commonly used password — pick something unique.";
+  }
+  if (new Set(p).size < 5) {
+    return "Too repetitive — add more variety, or use a few random words.";
+  }
+  return null;
+}
+
 async function init() {
   let me;
   try {
@@ -28,7 +51,8 @@ $("form").addEventListener("submit", async (e) => {
   const err = $("form-err");
   err.textContent = "";
   const p1 = $("pass").value, p2 = $("pass2").value;
-  if (p1.length < 8) { err.textContent = "Passphrase must be at least 8 characters."; return; }
+  const weak = passphraseProblem(p1);
+  if (weak) { err.textContent = weak; return; }
   if (p1 !== p2) { err.textContent = "The two passphrases don't match."; return; }
 
   const submit = $("submit");
