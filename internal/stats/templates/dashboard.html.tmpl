@@ -38,6 +38,14 @@
         <li id="nav-users" class="nav-admin" hidden><button data-view="users">Admin</button></li>
       </ul>
 
+      <!-- Device scope: a global switcher (Combined + each device). Shown by app.js
+           only when the account has any device; a single one shows as a name label.
+           Filters Analytics + Insights; Overview stays the Combined roll-up. -->
+      <div class="sidebar-devices" id="sidebar-devices" hidden>
+        <div class="device-count" id="device-count"></div>
+        <select id="device-filter" class="device-filter" aria-label="Device scope"></select>
+      </div>
+
       <div class="sidebar-foot">
         <button id="refresh-btn" class="refresh-btn" type="button" title="Refresh data"></button>
         <hr class="foot-sep" />
@@ -95,8 +103,6 @@
             <button data-subtab="history" class="active">History</button>
             <button data-subtab="usage">Usage</button>
             <button data-subtab="tags">Tags</button>
-            <!-- Populated + shown by app.js only when the account has >1 device. -->
-            <select id="device-filter" class="device-filter" aria-label="Filter by device" hidden></select>
           </nav>
 
           <!-- Shared range selector (History/Usage): brush to pick the window. -->
@@ -298,9 +304,6 @@
         </section><!-- /view analytics -->
 
         <section class="view" data-view="insights">
-          <!-- Per-device filter (shown by app.js only when >1 device), mirrors the
-               one on Analytics and shares the same selection. -->
-          <div class="view-toolbar"><select id="device-filter-insights" class="device-filter" aria-label="Filter by device" hidden></select></div>
           <!-- Same Range strip as Analytics: brush to pick the window insights
                are computed over. -->
           <section class="panel strip-panel">

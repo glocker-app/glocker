@@ -581,20 +581,20 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 }
 .subtabs button:hover { color: var(--ink); }
 .subtabs button.active { color: #07090d; background: var(--signal); border-color: var(--signal); }
-/* Per-device filter: sits at the right of the sub-tab bar. */
+/* Global device scope switcher, in the sidebar (Combined + each device). */
+.sidebar-devices { padding: 10px 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.device-count { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .04em; text-transform: uppercase; }
 .device-filter {
-  margin-left: auto; align-self: center;
+  width: 100%;
   font-family: var(--mono); font-size: 12.5px; color: var(--ink-dim);
   background: var(--panel, transparent); border: 1px solid var(--line-2); border-radius: 8px;
   padding: 6px 10px; cursor: pointer;
 }
-/* Single-device case: render the picker as a plain name label, not a dropdown. */
+/* Single-device case: render the switcher as a plain name label, not a dropdown. */
 .device-filter--label {
   border-color: transparent; background: transparent; cursor: default; color: var(--ink-dim);
-  -webkit-appearance: none; appearance: none; padding-right: 10px;
+  -webkit-appearance: none; appearance: none; padding-left: 0;
 }
-/* Insights has no sub-tab bar, so its device picker sits in a right-aligned toolbar. */
-.view-toolbar { display: flex; justify-content: flex-end; padding: 14px 0 0; }
 .subview { display: none; }
 /* Mirror .view's column+gap so panels inside a sub-tab keep their spacing
    (a plain block collapsed the gaps — notably under the usage stat tiles). */

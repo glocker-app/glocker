@@ -837,45 +837,45 @@ const within = (ts, b) => ts >= b.start && ts <= b.end;
 const DEVICE_COOKIE = "glockpeek_device";
 const inDevice = (row) => state.deviceFilter == null || row.deviceId === state.deviceFilter;
 
-// populateDeviceFilter fills every .device-filter <select> (Analytics + Insights)
-// from the account's devices (API tokens), shows them only when there's more than
-// one, keeps them in sync, and restores the saved choice.
+// populateDeviceFilter fills the sidebar device switcher (global scope) from the
+// account's devices (API tokens): "Combined" + each device, with a machine count.
+// One device shows as a static name label; none hides the block. Combined
+// (deviceFilter null) is the account-wide roll-up; picking a device scopes the
+// Analytics + Insights sheets to it.
 function populateDeviceFilter() {
-  const els = Array.from(document.querySelectorAll(".device-filter"));
-  if (!els.length) return;
+  const box = document.getElementById("sidebar-devices");
+  const el = document.getElementById("device-filter");
+  const count = document.getElementById("device-count");
+  if (!box || !el) return;
   const devs = state.devices || [];
+  if (devs.length === 0) { box.hidden = true; return; }
+  box.hidden = false;
+  if (count) count.textContent = `${devs.length} machine${devs.length === 1 ? "" : "s"}`;
+
   const saved = getCookie(DEVICE_COOKIE);
   state.deviceFilter = saved ? Number(saved) : null;
   if (state.deviceFilter != null && !devs.some((d) => d.id === state.deviceFilter)) state.deviceFilter = null;
-  const optsHtml = [`<option value="">All devices</option>`]
+
+  if (devs.length === 1) {
+    el.innerHTML = `<option>${escHtml(devs[0].name || ("device " + devs[0].id))}</option>`;
+    el.disabled = true;
+    el.classList.add("device-filter--label");
+    state.deviceFilter = null; // one device: Combined == that device
+    return;
+  }
+  el.disabled = false;
+  el.classList.remove("device-filter--label");
+  el.innerHTML = [`<option value="">Combined</option>`]
     .concat(devs.map((d) => `<option value="${d.id}">${escHtml(d.name || ("device " + d.id))}</option>`))
     .join("");
-  const val = state.deviceFilter == null ? "" : String(state.deviceFilter);
-  const one = devs.length === 1 ? escHtml(devs[0].name || ("device " + devs[0].id)) : "";
-  for (const el of els) {
-    if (devs.length === 0) { el.hidden = true; continue; }
-    if (devs.length === 1) {
-      // One device: show its name as a static label so you always know whose data
-      // this is — no picker (there's nothing to pick).
-      el.innerHTML = `<option>${one}</option>`;
-      el.disabled = true;
-      el.classList.add("device-filter--label");
-      el.hidden = false;
-      continue;
-    }
-    el.disabled = false;
-    el.classList.remove("device-filter--label");
-    el.innerHTML = optsHtml;
-    el.value = val;
-    el.hidden = false;
-    el.onchange = () => {
-      state.deviceFilter = el.value === "" ? null : Number(el.value);
-      setCookie(DEVICE_COOKIE, el.value, 365);
-      for (const other of els) if (other !== el) other.value = el.value; // keep the two pickers in sync
-      if (state.view === "insights") renderInsights(); else render();
-      renderTimeline();
-    };
-  }
+  el.value = state.deviceFilter == null ? "" : String(state.deviceFilter);
+  el.onchange = () => {
+    state.deviceFilter = el.value === "" ? null : Number(el.value);
+    setCookie(DEVICE_COOKIE, el.value, 365);
+    render();
+    if (state.view === "insights") renderInsights();
+    renderTimeline();
+  };
 }
 
 // ── Master render ───────────────────────────────────────
