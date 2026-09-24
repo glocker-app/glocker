@@ -588,6 +588,8 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
   background: var(--panel, transparent); border: 1px solid var(--line-2); border-radius: 8px;
   padding: 6px 10px; cursor: pointer;
 }
+/* Insights has no sub-tab bar, so its device picker sits in a right-aligned toolbar. */
+.view-toolbar { display: flex; justify-content: flex-end; padding: 14px 0 0; }
 .subview { display: none; }
 /* Mirror .view's column+gap so panels inside a sub-tab keep their spacing
    (a plain block collapsed the gaps — notably under the usage stat tiles). */

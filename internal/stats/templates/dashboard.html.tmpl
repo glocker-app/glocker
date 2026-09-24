@@ -298,6 +298,9 @@
         </section><!-- /view analytics -->
 
         <section class="view" data-view="insights">
+          <!-- Per-device filter (shown by app.js only when >1 device), mirrors the
+               one on Analytics and shares the same selection. -->
+          <div class="view-toolbar"><select id="device-filter-insights" class="device-filter" aria-label="Filter by device" hidden></select></div>
           <!-- Same Range strip as Analytics: brush to pick the window insights
                are computed over. -->
           <section class="panel strip-panel">

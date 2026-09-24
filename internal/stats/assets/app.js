@@ -837,26 +837,33 @@ const within = (ts, b) => ts >= b.start && ts <= b.end;
 const DEVICE_COOKIE = "glockpeek_device";
 const inDevice = (row) => state.deviceFilter == null || row.deviceId === state.deviceFilter;
 
-// populateDeviceFilter fills the <select> from the account's devices (API tokens)
-// and shows it only when there's more than one. Restores the saved choice.
+// populateDeviceFilter fills every .device-filter <select> (Analytics + Insights)
+// from the account's devices (API tokens), shows them only when there's more than
+// one, keeps them in sync, and restores the saved choice.
 function populateDeviceFilter() {
-  const el = document.getElementById("device-filter");
-  if (!el) return;
+  const els = Array.from(document.querySelectorAll(".device-filter"));
+  if (!els.length) return;
   const devs = state.devices || [];
-  if (devs.length <= 1) { el.hidden = true; return; }
   const saved = getCookie(DEVICE_COOKIE);
   state.deviceFilter = saved ? Number(saved) : null;
   if (state.deviceFilter != null && !devs.some((d) => d.id === state.deviceFilter)) state.deviceFilter = null;
-  el.innerHTML = [`<option value="">All devices</option>`]
-    .concat(devs.map((d) => `<option value="${d.id}"${d.id === state.deviceFilter ? " selected" : ""}>${escHtml(d.name || ("device " + d.id))}</option>`))
+  const optsHtml = [`<option value="">All devices</option>`]
+    .concat(devs.map((d) => `<option value="${d.id}">${escHtml(d.name || ("device " + d.id))}</option>`))
     .join("");
-  el.hidden = false;
-  el.onchange = () => {
-    state.deviceFilter = el.value === "" ? null : Number(el.value);
-    setCookie(DEVICE_COOKIE, el.value, 365);
-    render();
-    renderTimeline();
-  };
+  const val = state.deviceFilter == null ? "" : String(state.deviceFilter);
+  for (const el of els) {
+    if (devs.length <= 1) { el.hidden = true; continue; }
+    el.innerHTML = optsHtml;
+    el.value = val;
+    el.hidden = false;
+    el.onchange = () => {
+      state.deviceFilter = el.value === "" ? null : Number(el.value);
+      setCookie(DEVICE_COOKIE, el.value, 365);
+      for (const other of els) if (other !== el) other.value = el.value; // keep the two pickers in sync
+      if (state.view === "insights") renderInsights(); else render();
+      renderTimeline();
+    };
+  }
 }
 
 // ── Master render ───────────────────────────────────────
@@ -4121,10 +4128,10 @@ async function renderInsights() {
   // Everything is scoped to the brushed window.
   const b = windowBounds();
   const inWin = (ts) => within(ts, b);
-  const violations = (data.violations || []).filter((v) => inWin(v.ts));
-  const usage = (data.usage || []).filter((s) => inWin(s.ts));
-  const lifecycle = (data.lifecycle || []).filter((e) => inWin(e.ts));
-  const unblocks = (data.unblocks || []).filter((u) => inWin(u.ts));
+  const violations = (data.violations || []).filter((v) => inWin(v.ts) && inDevice(v));
+  const usage = (data.usage || []).filter((s) => inWin(s.ts) && inDevice(s));
+  const lifecycle = (data.lifecycle || []).filter((e) => inWin(e.ts) && inDevice(e));
+  const unblocks = (data.unblocks || []).filter((u) => inWin(u.ts) && inDevice(u));
 
   // Device config snapshots give the time-based/program view and the current
   // violation-tracking posture the keyword insight tunes against.
