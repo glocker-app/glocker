@@ -34,17 +34,17 @@
           <li><button data-view="overview" class="active">Overview</button></li>
         </ul>
 
-        <!-- Monitoring: per-device views, scoped by the switcher below them.
-             Combined (the account-wide roll-up) or a single device; a single
-             device shows as a name label. Overview stays the Combined roll-up. -->
-        <div class="nav-group">
+        <!-- Monitoring: a container headed by the device switcher, which scopes the
+             views inside it (Analytics + Insights). Combined = account-wide roll-up
+             or a single device (shown as a name label). Overview stays Combined. -->
+        <div class="nav-group nav-monitoring">
+          <div class="sidebar-devices" id="sidebar-devices" hidden>
+            <select id="device-filter" class="device-filter" aria-label="Device scope"></select>
+          </div>
           <ul class="nav">
             <li><button data-view="analytics">Analytics</button></li>
             <li id="nav-insights" hidden><button data-view="insights">Insights</button></li>
           </ul>
-          <div class="sidebar-devices" id="sidebar-devices" hidden>
-            <select id="device-filter" class="device-filter" aria-label="Device scope"></select>
-          </div>
         </div>
 
         <!-- Account -->

@@ -583,9 +583,15 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .subtabs button.active { color: #07090d; background: var(--signal); border-color: var(--signal); }
 /* Sidebar nav groups (Overview / Monitoring / Account / Admin). */
 .nav-group { margin-top: 14px; }
-/* Device scope switcher, tucked under the Monitoring group. A tidy field with a
-   leading laptop glyph so it reads as "which machine", not stray nav text. */
-.sidebar-devices { margin-top: 6px; }
+/* Monitoring container: the device switcher heads a soft panel that holds the
+   views it scopes (Analytics + Insights). */
+.nav-monitoring {
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px;
+}
+/* Device scope switcher — the container header. A tidy field with a leading
+   laptop glyph so it reads as "which machine", not stray nav text. */
+.sidebar-devices { margin: 0 0 8px; }
 .device-filter {
   width: 100%; box-sizing: border-box;
   font-family: var(--mono); font-size: 12px; color: var(--ink-dim);
