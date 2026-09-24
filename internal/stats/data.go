@@ -14,6 +14,7 @@ const minUnmanagedDuration = 2 * time.Minute
 
 type violationJSON struct {
 	TS       int64  `json:"ts"`
+	DeviceID uint   `json:"deviceId"` // which device this row came from (0 = local/legacy)
 	RecordID string `json:"recordId"` // opaque, content-blind id — the ignore overlay's key
 	Type     string `json:"type"`
 	Keyword  string `json:"keyword"`
@@ -23,16 +24,18 @@ type violationJSON struct {
 
 type unblockJSON struct {
 	TS        int64  `json:"ts"`
+	DeviceID  uint   `json:"deviceId"`
 	RestoreTS *int64 `json:"restoreTs"`
 	Reason    string `json:"reason"`
 	Domain    string `json:"domain"`
 }
 
 type lifecycleJSON struct {
-	TS     int64  `json:"ts"`
-	Type   string `json:"type"`
-	Reason string `json:"reason"`
-	Note   string `json:"note"`
+	TS       int64  `json:"ts"`
+	DeviceID uint   `json:"deviceId"`
+	Type     string `json:"type"`
+	Reason   string `json:"reason"`
+	Note     string `json:"note"`
 }
 
 type unmanagedJSON struct {
@@ -98,7 +101,7 @@ func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 		resp.Sources.Reports = len(rows) > 0
 		for _, e := range rows {
 			resp.Violations = append(resp.Violations, violationJSON{
-				TS: e.TS, RecordID: e.RecordID, Type: e.Type, Keyword: e.Keyword, URL: e.URL, Domain: e.Domain,
+				TS: e.TS, DeviceID: e.DeviceID, RecordID: e.RecordID, Type: e.Type, Keyword: e.Keyword, URL: e.URL, Domain: e.Domain,
 			})
 		}
 	}
@@ -107,7 +110,7 @@ func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 		resp.Sources.Unblocks = len(rows) > 0
 		for _, e := range rows {
 			resp.Unblocks = append(resp.Unblocks, unblockJSON{
-				TS: e.TS, RestoreTS: e.RestoreTS, Reason: e.Reason, Domain: e.Domain,
+				TS: e.TS, DeviceID: e.DeviceID, RestoreTS: e.RestoreTS, Reason: e.Reason, Domain: e.Domain,
 			})
 		}
 	}
@@ -117,7 +120,7 @@ func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 		resp.Sources.Lifecycle = len(rows) > 0
 		for _, e := range rows {
 			resp.Lifecycle = append(resp.Lifecycle, lifecycleJSON{
-				TS: e.TS, Type: e.Type, Reason: e.Reason, Note: e.Note,
+				TS: e.TS, DeviceID: e.DeviceID, Type: e.Type, Reason: e.Reason, Note: e.Note,
 			})
 			lifecycle = append(lifecycle, reports.LifecycleEntry{
 				Timestamp: time.UnixMilli(e.TS), Type: e.Type, Reason: e.Reason, Note: e.Note,
@@ -142,7 +145,7 @@ func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 	if rows, err := db.UsageSamples(userID); err == nil {
 		resp.Sources.Usage = len(rows) > 0
 		for _, s := range rows {
-			us := usageSample{TS: s.TS, IdleMS: s.IdleMS, WindowCount: s.WindowCount}
+			us := usageSample{TS: s.TS, DeviceID: s.DeviceID, IdleMS: s.IdleMS, WindowCount: s.WindowCount}
 			if s.ActiveClass != "" || s.ActiveInstance != "" || s.ActiveTitle != "" {
 				us.Active = &usageActive{Class: s.ActiveClass, Instance: s.ActiveInstance, Title: s.ActiveTitle}
 			}

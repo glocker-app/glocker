@@ -12,6 +12,7 @@ type usageActive struct {
 // The full window list from the raw log is dropped upstream.
 type usageSample struct {
 	TS          int64        `json:"ts"`
+	DeviceID    uint         `json:"deviceId"`
 	IdleMS      int64        `json:"idleMs"`
 	Active      *usageActive `json:"active"`
 	WindowCount int          `json:"windowCount"`
