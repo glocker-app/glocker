@@ -845,12 +845,10 @@ const inDevice = (row) => state.deviceFilter == null || row.deviceId === state.d
 function populateDeviceFilter() {
   const box = document.getElementById("sidebar-devices");
   const el = document.getElementById("device-filter");
-  const count = document.getElementById("device-count");
   if (!box || !el) return;
   const devs = state.devices || [];
   if (devs.length === 0) { box.hidden = true; return; }
   box.hidden = false;
-  if (count) count.textContent = `${devs.length} machine${devs.length === 1 ? "" : "s"}`;
 
   const saved = getCookie(DEVICE_COOKIE);
   state.deviceFilter = saved ? Number(saved) : null;
