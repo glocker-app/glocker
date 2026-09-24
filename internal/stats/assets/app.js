@@ -851,8 +851,20 @@ function populateDeviceFilter() {
     .concat(devs.map((d) => `<option value="${d.id}">${escHtml(d.name || ("device " + d.id))}</option>`))
     .join("");
   const val = state.deviceFilter == null ? "" : String(state.deviceFilter);
+  const one = devs.length === 1 ? escHtml(devs[0].name || ("device " + devs[0].id)) : "";
   for (const el of els) {
-    if (devs.length <= 1) { el.hidden = true; continue; }
+    if (devs.length === 0) { el.hidden = true; continue; }
+    if (devs.length === 1) {
+      // One device: show its name as a static label so you always know whose data
+      // this is — no picker (there's nothing to pick).
+      el.innerHTML = `<option>${one}</option>`;
+      el.disabled = true;
+      el.classList.add("device-filter--label");
+      el.hidden = false;
+      continue;
+    }
+    el.disabled = false;
+    el.classList.remove("device-filter--label");
     el.innerHTML = optsHtml;
     el.value = val;
     el.hidden = false;
