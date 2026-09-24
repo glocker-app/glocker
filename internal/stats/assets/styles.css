@@ -581,8 +581,10 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 }
 .subtabs button:hover { color: var(--ink); }
 .subtabs button.active { color: #07090d; background: var(--signal); border-color: var(--signal); }
-/* Global device scope switcher, in the sidebar (Combined + each device). */
-.sidebar-devices { padding: 10px 8px 0; display: flex; flex-direction: column; gap: 6px; }
+/* Sidebar nav groups (Overview / Monitoring / Account / Admin). */
+.nav-group { margin-top: 16px; }
+/* Device scope switcher, under the Monitoring group (Combined + each device). */
+.sidebar-devices { padding: 8px 8px 0; display: flex; flex-direction: column; gap: 6px; }
 .device-count { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); letter-spacing: .04em; text-transform: uppercase; }
 .device-filter {
   width: 100%;
