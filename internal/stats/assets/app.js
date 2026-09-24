@@ -14,7 +14,7 @@ const HOUR = 3600000;
 // all-history timeline strip at the top (no more fixed presets). Null until the
 // first data load picks a default (see defaultWindow).
 const DEFAULT_WINDOW_DAYS = 30;
-const state = { data: null, winStart: null, winEnd: null, view: "overview", analyticsTab: "history", charts: {}, rules: [], tags: [], tagById: new Map(), tagByLabel: new Map(), usageNamespace: null, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null };
+const state = { data: null, deviceFilter: null, devices: [], winStart: null, winEnd: null, view: "overview", analyticsTab: "history", charts: {}, rules: [], tags: [], tagById: new Map(), tagByLabel: new Map(), usageNamespace: null, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null };
 
 const VIEW_TITLES = {
   overview: "Overview",
@@ -454,6 +454,14 @@ async function bootDashboard(me) {
     if (gres.ok) state.ignored = (await gres.json()).ignored || [];
   } catch { /* keep empty ignore list */ }
 
+  // Device list for the analytics per-device filter (non-fatal). One token = one
+  // device; the dropdown appears only when there's more than one.
+  try {
+    const dres = await fetch("api/tokens");
+    if (dres.ok) state.devices = (await dres.json()).tokens || [];
+  } catch { /* no device filter */ }
+  populateDeviceFilter();
+
   // Content-side post-processing the server no longer does — enrich + hide ignored
   // violations and fill any missing domain, all client-side so the endpoint stays
   // content-blind (docs/e2e-design.md). Shared with reloadData.
@@ -824,12 +832,39 @@ function updateRangeReadout() {
 
 const within = (ts, b) => ts >= b.start && ts <= b.end;
 
+// Device filter: null = all devices; otherwise a deviceId. Only the analytics
+// sheets honor it — Overview (score/streak) stays account-wide.
+const DEVICE_COOKIE = "glockpeek_device";
+const inDevice = (row) => state.deviceFilter == null || row.deviceId === state.deviceFilter;
+
+// populateDeviceFilter fills the <select> from the account's devices (API tokens)
+// and shows it only when there's more than one. Restores the saved choice.
+function populateDeviceFilter() {
+  const el = document.getElementById("device-filter");
+  if (!el) return;
+  const devs = state.devices || [];
+  if (devs.length <= 1) { el.hidden = true; return; }
+  const saved = getCookie(DEVICE_COOKIE);
+  state.deviceFilter = saved ? Number(saved) : null;
+  if (state.deviceFilter != null && !devs.some((d) => d.id === state.deviceFilter)) state.deviceFilter = null;
+  el.innerHTML = [`<option value="">All devices</option>`]
+    .concat(devs.map((d) => `<option value="${d.id}"${d.id === state.deviceFilter ? " selected" : ""}>${escHtml(d.name || ("device " + d.id))}</option>`))
+    .join("");
+  el.hidden = false;
+  el.onchange = () => {
+    state.deviceFilter = el.value === "" ? null : Number(el.value);
+    setCookie(DEVICE_COOKIE, el.value, 365);
+    render();
+    renderTimeline();
+  };
+}
+
 // ── Master render ───────────────────────────────────────
 function render() {
   const b = windowBounds();
   updateRangeReadout();
-  const violations = state.data.violations.filter((v) => within(v.ts, b));
-  const unblocks = state.data.unblocks.filter((u) => within(u.ts, b));
+  const violations = state.data.violations.filter((v) => within(v.ts, b) && inDevice(v));
+  const unblocks = state.data.unblocks.filter((u) => within(u.ts, b) && inDevice(u));
   const unmanaged = state.data.unmanaged
     .map((p) => ({ ...p, start: Math.max(p.start, b.start), end: Math.min(p.end, b.end) }))
     .filter((p) => p.end > p.start);
@@ -1144,7 +1179,7 @@ function renderReadout(violations, unblocks, unmanaged, heat, b) {
   // so trackedMs (active + idle) is a proxy for "computer was on".
   const usageAvailable = !!(state.data.sources && state.data.sources.usage);
   const onMs = usageAvailable
-    ? computeUsage((state.data.usage || []).filter((e) => within(e.ts, b))).trackedMs
+    ? computeUsage((state.data.usage || []).filter((e) => within(e.ts, b) && inDevice(e))).trackedMs
     : 0;
   const windowMs = b.end - b.start;
   const onPct = windowMs > 0 ? Math.round((onMs / windowMs) * 100) : 0;
@@ -1237,8 +1272,8 @@ function renderTimeline(canvasId = "chart-timeline") {
   const days = Math.max(1, Math.round((end - start) / DAY) + 1);
   const vday = new Array(days).fill(0), uday = new Array(days).fill(0);
   const idx = (ts) => Math.min(days - 1, Math.max(0, Math.floor((ts - start) / DAY)));
-  for (const v of state.data.violations) if (v.ts >= start) vday[idx(v.ts)]++;
-  for (const u of state.data.unblocks) if (u.ts >= start) uday[idx(u.ts)]++;
+  for (const v of state.data.violations) if (v.ts >= start && inDevice(v)) vday[idx(v.ts)]++;
+  for (const u of state.data.unblocks) if (u.ts >= start && inDevice(u)) uday[idx(u.ts)]++;
 
   const labels = [];
   for (let i = 0; i < days; i++) {
@@ -2092,7 +2127,7 @@ function tagColorMap(items) {
 
 function renderUsage(b) {
   const available = state.data.sources && state.data.sources.usage;
-  const entries = (state.data.usage || []).filter((e) => within(e.ts, b));
+  const entries = (state.data.usage || []).filter((e) => within(e.ts, b) && inDevice(e));
   // Stash the in-window samples so rule edits can recategorize without a
   // full re-render of the rest of the view.
   state.usageWindow = { entries, available, b };

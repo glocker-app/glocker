@@ -95,6 +95,8 @@
             <button data-subtab="history" class="active">History</button>
             <button data-subtab="usage">Usage</button>
             <button data-subtab="tags">Tags</button>
+            <!-- Populated + shown by app.js only when the account has >1 device. -->
+            <select id="device-filter" class="device-filter" aria-label="Filter by device" hidden></select>
           </nav>
 
           <!-- Shared range selector (History/Usage): brush to pick the window. -->

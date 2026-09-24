@@ -581,6 +581,13 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 }
 .subtabs button:hover { color: var(--ink); }
 .subtabs button.active { color: #07090d; background: var(--signal); border-color: var(--signal); }
+/* Per-device filter: sits at the right of the sub-tab bar. */
+.device-filter {
+  margin-left: auto; align-self: center;
+  font-family: var(--mono); font-size: 12.5px; color: var(--ink-dim);
+  background: var(--panel, transparent); border: 1px solid var(--line-2); border-radius: 8px;
+  padding: 6px 10px; cursor: pointer;
+}
 .subview { display: none; }
 /* Mirror .view's column+gap so panels inside a sub-tab keep their spacing
    (a plain block collapsed the gaps — notably under the usage stat tiles). */
