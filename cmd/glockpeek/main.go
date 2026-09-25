@@ -48,6 +48,7 @@ func main() {
 	listen := flag.String("listen", "", "address to serve on (overrides config; default "+defaultListen+")")
 	dbDSN := flag.String("db", "", "database DSN (overrides config; e.g. a sqlite file path for dev)")
 	dbDriver := flag.String("driver", "", "database driver override: sqlite|postgres (pairs with -db; lets you run against a throwaway copy for migration validation without touching the config)")
+	modeFlag := flag.String("mode", "", "run mode override: local|hosted (for a throwaway test instance without a config file)")
 	addUser := flag.String("adduser", "", "create a dashboard account with this email, then exit")
 	passwd := flag.String("passwd", "", "change the password for this email, then exit")
 	addToken := flag.String("addtoken", "", "mint an ingest API token for this account (email), then exit")
@@ -118,6 +119,9 @@ func main() {
 	}
 	if *dbDriver != "" {
 		driver = *dbDriver
+	}
+	if *modeFlag != "" {
+		mode = *modeFlag
 	}
 
 	if mode != config.GlockpeekModeLocal && mode != config.GlockpeekModeHosted {
