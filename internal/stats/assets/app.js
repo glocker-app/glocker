@@ -3449,6 +3449,7 @@ function setupDevices() {
     nameEl.value = "";
     document.getElementById("device-config").textContent = deviceConfig(token);
     reveal.hidden = false;
+    reveal.scrollIntoView({ behavior: "smooth", block: "nearest" });
     renderDevices();
   };
 
