@@ -52,6 +52,19 @@ var (
 	billingHTTP = &http.Client{Timeout: 15 * time.Second}
 )
 
+// accountHasAccess reports whether the account may write — ingest new records and
+// edit dashboard features (rules, tags, ignore list, devices). Access holds while
+// the account is trialing, active, or canceling (until period end); an expired or
+// never-subscribed account is read-only. When billing is disabled (local mode, or
+// a self-hosted instance with no Merchant-of-Record), access is always granted so
+// those deployments are never gated. Reads are never gated on this.
+func accountHasAccess(u *store.User) bool {
+	return !billingEnabled || (u != nil && u.HasAccess())
+}
+
+// errReadOnly is the message returned when a lapsed account attempts a write.
+const errReadOnly = "subscription required — this account is read-only (trial ended or subscription lapsed). Subscribe to resume."
+
 // initBilling wires the billing configuration into the package. A bad webhook
 // secret is logged and leaves billingWH nil so the webhook endpoint refuses
 // everything (fail closed) rather than accepting unverified events.
@@ -275,9 +288,19 @@ func applyBillingEvent(evt polarSubscriptionEvent) error {
 	subID := evt.Data.ID
 
 	switch evt.Type {
-	case "subscription.active", "subscription.uncanceled":
-		// Access granted — raise the cap to the paid limit.
-		return db.SetSubscription(userID, store.SubStatusActive, subID, evt.Data.CurrentPeriodEnd, billing.PaidDeviceLimit)
+	case "subscription.created", "subscription.active", "subscription.uncanceled", "subscription.updated":
+		// Grant by the subscription's own status: a card-up-front trial arrives as
+		// "trialing" (subscription.created) and auto-converts to "active" later.
+		// Both grant full access + the paid device cap; any other status here (e.g.
+		// past_due) we leave to the explicit canceled/revoked events below.
+		switch evt.Data.Status {
+		case store.SubStatusTrialing:
+			return db.SetSubscription(userID, store.SubStatusTrialing, subID, evt.Data.CurrentPeriodEnd, billing.PaidDeviceLimit)
+		case store.SubStatusActive:
+			return db.SetSubscription(userID, store.SubStatusActive, subID, evt.Data.CurrentPeriodEnd, billing.PaidDeviceLimit)
+		default:
+			return errIgnoredEvent
+		}
 	case "subscription.canceled":
 		// Cancellation scheduled: the subscriber keeps access until the period
 		// ends (Polar sends subscription.revoked then). Keep the paid cap, just

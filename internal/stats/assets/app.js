@@ -14,7 +14,7 @@ const HOUR = 3600000;
 // all-history timeline strip at the top (no more fixed presets). Null until the
 // first data load picks a default (see defaultWindow).
 const DEFAULT_WINDOW_DAYS = 30;
-const state = { data: null, deviceFilter: null, devices: [], winStart: null, winEnd: null, view: "overview", analyticsTab: "history", charts: {}, rules: [], tags: [], tagById: new Map(), tagByLabel: new Map(), usageNamespace: null, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null };
+const state = { data: null, deviceFilter: null, devices: [], winStart: null, winEnd: null, view: "overview", analyticsTab: "history", charts: {}, rules: [], tags: [], tagById: new Map(), tagByLabel: new Map(), usageNamespace: null, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null, readOnly: false };
 
 const VIEW_TITLES = {
   overview: "Overview",
@@ -406,6 +406,7 @@ async function bootDashboard(me) {
     } catch { /* keep partial me */ }
   }
   state.me = me; // stash identity (billing flag, subStatus, deviceLimit) for the UI
+  renderAccessBanner();
   // Hosted is end-to-end-encrypted only: an account with no key vault must set a
   // passphrase before it can reach the dashboard. Both the fresh-load and the
   // post-login paths funnel through here → the SSR encryption-setup route.
@@ -3485,21 +3486,71 @@ function setupDevices() {
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !modal.hidden) closeModal(); });
 
   const manage = document.getElementById("manage-billing");
-  if (manage) {
-    manage.onclick = async () => {
-      manage.disabled = true;
-      try {
-        const res = await fetch("api/billing/portal", { method: "POST" });
-        if (!res.ok) throw new Error(`server returned ${res.status}`);
-        const { url } = await res.json();
-        if (!url) throw new Error("no portal url");
-        location.href = url;
-      } catch {
-        manage.disabled = false;
-        alert("Could not open the billing portal. Please try again in a moment.");
-      }
-    };
+  if (manage) manage.onclick = () => openBillingPortal(manage);
+}
+
+// openBillingPortal redirects to the Polar customer portal (manage/cancel).
+async function openBillingPortal(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("api/billing/portal", { method: "POST" });
+    if (!res.ok) throw new Error(`server returned ${res.status}`);
+    const { url } = await res.json();
+    if (!url) throw new Error("no portal url");
+    location.href = url;
+  } catch {
+    if (btn) btn.disabled = false;
+    alert("Could not open the billing portal. Please try again in a moment.");
   }
+}
+
+// renderAccessBanner reflects the account's subscription state at the top of the
+// dashboard: a trial countdown, a lapsed read-only warning with a Subscribe CTA,
+// or a start-trial CTA for a never-subscribed account. Sets state.readOnly, which
+// write controls consult. No-op when billing is off (local / self-host).
+function renderAccessBanner() {
+  const el = document.getElementById("access-banner");
+  if (!el) return;
+  const me = state.me || {};
+  if (!me.billing) { el.hidden = true; state.readOnly = false; return; }
+
+  const s = me.subStatus;
+  const hasAccess = s === "trialing" || s === "active" || s === "canceled";
+  state.readOnly = !hasAccess;
+
+  el.className = "access-banner";
+  el.textContent = "";
+  const btn = (label, fn) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "btn-primary";
+    b.textContent = label;
+    b.onclick = () => fn(b);
+    return b;
+  };
+
+  if (s === "trialing") {
+    const end = me.subCurrentEnd ? new Date(me.subCurrentEnd) : null;
+    const days = end ? Math.max(0, Math.ceil((end - Date.now()) / 86400000)) : null;
+    el.classList.add("access-banner--info");
+    el.append(document.createTextNode(days != null
+      ? `Free trial — ${days} day${days === 1 ? "" : "s"} left, then your subscription begins. `
+      : "Free trial active. "));
+    el.append(btn("Manage billing", openBillingPortal));
+    el.hidden = false;
+    return;
+  }
+  if (hasAccess) { el.hidden = true; return; } // active / canceled: no banner
+
+  el.classList.add("access-banner--warn");
+  if (s === "expired") {
+    el.append(document.createTextNode("Your subscription has lapsed — the dashboard is read-only and syncing is paused. "));
+    el.append(btn("Subscribe", startCheckout));
+  } else {
+    el.append(document.createTextNode("Start your 2-week free trial to connect devices and use the dashboard. "));
+    el.append(btn("Start free trial", startCheckout));
+  }
+  el.hidden = false;
 }
 
 // deviceConfig builds the sync block the user pastes into the agent's config.
@@ -3589,9 +3640,11 @@ async function renderDevices() {
   for (const t of data.tokens) listEl.append(deviceRow(t));
 
   const atLimit = !data.canAdd;
-  nameEl.disabled = atLimit;
-  addBtn.disabled = atLimit;
-  showDeviceUpsell(atLimit);
+  // Read-only accounts can't connect devices (the banner explains why); the
+  // device-limit upsell only applies to accounts that still have access.
+  nameEl.disabled = atLimit || state.readOnly;
+  addBtn.disabled = atLimit || state.readOnly;
+  showDeviceUpsell(atLimit && !state.readOnly);
 
   // Keep the analytics device switcher in step with rename/revoke done here.
   state.devices = data.tokens || [];

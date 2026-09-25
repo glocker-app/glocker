@@ -9,10 +9,25 @@ import (
 // Subscription status values written by the billing webhook. The Merchant-of-
 // Record (Polar) is the source of truth; we map its events onto these.
 const (
+	SubStatusTrialing = "trialing" // in the free trial window; full access, auto-converts to active
 	SubStatusActive   = "active"   // paying; access granted
 	SubStatusCanceled = "canceled" // cancellation scheduled — access remains until SubCurrentEnd
 	SubStatusExpired  = "expired"  // access revoked: cancellation took effect, or payment lapsed
 )
+
+// HasAccess reports whether the account is entitled to the paid product right now
+// — writing (ingest + dashboard feature edits). Access holds during the trial,
+// while active, and through a scheduled cancellation until the period ends. An
+// expired or never-subscribed account has no access (read-only). Reads are never
+// gated on this; enforcement (ingest/write refusal) is elsewhere.
+func (u *User) HasAccess() bool {
+	switch u.SubStatus {
+	case SubStatusTrialing, SubStatusActive, SubStatusCanceled:
+		return true
+	default:
+		return false
+	}
+}
 
 // SetSubscription records a user's subscription state from a billing webhook and
 // sets DeviceLimit — the actual enforcement lever — accordingly: deviceLimit is

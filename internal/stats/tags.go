@@ -18,6 +18,11 @@ import (
 // override); DELETE removes a user tag and unlinks it from the account's rules.
 func handleTags(w http.ResponseWriter, r *http.Request) {
 	uid := userFrom(r).ID
+	// Tag edits are a feature write — frozen when the account is read-only.
+	if r.Method != http.MethodGet && !accountHasAccess(userFrom(r)) {
+		http.Error(w, errReadOnly, http.StatusPaymentRequired)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		tags, err := db.TagsForUser(uid)

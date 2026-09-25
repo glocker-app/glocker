@@ -202,6 +202,12 @@ func handleIngest(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	// Read-only when access has lapsed: pause ingest (the agent keeps blocking
+	// locally; its syncer retries and resumes once the account is paid again).
+	if !accountHasAccess(userFrom(r)) {
+		http.Error(w, errReadOnly, http.StatusPaymentRequired)
+		return
+	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, 64*1024*1024))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -296,6 +302,10 @@ func handleRules(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, map[string]any{"rules": rules})
 	case http.MethodPut:
+		if !accountHasAccess(userFrom(r)) {
+			http.Error(w, errReadOnly, http.StatusPaymentRequired)
+			return
+		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 256*1024))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -340,6 +350,10 @@ func handleIgnored(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, map[string]any{"ignored": list})
 	case http.MethodPut:
+		if !accountHasAccess(userFrom(r)) {
+			http.Error(w, errReadOnly, http.StatusPaymentRequired)
+			return
+		}
 		body, err := io.ReadAll(io.LimitReader(r.Body, 512*1024))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)

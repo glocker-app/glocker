@@ -89,6 +89,12 @@ func writeTokenList(w http.ResponseWriter, u *store.User) {
 
 // mintToken creates a new token for the account, enforcing the device limit.
 func mintToken(w http.ResponseWriter, r *http.Request, u *store.User) {
+	// Connecting a device is a feature write — blocked when read-only. A new
+	// account must start the trial (card up front) before it can connect devices.
+	if !accountHasAccess(u) {
+		http.Error(w, errReadOnly, http.StatusPaymentRequired)
+		return
+	}
 	var in struct {
 		Name string `json:"name"`
 	}

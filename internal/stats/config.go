@@ -62,6 +62,12 @@ type accountabilityUpload struct {
 }
 
 func handleConfigPost(w http.ResponseWriter, r *http.Request) {
+	// Read-only when access has lapsed: the agent's config upload pauses with
+	// ingest (it retries and resumes once paid).
+	if !accountHasAccess(userFrom(r)) {
+		http.Error(w, errReadOnly, http.StatusPaymentRequired)
+		return
+	}
 	// Generous cap: the snapshot is tiny but the optional blocklist blob is a few MB.
 	body, err := io.ReadAll(io.LimitReader(r.Body, 32<<20))
 	if err != nil {
