@@ -14,7 +14,7 @@ const HOUR = 3600000;
 // all-history timeline strip at the top (no more fixed presets). Null until the
 // first data load picks a default (see defaultWindow).
 const DEFAULT_WINDOW_DAYS = 30;
-const state = { data: null, deviceFilter: null, devices: [], winStart: null, winEnd: null, view: "overview", analyticsTab: "history", charts: {}, rules: [], tags: [], tagById: new Map(), tagByLabel: new Map(), usageNamespace: null, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null, readOnly: false };
+const state = { data: null, deviceFilter: null, devices: [], winStart: null, winEnd: null, view: "overview", analyticsTab: "history", charts: {}, rules: [], tags: [], tagById: new Map(), tagByLabel: new Map(), usageNamespace: null, usageWindow: null, selectedTag: null, expandedApps: new Set(), selectedProgram: null, lastTagUsage: null, ignored: [], openDay: null, readOnly: false, revokedIds: new Set() };
 
 const VIEW_TITLES = {
   overview: "Overview",
@@ -836,7 +836,11 @@ const within = (ts, b) => ts >= b.start && ts <= b.end;
 // Device filter: null = all devices; otherwise a deviceId. Only the analytics
 // sheets honor it — Overview (score/streak) stays account-wide.
 const DEVICE_COOKIE = "glockpeek_device";
-const inDevice = (row) => state.deviceFilter == null || row.deviceId === state.deviceFilter;
+// Combined (deviceFilter null) rolls up every ACTIVE device — revoked devices'
+// history is excluded so revoking one cleans it out of Combined + analytics (the
+// row survives only for the Devices management screen). A specific filter matches
+// that device exactly.
+const inDevice = (row) => state.deviceFilter == null ? !state.revokedIds.has(row.deviceId) : row.deviceId === state.deviceFilter;
 
 // Exposure spans (unmanaged + downtime) arrive per device. scopeSpans returns the
 // current view: filtered to the selected device, or — for Combined — the UNION of
@@ -857,7 +861,8 @@ function mergeSpans(spans) {
 }
 function scopeSpans(spans) {
   if (state.deviceFilter != null) return (spans || []).filter((p) => p.deviceId === state.deviceFilter);
-  return mergeSpans(spans);
+  // Combined = union of ACTIVE devices' spans only (revoked excluded).
+  return mergeSpans((spans || []).filter((p) => !state.revokedIds.has(p.deviceId)));
 }
 // Re-derive the device-scoped exposure spans from the raw per-device ones, so every
 // consumer of state.data.unmanaged/downtime sees the right scope. Called on load
@@ -877,15 +882,19 @@ function populateDeviceFilter() {
   const box = document.getElementById("sidebar-devices");
   const el = document.getElementById("device-filter");
   if (!box || !el) return;
-  const devs = state.devices || [];
-  if (devs.length === 0) { box.hidden = true; return; }
+  const all = state.devices || [];
+  // Revoked devices are excluded from analytics entirely — kept only for the
+  // Devices management screen. Track their ids so Combined/scoping drop their rows.
+  state.revokedIds = new Set(all.filter((d) => d.revokedAt != null).map((d) => d.id));
+  const devs = all.filter((d) => d.revokedAt == null);
+  if (devs.length === 0) { box.hidden = true; state.deviceFilter = null; return; }
   box.hidden = false;
 
   const saved = getCookie(DEVICE_COOKIE);
   state.deviceFilter = saved ? Number(saved) : null;
   if (state.deviceFilter != null && !devs.some((d) => d.id === state.deviceFilter)) state.deviceFilter = null;
 
-  const label = (d) => (d.name || ("device " + d.id)) + (d.revokedAt != null ? " (revoked)" : "");
+  const label = (d) => d.name || ("device " + d.id);
   if (devs.length === 1) {
     el.innerHTML = `<option>${escHtml(label(devs[0]))}</option>`;
     el.disabled = true;
@@ -3646,9 +3655,11 @@ async function renderDevices() {
   addBtn.disabled = atLimit || state.readOnly;
   showDeviceUpsell(atLimit && !state.readOnly);
 
-  // Keep the analytics device switcher in step with rename/revoke done here.
+  // Keep the analytics device switcher in step with rename/revoke done here, and
+  // re-derive exposure so a just-revoked device drops out of Combined too.
   state.devices = data.tokens || [];
   populateDeviceFilter();
+  scopeExposure();
 }
 
 function deviceRow(t) {
