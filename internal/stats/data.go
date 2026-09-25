@@ -39,20 +39,22 @@ type lifecycleJSON struct {
 }
 
 type unmanagedJSON struct {
-	Start  int64  `json:"start"`
-	End    int64  `json:"end"`
-	Open   bool   `json:"open"`
-	Reason string `json:"reason"`
-	Note   string `json:"note"`
+	Start    int64  `json:"start"`
+	End      int64  `json:"end"`
+	Open     bool   `json:"open"`
+	Reason   string `json:"reason"`
+	Note     string `json:"note"`
+	DeviceID uint   `json:"deviceId"` // which device was unmanaged (0 = local/legacy)
 }
 
 // downtimeJSON is a span the glockdoc watchdog observed glocker to be down.
 // Unlike unmanaged (derived from clean uninstall/install events), this reflects
 // real observed liveness, so it also catches crashes and unclean stops.
 type downtimeJSON struct {
-	Start int64 `json:"start"`
-	End   int64 `json:"end"`
-	Open  bool  `json:"open"`
+	Start    int64 `json:"start"`
+	End      int64 `json:"end"`
+	Open     bool  `json:"open"`
+	DeviceID uint  `json:"deviceId"`
 }
 
 type sourcesJSON struct {
@@ -115,30 +117,43 @@ func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 		}
 	}
 
-	var lifecycle []reports.LifecycleEntry
+	// Unmanaged is computed PER DEVICE — each device's own install/uninstall
+	// timeline. Merging events across devices would interleave incorrectly (one
+	// device's uninstall against another's install). The browser unions them for
+	// the Combined view (ANY: the account is exposed if any device was off) and
+	// filters to one device otherwise.
+	lcByDev := map[uint][]reports.LifecycleEntry{}
 	if rows, err := db.LifecycleEvents(userID); err == nil {
 		resp.Sources.Lifecycle = len(rows) > 0
 		for _, e := range rows {
 			resp.Lifecycle = append(resp.Lifecycle, lifecycleJSON{
 				TS: e.TS, DeviceID: e.DeviceID, Type: e.Type, Reason: e.Reason, Note: e.Note,
 			})
-			lifecycle = append(lifecycle, reports.LifecycleEntry{
+			lcByDev[e.DeviceID] = append(lcByDev[e.DeviceID], reports.LifecycleEntry{
 				Timestamp: time.UnixMilli(e.TS), Type: e.Type, Reason: e.Reason, Note: e.Note,
 			})
 		}
 	}
-	resp.Unmanaged = unmanagedPeriods(lifecycle, now)
+	for dev, entries := range lcByDev {
+		for _, p := range unmanagedPeriods(entries, now) {
+			p.DeviceID = dev
+			resp.Unmanaged = append(resp.Unmanaged, p)
+		}
+	}
 
+	// Downtime (observed liveness) is likewise per device.
 	if rows, err := db.Heartbeats(userID); err == nil {
 		resp.Sources.Heartbeat = len(rows) > 0
-		samples := make([]reports.HeartbeatSample, 0, len(rows))
+		hbByDev := map[uint][]reports.HeartbeatSample{}
 		for _, h := range rows {
-			samples = append(samples, reports.HeartbeatSample{Timestamp: time.UnixMilli(h.TS), Alive: h.Alive})
+			hbByDev[h.DeviceID] = append(hbByDev[h.DeviceID], reports.HeartbeatSample{Timestamp: time.UnixMilli(h.TS), Alive: h.Alive})
 		}
-		for _, d := range reports.DowntimePeriods(samples, now, minUnmanagedDuration) {
-			resp.Downtime = append(resp.Downtime, downtimeJSON{
-				Start: d.Start.UnixMilli(), End: d.End.UnixMilli(), Open: d.Open,
-			})
+		for dev, samples := range hbByDev {
+			for _, d := range reports.DowntimePeriods(samples, now, minUnmanagedDuration) {
+				resp.Downtime = append(resp.Downtime, downtimeJSON{
+					Start: d.Start.UnixMilli(), End: d.End.UnixMilli(), Open: d.Open, DeviceID: dev,
+				})
+			}
 		}
 	}
 
@@ -158,6 +173,9 @@ func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 	sort.Slice(resp.Unblocks, func(i, j int) bool { return resp.Unblocks[i].TS < resp.Unblocks[j].TS })
 	sort.Slice(resp.Lifecycle, func(i, j int) bool { return resp.Lifecycle[i].TS < resp.Lifecycle[j].TS })
 	sort.Slice(resp.Usage, func(i, j int) bool { return resp.Usage[i].TS < resp.Usage[j].TS })
+	// Per-device grouping above used maps (non-deterministic order); sort by start.
+	sort.Slice(resp.Unmanaged, func(i, j int) bool { return resp.Unmanaged[i].Start < resp.Unmanaged[j].Start })
+	sort.Slice(resp.Downtime, func(i, j int) bool { return resp.Downtime[i].Start < resp.Downtime[j].Start })
 
 	return resp
 }

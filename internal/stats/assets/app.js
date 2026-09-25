@@ -837,6 +837,36 @@ const within = (ts, b) => ts >= b.start && ts <= b.end;
 const DEVICE_COOKIE = "glockpeek_device";
 const inDevice = (row) => state.deviceFilter == null || row.deviceId === state.deviceFilter;
 
+// Exposure spans (unmanaged + downtime) arrive per device. scopeSpans returns the
+// current view: filtered to the selected device, or — for Combined — the UNION of
+// all devices' spans (ANY: the account is exposed if any device was off).
+function mergeSpans(spans) {
+  const s = (spans || []).map((p) => ({ ...p })).sort((a, b) => a.start - b.start);
+  const out = [];
+  for (const p of s) {
+    const last = out[out.length - 1];
+    if (last && p.start <= last.end) { // overlapping / touching → union
+      last.end = Math.max(last.end, p.end);
+      last.open = last.open || p.open;
+    } else {
+      out.push({ ...p });
+    }
+  }
+  return out;
+}
+function scopeSpans(spans) {
+  if (state.deviceFilter != null) return (spans || []).filter((p) => p.deviceId === state.deviceFilter);
+  return mergeSpans(spans);
+}
+// Re-derive the device-scoped exposure spans from the raw per-device ones, so every
+// consumer of state.data.unmanaged/downtime sees the right scope. Called on load
+// (applyOverlay) and whenever the device switcher changes.
+function scopeExposure() {
+  if (!state.data) return;
+  state.data.unmanaged = scopeSpans(state.rawUnmanaged);
+  state.data.downtime = scopeSpans(state.rawDowntime);
+}
+
 // populateDeviceFilter fills the sidebar device switcher (global scope) from the
 // account's devices (API tokens): "Combined" + each device, with a machine count.
 // One device shows as a static name label; none hides the block. Combined
@@ -870,6 +900,7 @@ function populateDeviceFilter() {
   el.onchange = () => {
     state.deviceFilter = el.value === "" ? null : Number(el.value);
     setCookie(DEVICE_COOKIE, el.value, 365);
+    scopeExposure(); // re-derive unmanaged/downtime for the new scope
     render();
     if (state.view === "insights") renderInsights();
     renderTimeline();
@@ -901,8 +932,8 @@ function render() {
   const heat = buildHeatmap(violations, b);
   // Composite health is a standing measure over ALL recorded history, not the
   // selected window — it doesn't change as you flip the range picker. It IS scoped
-  // by the device switcher (Combined = all devices). Violations filter by device;
-  // unmanaged/downtime stay account-wide until the per-device rollup lands.
+  // by the device switcher: violations filter by device, and unmanaged/downtime
+  // are already device-scoped (Combined = union) via scopeExposure.
   const allViolations = state.data.violations.filter(inDevice);
   renderScore(allViolations, state.data.unmanaged, { start: startOfDay(earliestTs()), end: state.data.now });
   renderStreak(allViolations); // standing, all-history — not windowed
@@ -1579,6 +1610,11 @@ function applyOverlay() {
   state.data.violations = state.data.violations
     .filter((v) => !ign.has(ignoreKeyOf(v)))
     .map((v) => (v.domain ? v : { ...v, domain: hostFromUrl(v.url) }));
+
+  // Stash the raw per-device exposure spans, then derive the current scope.
+  state.rawUnmanaged = state.data.unmanaged || [];
+  state.rawDowntime = state.data.downtime || [];
+  scopeExposure();
 }
 
 async function putIgnored() {
