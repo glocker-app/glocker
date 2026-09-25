@@ -371,15 +371,6 @@
 
             <div id="device-list" class="device-list"></div>
 
-            <div id="device-reveal" class="device-reveal" hidden>
-              <p class="panel-sub">Add this to <code>/etc/glocker/config.yaml</code> on the new device, then restart glocker. The token is shown <strong>once</strong> and can't be retrieved later — copy it now. Lost it? Revoke the device and connect a new one.</p>
-              <pre id="device-config" class="device-config"></pre>
-              <div class="device-reveal-actions">
-                <button id="device-copy" class="btn-primary" type="button">Copy config</button>
-                <button id="device-done" class="btn-ghost" type="button">Done</button>
-              </div>
-            </div>
-
             <div class="device-add">
               <input id="device-name" type="text" maxlength="64" placeholder="Name this device (e.g. laptop)" />
               <button id="add-device" class="btn-primary" type="button">Connect a device</button>
@@ -387,6 +378,23 @@
             <p id="device-error" class="login-error" hidden></p>
             <p id="device-upsell" class="device-upsell" hidden></p>
           </section>
+
+          <!-- Shown once, after a device is minted: the paste-this config. Modal so
+               the one-time token is impossible to miss. -->
+          <div id="device-modal" class="modal-backdrop" hidden>
+            <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="device-modal-title">
+              <h2 id="device-modal-title">Device connected</h2>
+              <div class="modal-warn">
+                <strong>Copy this now — it's shown only once.</strong> The token can't be displayed again (only its hash is stored). If you lose it, revoke this device and connect a new one.
+              </div>
+              <p class="panel-sub">Add this to <code>/etc/glocker/config.yaml</code> on the new device, then restart glocker.</p>
+              <pre id="device-config" class="device-config"></pre>
+              <div class="modal-actions">
+                <button id="device-copy" class="btn-primary" type="button">Copy config</button>
+                <button id="device-done" class="btn-ghost" type="button">Done</button>
+              </div>
+            </div>
+          </div>
         </section>
 
         <section class="view" data-view="users">

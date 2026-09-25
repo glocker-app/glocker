@@ -3420,7 +3420,11 @@ function setupDevices() {
   const nameEl = document.getElementById("device-name");
   const addBtn = document.getElementById("add-device");
   const errEl = document.getElementById("device-error");
-  const reveal = document.getElementById("device-reveal");
+  const modal = document.getElementById("device-modal");
+  const closeModal = () => {
+    modal.hidden = true;
+    document.getElementById("device-config").textContent = "";
+  };
 
   addBtn.onclick = async () => {
     errEl.hidden = true;
@@ -3448,8 +3452,7 @@ function setupDevices() {
     const { token } = await res.json();
     nameEl.value = "";
     document.getElementById("device-config").textContent = deviceConfig(token);
-    reveal.hidden = false;
-    reveal.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    modal.hidden = false;
     renderDevices();
   };
 
@@ -3461,10 +3464,10 @@ function setupDevices() {
       setTimeout(() => { btn.textContent = "Copy config"; }, 1500);
     } catch { /* clipboard may be blocked; the text is on-screen to copy manually */ }
   };
-  document.getElementById("device-done").onclick = () => {
-    reveal.hidden = true;
-    document.getElementById("device-config").textContent = "";
-  };
+  document.getElementById("device-done").onclick = closeModal;
+  // Dismiss on backdrop click or Esc — the warning already says copy first.
+  modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !modal.hidden) closeModal(); });
 
   const manage = document.getElementById("manage-billing");
   if (manage) {
