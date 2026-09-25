@@ -79,7 +79,7 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 	// already counted in "blocked" above; list them by name so the runtime block
 	// is visible, not just a bumped number.
 	if rt := enforcement.GetRuntimeDomains(); len(rt) > 0 {
-		f.row("runtime", fmt.Sprintf("%d", len(rt))+dim("   -block, this session"))
+		f.row("added", fmt.Sprintf("%d", len(rt))+dim("   this session"))
 		for _, name := range rt {
 			f.detail(name)
 		}
@@ -120,7 +120,7 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 	// Programs added this session via `glocker -block-app` (killed 24/7, in memory
 	// only). Counted in "listed" above; name them so the runtime block shows.
 	if rt := enforcement.GetRuntimePrograms(); len(rt) > 0 {
-		f.row("runtime", fmt.Sprintf("%d", len(rt))+dim("   -block-app, this session"))
+		f.row("added", fmt.Sprintf("%d", len(rt))+dim("   this session"))
 		for _, name := range rt {
 			f.detail(name)
 		}
