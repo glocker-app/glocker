@@ -70,6 +70,22 @@ func (db *DB) RevokeAPIToken(userID, tokenID uint) error {
 	return nil
 }
 
+// RenameAPIToken relabels one active token, scoped to userID. Revoked tokens
+// keep their historical name (not renameable). Returns gorm.ErrRecordNotFound if
+// the user has no such active token.
+func (db *DB) RenameAPIToken(userID, tokenID uint, name string) error {
+	res := db.Model(&APIToken{}).
+		Where("user_id = ? AND id = ? AND revoked_at IS NULL", userID, tokenID).
+		Update("name", name)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 // SetDeviceLimit sets an account's device cap by email (admin action, backing
 // the paid-plan upgrade). A negative limit means unlimited. Returns
 // ErrRecordNotFound if the email is unknown.

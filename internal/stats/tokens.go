@@ -42,6 +42,7 @@ func toTokenView(t store.APIToken) tokenView {
 //	GET    /api/tokens        list tokens + the account's device limit/usage
 //	POST   /api/tokens        mint a token (returns the plaintext once), capped
 //	                          by the device limit; over the cap → 402 upsell
+//	PATCH  /api/tokens?id=N   rename one device ({"name":...})
 //	DELETE /api/tokens?id=N   revoke one token
 func handleTokens(w http.ResponseWriter, r *http.Request) {
 	u := userFrom(r)
@@ -50,6 +51,8 @@ func handleTokens(w http.ResponseWriter, r *http.Request) {
 		writeTokenList(w, u)
 	case http.MethodPost:
 		mintToken(w, r, u)
+	case http.MethodPatch:
+		renameToken(w, r, u)
 	case http.MethodDelete:
 		revokeToken(w, r, u)
 	default:
@@ -129,6 +132,38 @@ func mintToken(w http.ResponseWriter, r *http.Request, u *store.User) {
 	}
 	// The plaintext is returned exactly once; only its hash is stored.
 	writeJSON(w, map[string]any{"token": tok, "name": name})
+}
+
+// renameToken relabels one of the account's devices by id (?id=N).
+func renameToken(w http.ResponseWriter, r *http.Request, u *store.User) {
+	id, err := strconv.ParseUint(r.URL.Query().Get("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid token id", http.StatusBadRequest)
+		return
+	}
+	var in struct {
+		Name string `json:"name"`
+	}
+	if body, err := io.ReadAll(io.LimitReader(r.Body, 4*1024)); err == nil && len(body) > 0 {
+		_ = json.Unmarshal(body, &in)
+	}
+	name := strings.TrimSpace(in.Name)
+	if name == "" {
+		http.Error(w, "name required", http.StatusBadRequest)
+		return
+	}
+	if len(name) > 64 {
+		name = name[:64]
+	}
+	if err := db.RenameAPIToken(u.ID, uint(id), name); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			http.Error(w, "no such token", http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "name": name})
 }
 
 // revokeToken deletes one of the account's tokens by id (?id=N).

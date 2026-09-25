@@ -884,8 +884,9 @@ function populateDeviceFilter() {
   state.deviceFilter = saved ? Number(saved) : null;
   if (state.deviceFilter != null && !devs.some((d) => d.id === state.deviceFilter)) state.deviceFilter = null;
 
+  const label = (d) => (d.name || ("device " + d.id)) + (d.revokedAt != null ? " (revoked)" : "");
   if (devs.length === 1) {
-    el.innerHTML = `<option>${escHtml(devs[0].name || ("device " + devs[0].id))}</option>`;
+    el.innerHTML = `<option>${escHtml(label(devs[0]))}</option>`;
     el.disabled = true;
     el.classList.add("device-filter--label");
     state.deviceFilter = null; // one device: Combined == that device
@@ -894,7 +895,7 @@ function populateDeviceFilter() {
   el.disabled = false;
   el.classList.remove("device-filter--label");
   el.innerHTML = [`<option value="">Combined</option>`]
-    .concat(devs.map((d) => `<option value="${d.id}">${escHtml(d.name || ("device " + d.id))}</option>`))
+    .concat(devs.map((d) => `<option value="${d.id}">${escHtml(label(d))}</option>`))
     .join("");
   el.value = state.deviceFilter == null ? "" : String(state.deviceFilter);
   el.onchange = () => {
@@ -3551,35 +3552,126 @@ async function renderDevices() {
   nameEl.disabled = atLimit;
   addBtn.disabled = atLimit;
   showDeviceUpsell(atLimit);
+
+  // Keep the analytics device switcher in step with rename/revoke done here.
+  state.devices = data.tokens || [];
+  populateDeviceFilter();
 }
 
 function deviceRow(t) {
   const row = document.createElement("div");
   row.className = "device-row";
+  const revoked = t.revokedAt != null;
+  if (revoked) row.classList.add("device-row--revoked");
 
   const meta = document.createElement("div");
   meta.className = "device-meta";
+  const nameLine = document.createElement("div");
+  nameLine.className = "device-name-line";
   const name = document.createElement("span");
   name.className = "device-name";
   name.textContent = t.name || "device";
+  nameLine.append(name);
+  if (revoked) {
+    const badge = document.createElement("span");
+    badge.className = "device-badge";
+    badge.textContent = "revoked";
+    nameLine.append(badge);
+  }
   const sub = document.createElement("span");
   sub.className = "device-sub";
-  const added = new Date(t.createdAt).toLocaleDateString();
-  sub.textContent = `added ${added} · ${t.lastUsedAt ? `last synced ${fmtAgo(t.lastUsedAt)}` : "never synced"}`;
-  meta.append(name, sub);
+  if (revoked) {
+    sub.textContent = `revoked ${new Date(t.revokedAt).toLocaleDateString()} · history kept`;
+  } else {
+    const added = new Date(t.createdAt).toLocaleDateString();
+    sub.textContent = `added ${added} · ${t.lastUsedAt ? `last synced ${fmtAgo(t.lastUsedAt)}` : "never synced"}`;
+  }
+  meta.append(nameLine, sub);
+  row.append(meta);
 
-  const btn = document.createElement("button");
-  btn.className = "btn-danger";
-  btn.type = "button";
-  btn.textContent = "Revoke";
-  btn.onclick = async () => {
-    if (!confirm(`Revoke "${t.name || "device"}"? That device will stop syncing.`)) return;
+  // Revoked devices are frozen — kept only so their history stays named.
+  if (revoked) return row;
+
+  const actions = document.createElement("div");
+  actions.className = "device-actions";
+
+  const renameBtn = document.createElement("button");
+  renameBtn.className = "btn-ghost";
+  renameBtn.type = "button";
+  renameBtn.textContent = "Rename";
+  renameBtn.onclick = () => startRename(row, t);
+
+  const revokeBtn = document.createElement("button");
+  revokeBtn.className = "btn-danger";
+  revokeBtn.type = "button";
+  revokeBtn.textContent = "Revoke";
+  revokeBtn.onclick = async () => {
+    if (!confirm(`Revoke "${t.name || "device"}"? It will stop syncing; its history is kept.`)) return;
     try { await fetch(`api/tokens?id=${t.id}`, { method: "DELETE" }); } catch { /* re-render reflects state */ }
     renderDevices();
   };
 
-  row.append(meta, btn);
+  actions.append(renameBtn, revokeBtn);
+  row.append(actions);
   return row;
+}
+
+// startRename swaps a device row into an inline edit form. Save PATCHes the new
+// name; both Save and Cancel re-render the list from the server.
+function startRename(row, t) {
+  row.textContent = "";
+  row.classList.add("device-row--editing");
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.maxLength = 64;
+  input.className = "device-rename-input";
+  input.value = t.name || "";
+
+  const err = document.createElement("span");
+  err.className = "device-rename-err";
+  err.hidden = true;
+
+  const save = document.createElement("button");
+  save.className = "btn-primary";
+  save.type = "button";
+  save.textContent = "Save";
+
+  const cancel = document.createElement("button");
+  cancel.className = "btn-ghost";
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.onclick = () => renderDevices();
+
+  const doSave = async () => {
+    const name = input.value.trim();
+    if (!name) { err.textContent = "Name required"; err.hidden = false; return; }
+    save.disabled = true;
+    let res;
+    try {
+      res = await fetch(`api/tokens?id=${t.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+    } catch {
+      err.textContent = "Could not reach the server"; err.hidden = false; save.disabled = false; return;
+    }
+    if (!res.ok) { err.textContent = `Rename failed (${res.status})`; err.hidden = false; save.disabled = false; return; }
+    renderDevices();
+  };
+  save.onclick = doSave;
+  input.onkeydown = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); doSave(); }
+    if (e.key === "Escape") renderDevices();
+  };
+
+  const wrap = document.createElement("div");
+  wrap.className = "device-rename";
+  wrap.append(input, save, cancel, err);
+  row.append(wrap);
+  input.focus();
+  input.select();
 }
 
 // fmtAgo renders an epoch-ms instant as a short relative string ("3m ago").

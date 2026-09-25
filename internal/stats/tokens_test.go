@@ -185,6 +185,49 @@ func TestTokensEndpoint_LimitMintRevoke(t *testing.T) {
 	}
 }
 
+func TestTokensEndpoint_Rename(t *testing.T) {
+	mux, sdb := newMux(t)
+	u, err := sdb.CreateUser("owner@x.com", "longenough1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessTok, _ := sdb.CreateSession(u.ID)
+	cookie := &http.Cookie{Name: sessionCookie, Value: sessTok}
+	req := func(method, target, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, target, strings.NewReader(body))
+		r.AddCookie(cookie)
+		return do(mux, r)
+	}
+
+	if rec := req("POST", "/api/tokens", `{"name":"laptop"}`); rec.Code != http.StatusOK {
+		t.Fatalf("mint: %d %s", rec.Code, rec.Body.String())
+	}
+	toks, _ := sdb.ListAPITokens(u.ID)
+	id := strconv.FormatUint(uint64(toks[0].ID), 10)
+
+	// Rename succeeds and takes effect.
+	if rec := req("PATCH", "/api/tokens?id="+id, `{"name":"work laptop"}`); rec.Code != http.StatusOK {
+		t.Fatalf("rename: %d %s", rec.Code, rec.Body.String())
+	}
+	if after, _ := sdb.ListAPITokens(u.ID); after[0].Name != "work laptop" {
+		t.Errorf("name after rename = %q, want %q", after[0].Name, "work laptop")
+	}
+	// Empty name → 400; unknown id → 404.
+	if rec := req("PATCH", "/api/tokens?id="+id, `{"name":"  "}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("empty rename: got %d, want 400", rec.Code)
+	}
+	if rec := req("PATCH", "/api/tokens?id=999999", `{"name":"x"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("rename unknown: got %d, want 404", rec.Code)
+	}
+	// A revoked device is not renameable (frozen history) → 404.
+	if err := sdb.RevokeAPIToken(u.ID, toks[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if rec := req("PATCH", "/api/tokens?id="+id, `{"name":"nope"}`); rec.Code != http.StatusNotFound {
+		t.Errorf("rename revoked: got %d, want 404", rec.Code)
+	}
+}
+
 func TestTokensEndpoint_RequiresAuth(t *testing.T) {
 	mux, _ := newMux(t)
 	if rec := do(mux, httptest.NewRequest("GET", "/api/tokens", nil)); rec.Code != http.StatusUnauthorized {
