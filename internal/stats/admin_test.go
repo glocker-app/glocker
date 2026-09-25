@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"glocker/internal/store"
 )
@@ -91,6 +92,53 @@ func TestAdminUsers(t *testing.T) {
 	}
 	if _, err := sdb.UserByEmail("bob@x.com"); err == nil {
 		t.Error("bob should be deleted")
+	}
+}
+
+func TestAdminClearSubscription(t *testing.T) {
+	sdb, err := store.Open(store.Options{Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "test.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sdb.Close() })
+
+	admin, _ := sdb.CreateUser("admin@x.com", "longenough1")
+	bob, _ := sdb.CreateUser("bob@x.com", "longenough1")
+	adminTok, _ := sdb.CreateSession(admin.ID)
+	bobTok, _ := sdb.CreateSession(bob.ID)
+
+	mux := http.NewServeMux()
+	Register(mux, sdb, Options{Auth: true, AdminEmail: "admin@x.com"})
+	req := func(method, target string, tok string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, target, nil)
+		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: tok})
+		return do(mux, r)
+	}
+
+	// Give bob an active paid subscription (unlimited devices).
+	if err := sdb.SetSubscription(bob.ID, store.SubStatusActive, "sub_1", time.Now().Add(720*time.Hour), -1); err != nil {
+		t.Fatal(err)
+	}
+	bobID := strconv.FormatUint(uint64(bob.ID), 10)
+
+	// A non-admin can't clear.
+	if rec := req("PATCH", "/api/admin/users?id="+bobID, bobTok); rec.Code != http.StatusForbidden {
+		t.Errorf("non-admin clear: got %d, want 403", rec.Code)
+	}
+	// The admin clears bob's subscription → free tier.
+	if rec := req("PATCH", "/api/admin/users?id="+bobID, adminTok); rec.Code != http.StatusOK {
+		t.Fatalf("clear sub: %d %s", rec.Code, rec.Body.String())
+	}
+	after, _ := sdb.UserByEmail("bob@x.com")
+	if after.SubStatus != "" || after.SubID != "" {
+		t.Errorf("sub not cleared: status=%q id=%q", after.SubStatus, after.SubID)
+	}
+	if store.EffectiveDeviceLimit(after) != store.DefaultFreeDevices {
+		t.Errorf("device limit not reset: %d", store.EffectiveDeviceLimit(after))
+	}
+	// Unknown id → 404.
+	if rec := req("PATCH", "/api/admin/users?id=999999", adminTok); rec.Code != http.StatusNotFound {
+		t.Errorf("clear unknown: got %d, want 404", rec.Code)
 	}
 }
 

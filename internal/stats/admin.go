@@ -25,6 +25,7 @@ type adminUserView struct {
 	CreatedAt   int64  `json:"createdAt"`
 	IsAdmin     bool   `json:"isAdmin"`
 	Self        bool   `json:"self"`
+	SubStatus   string `json:"subStatus"` // "" free, "active", "canceled", "expired"
 }
 
 // recordCount sums the actual synced data sources (not rules/ignored config).
@@ -37,6 +38,7 @@ func recordCount(c map[string]int64) int64 {
 //	GET             list all accounts
 //	DELETE ?id=N    delete an account and all its data (not your own)
 //	PUT    ?id=N    set an account's device limit ({"deviceLimit": n})
+//	PATCH  ?id=N    clear an account's subscription (reset to the free tier)
 func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	me := userFrom(r)
 	switch r.Method {
@@ -46,6 +48,8 @@ func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		adminDeleteUser(w, r, me)
 	case http.MethodPut:
 		adminSetDeviceLimit(w, r)
+	case http.MethodPatch:
+		adminClearSubscription(w, r)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -74,6 +78,7 @@ func adminListUsers(w http.ResponseWriter, me *store.User) {
 			DeviceLimit: store.EffectiveDeviceLimit(&u), Devices: devices,
 			Records: records, LastSyncAt: lastSync,
 			CreatedAt: u.CreatedAt.UnixMilli(), IsAdmin: isAdmin(&u), Self: u.ID == me.ID,
+			SubStatus: u.SubStatus,
 		})
 	}
 	writeJSON(w, map[string]any{
@@ -93,6 +98,26 @@ func adminDeleteUser(w http.ResponseWriter, r *http.Request, me *store.User) {
 		return
 	}
 	if err := db.DeleteUserData(uint(id)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+// adminClearSubscription resets an account to the free tier, for when Polar and
+// glockpeek have drifted (e.g. a subscription deleted at Polar whose revoke
+// webhook never landed here).
+func adminClearSubscription(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseUint(r.URL.Query().Get("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid user id", http.StatusBadRequest)
+		return
+	}
+	if err := db.ClearSubscription(uint(id)); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			http.Error(w, "no such user", http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

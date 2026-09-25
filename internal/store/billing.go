@@ -37,3 +37,12 @@ func (db *DB) SetSubscription(userID uint, status, subID string, currentEnd time
 	}
 	return nil
 }
+
+// ClearSubscription resets an account to the free tier: no subscription status,
+// no stored subscription id, and the free device cap. Used by the admin panel to
+// undo a subscription when the MoR and glockpeek have drifted (e.g. a sandbox sub
+// deleted at Polar whose revoke webhook never reached here). Returns
+// gorm.ErrRecordNotFound if userID matches no account.
+func (db *DB) ClearSubscription(userID uint) error {
+	return db.SetSubscription(userID, "", "", time.Time{}, 0)
+}

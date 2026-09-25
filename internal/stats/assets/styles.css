@@ -1413,6 +1413,7 @@ canvas { max-height: 260px; }
 }
 .user-badge.admin { color: var(--signal); border-color: var(--signal); }
 .user-badge.unverified { color: var(--ink-dim); }
+.user-badge.sub { color: var(--signal); border-color: var(--signal); }
 
 /* ── Data-sync panel ──────────────────────────────────── */
 .sync-status { display: flex; flex-direction: column; gap: 8px; }

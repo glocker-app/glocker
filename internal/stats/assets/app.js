@@ -3350,6 +3350,7 @@ function userRow(u) {
   email.textContent = u.email;
   if (u.isAdmin) email.append(badge("admin", "admin"));
   if (!u.verified) email.append(badge("unverified", "unverified"));
+  if (u.subStatus) email.append(badge("sub", u.subStatus));
   const sub = document.createElement("span");
   sub.className = "user-sub";
   const limit = u.deviceLimit < 0 ? "∞" : u.deviceLimit;
@@ -3381,6 +3382,20 @@ function userRow(u) {
     renderUsers();
   };
   actions.append(limInput, saveBtn);
+
+  // Clear subscription — reset to free tier (for when Polar and glockpeek drift).
+  if (u.subStatus) {
+    const clearSub = document.createElement("button");
+    clearSub.className = "btn-ghost";
+    clearSub.type = "button";
+    clearSub.textContent = "Clear subscription";
+    clearSub.onclick = async () => {
+      if (!confirm(`Reset ${u.email} to the free tier? Clears the subscription status and drops the device cap back to free.`)) return;
+      try { await fetch(`api/admin/users?id=${u.id}`, { method: "PATCH" }); } catch { /* re-render reflects state */ }
+      renderUsers();
+    };
+    actions.append(clearSub);
+  }
 
   // Delete (never your own admin account).
   if (!u.self) {
