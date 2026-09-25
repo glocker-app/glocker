@@ -900,9 +900,12 @@ function render() {
 
   const heat = buildHeatmap(violations, b);
   // Composite health is a standing measure over ALL recorded history, not the
-  // selected window — it doesn't change as you flip the range picker.
-  renderScore(state.data.violations, state.data.unmanaged, { start: startOfDay(earliestTs()), end: state.data.now });
-  renderStreak(state.data.violations); // standing, all-history — not windowed
+  // selected window — it doesn't change as you flip the range picker. It IS scoped
+  // by the device switcher (Combined = all devices). Violations filter by device;
+  // unmanaged/downtime stay account-wide until the per-device rollup lands.
+  const allViolations = state.data.violations.filter(inDevice);
+  renderScore(allViolations, state.data.unmanaged, { start: startOfDay(earliestTs()), end: state.data.now });
+  renderStreak(allViolations); // standing, all-history — not windowed
   renderReadout(violations, unblocks, unmanaged, heat, b);
   renderHeatmap(heat);
   renderUnblocksByHour(unblocks);

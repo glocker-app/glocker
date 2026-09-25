@@ -30,18 +30,15 @@
       </div>
 
       <div id="nav">
-        <ul class="nav">
-          <li><button data-view="overview" class="active">Overview</button></li>
-        </ul>
-
-        <!-- Monitoring: a container headed by the device switcher, which scopes the
-             views inside it (Analytics + Insights). Combined = account-wide roll-up
-             or a single device (shown as a name label). Overview stays Combined. -->
+        <!-- Monitoring: a container headed by the device switcher, which scopes
+             every view inside it — Overview, Analytics, Insights. Combined =
+             account-wide roll-up, or a single device (shown as a name label). -->
         <div class="nav-group nav-monitoring">
           <div class="sidebar-devices" id="sidebar-devices" hidden>
             <select id="device-filter" class="device-filter" aria-label="Device scope"></select>
           </div>
           <ul class="nav">
+            <li><button data-view="overview" class="active">Overview</button></li>
             <li><button data-view="analytics">Analytics</button></li>
             <li id="nav-insights" hidden><button data-view="insights">Insights</button></li>
           </ul>
