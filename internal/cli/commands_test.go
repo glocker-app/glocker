@@ -46,6 +46,33 @@ func TestGetStatusResponse(t *testing.T) {
 	}
 }
 
+func TestGetStatusResponse_ShowsRuntimeAdditions(t *testing.T) {
+	// Runtime -block / -block-app / -lock apply in memory only; -status must
+	// still surface them so they're not invisible.
+	enforcement.AddRuntimeDomains([]config.Domain{{Name: "runtime-block.example"}})
+	enforcement.AddRuntimePrograms([]string{"runtimebin"})
+	enforcement.SetSudoForceLocked(true)
+	defer enforcement.SetSudoForceLocked(false)
+
+	cfg := &config.Config{
+		Domains:  config.DomainsConfig{Enabled: true},
+		Programs: config.ProgramsConfig{Enabled: true},
+		Sudoers:  config.SudoersConfig{Enabled: true},
+	}
+
+	response := plainStatus(cfg)
+
+	if !strings.Contains(response, "runtime-block.example") {
+		t.Error("status should list the runtime-blocked domain by name")
+	}
+	if !strings.Contains(response, "runtimebin") {
+		t.Error("status should list the runtime-blocked program by name")
+	}
+	if !strings.Contains(response, "forced by -lock") {
+		t.Error("status should show sudo as force-locked by -lock")
+	}
+}
+
 func TestGetStatusResponse_WithExtensionKeywords(t *testing.T) {
 	cfg := &config.Config{
 		Domains: config.DomainsConfig{List: []config.Domain{

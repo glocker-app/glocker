@@ -75,6 +75,15 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 	}
 	f.head("domains")
 	f.row("blocked", fmt.Sprintf("%d", effectiveBlocked))
+	// Domains added this session via `glocker -block` (in memory only). They're
+	// already counted in "blocked" above; list them by name so the runtime block
+	// is visible, not just a bumped number.
+	if rt := enforcement.GetRuntimeDomains(); len(rt) > 0 {
+		f.row("runtime", fmt.Sprintf("%d", len(rt))+dim("   -block, this session"))
+		for _, name := range rt {
+			f.detail(name)
+		}
+	}
 	f.row("temp unblocks", fmt.Sprintf("%d", activeUnblocks))
 	for _, unblock := range unblocks {
 		if now.Before(unblock.ExpiresAt) {
@@ -108,6 +117,14 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 	} else {
 		f.row("forbidden", alert("off"))
 	}
+	// Programs added this session via `glocker -block-app` (killed 24/7, in memory
+	// only). Counted in "listed" above; name them so the runtime block shows.
+	if rt := enforcement.GetRuntimePrograms(); len(rt) > 0 {
+		f.row("runtime", fmt.Sprintf("%d", len(rt))+dim("   -block-app, this session"))
+		for _, name := range rt {
+			f.detail(name)
+		}
+	}
 	f.row("extensions", fmt.Sprintf("%d active", activeExtensions))
 	for _, ext := range extensions {
 		if now.Before(ext.ExpiresAt) {
@@ -122,8 +139,12 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 	if !cfg.Sudoers.Enabled {
 		f.row("restriction", dim("unrestricted"))
 	} else {
-		if enforcement.IsSudoAllowed(cfg, now) {
+		forced := enforcement.IsSudoForceLocked()
+		if enforcement.IsSudoAllowed(cfg, now) && !forced {
 			f.row("access", good("allowed")+dim(" now"))
+		} else if forced {
+			// `glocker -lock` force-blocked sudo outside the window logic.
+			f.row("access", alert("blocked")+dim(" now · forced by -lock"))
 		} else {
 			f.row("access", alert("blocked")+dim(" now"))
 		}
@@ -628,6 +649,7 @@ func ProcessBlockAppRequest(cfg *config.Config, programsStr string) {
 	// is what makes newly blocked programs take effect. Kept in memory only,
 	// never written to the config file (which `make full-install` regenerates),
 	// so it lasts for the life of the daemon but vanishes on restart/reinstall.
+	var added []string
 	for _, name := range validNames {
 		if existing[name] {
 			log.Printf("Program %s already blocked, skipping", name)
@@ -635,8 +657,12 @@ func ProcessBlockAppRequest(cfg *config.Config, programsStr string) {
 		}
 		cfg.Programs.List = append(cfg.Programs.List, config.ForbiddenProgram{Name: name})
 		existing[name] = true
+		added = append(added, name)
 		log.Printf("APP BLOCKED: %s (killed on sight)", name)
 	}
+	// Record for -status visibility (enforcement reads cfg.Programs.List above;
+	// this list is display-only, mirroring runtime -block domains).
+	enforcement.AddRuntimePrograms(added)
 
 	// If the monitor goroutine was never started (feature disabled), the new
 	// entries won't actually be killed until the service restarts with it on.

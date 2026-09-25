@@ -295,6 +295,7 @@ func processLockRequest(cfg *config.Config) {
 	if err := enforcement.UpdateSudoers(cfg, now, false, true); err != nil {
 		log.Printf("ERROR: Failed to lock sudoers: %v", err)
 	} else {
+		enforcement.SetSudoForceLocked(true) // so -status shows the forced lock
 		log.Println("✓ Sudoers access locked")
 	}
 }
