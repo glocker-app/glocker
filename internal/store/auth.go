@@ -223,6 +223,10 @@ func (db *DB) UserAndDeviceByAPIToken(token string) (*User, uint, error) {
 	if err := db.Where("token_hash = ?", hashToken(token)).First(&row).Error; err != nil {
 		return nil, 0, ErrInvalidCredentials
 	}
+	if row.RevokedAt != nil {
+		// Revoked device: reject ingest. History under its device_id is kept.
+		return nil, 0, ErrInvalidCredentials
+	}
 	now := time.Now()
 	db.Model(&row).Update("last_used_at", &now)
 	var u User

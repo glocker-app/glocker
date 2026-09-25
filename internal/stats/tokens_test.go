@@ -29,7 +29,8 @@ func TestStoreDeviceLimitAndTokenOps(t *testing.T) {
 		t.Errorf("new account token count = %d, want 0", n)
 	}
 
-	if _, err := sdb.CreateAPIToken(u.ID, "a"); err != nil {
+	plainA, err := sdb.CreateAPIToken(u.ID, "a")
+	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := sdb.CreateAPIToken(u.ID, "b"); err != nil {
@@ -40,12 +41,34 @@ func TestStoreDeviceLimitAndTokenOps(t *testing.T) {
 		t.Fatalf("list = %v (len %d, err %v), want 2", toks, len(toks), err)
 	}
 
-	// Revoke one (scoped to the user); count drops.
+	// Token "a" authenticates at ingest before revocation.
+	if _, _, err := sdb.UserAndDeviceByAPIToken(plainA); err != nil {
+		t.Fatalf("token A should authenticate before revoke: %v", err)
+	}
+
+	// Revoke it (scoped to the user); the active count drops...
 	if err := sdb.RevokeAPIToken(u.ID, toks[0].ID); err != nil {
 		t.Fatalf("revoke: %v", err)
 	}
 	if n, _ := sdb.CountAPITokens(u.ID); n != 1 {
-		t.Errorf("count after revoke = %d, want 1", n)
+		t.Errorf("active count after revoke = %d, want 1", n)
+	}
+	// ...but the row is kept (soft-revoke), now marked revoked, so the device's
+	// history stays named.
+	after, _ := sdb.ListAPITokens(u.ID)
+	if len(after) != 2 {
+		t.Errorf("list after revoke = %d rows, want 2 (revoked kept)", len(after))
+	}
+	if after[0].RevokedAt == nil {
+		t.Error("revoked token should have RevokedAt set")
+	}
+	// A revoked token no longer authenticates at ingest.
+	if _, _, err := sdb.UserAndDeviceByAPIToken(plainA); err == nil {
+		t.Error("revoked token must be rejected at ingest")
+	}
+	// Re-revoking an already-revoked token is a not-found (no active row matched).
+	if err := sdb.RevokeAPIToken(u.ID, toks[0].ID); !errors.Is(err, gorm.ErrRecordNotFound) {
+		t.Errorf("re-revoke: got %v, want ErrRecordNotFound", err)
 	}
 	// Revoking an unknown / other-user token is a not-found, not a silent no-op.
 	if err := sdb.RevokeAPIToken(u.ID, 999999); !errors.Is(err, gorm.ErrRecordNotFound) {

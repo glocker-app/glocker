@@ -20,6 +20,7 @@ type tokenView struct {
 	Name       string `json:"name"`
 	CreatedAt  int64  `json:"createdAt"`
 	LastUsedAt *int64 `json:"lastUsedAt"`
+	RevokedAt  *int64 `json:"revokedAt"` // set = revoked device (kept for history)
 }
 
 func toTokenView(t store.APIToken) tokenView {
@@ -27,6 +28,10 @@ func toTokenView(t store.APIToken) tokenView {
 	if t.LastUsedAt != nil {
 		ms := t.LastUsedAt.UnixMilli()
 		v.LastUsedAt = &ms
+	}
+	if t.RevokedAt != nil {
+		ms := t.RevokedAt.UnixMilli()
+		v.RevokedAt = &ms
 	}
 	return v
 }
@@ -61,15 +66,21 @@ func writeTokenList(w http.ResponseWriter, u *store.User) {
 		return
 	}
 	views := make([]tokenView, 0, len(toks))
+	active := 0
 	for _, t := range toks {
+		if t.RevokedAt == nil {
+			active++
+		}
 		views = append(views, toTokenView(t))
 	}
 	limit := deviceLimit(u)
+	// The cap counts only active devices; revoked ones are kept in the list (for
+	// naming history) but don't consume a slot.
 	writeJSON(w, map[string]any{
 		"tokens": views,
 		"limit":  limit, // -1 means unlimited
-		"used":   len(views),
-		"canAdd": limit < 0 || len(views) < limit,
+		"used":   active,
+		"canAdd": limit < 0 || active < limit,
 	})
 }
 

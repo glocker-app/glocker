@@ -75,12 +75,17 @@ type Session struct {
 // Only the hash is stored; the plaintext is shown once at creation. The token
 // identifies which account the pushed data belongs to.
 type APIToken struct {
-	ID         uint       `gorm:"primaryKey" json:"id"`
-	Name       string     `json:"name"`
-	TokenHash  string     `gorm:"uniqueIndex;not null" json:"-"`
-	UserID     uint       `gorm:"index;not null" json:"userId"`
-	CreatedAt  time.Time  `json:"createdAt"`
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	Name      string    `json:"name"`
+	TokenHash string    `gorm:"uniqueIndex;not null" json:"-"`
+	UserID    uint      `gorm:"index;not null" json:"userId"`
+	CreatedAt time.Time `json:"createdAt"`
+	// LastUsedAt is the last successful ingest with this token (the device's
+	// last-seen). RevokedAt, when set, disables the token: it is rejected at
+	// ingest and no longer counts against the device cap, but the row is kept so
+	// the device's historical stats rows keep a name in the dashboard.
 	LastUsedAt *time.Time `json:"lastUsedAt"`
+	RevokedAt  *time.Time `json:"revokedAt"`
 }
 
 // ── Per-account stats (all scoped by UserID) ─────────────

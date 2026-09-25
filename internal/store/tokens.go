@@ -1,6 +1,10 @@
 package store
 
-import "gorm.io/gorm"
+import (
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // Device/token management for the hosted dashboard. Each ingest API token
 // represents one connected device (a glocker agent syncing to glockpeek). The
@@ -25,7 +29,9 @@ func EffectiveDeviceLimit(u *User) int {
 }
 
 // ListAPITokens returns a user's ingest tokens (metadata only — the hash column
-// is never selected into JSON), oldest first.
+// is never selected into JSON), oldest first. Revoked tokens are included so the
+// dashboard can still name the historical rows of a revoked device; callers tell
+// them apart by RevokedAt.
 func (db *DB) ListAPITokens(userID uint) ([]APIToken, error) {
 	var toks []APIToken
 	if err := db.Where("user_id = ?", userID).Order("created_at asc").Find(&toks).Error; err != nil {
@@ -34,20 +40,27 @@ func (db *DB) ListAPITokens(userID uint) ([]APIToken, error) {
 	return toks, nil
 }
 
-// CountAPITokens counts a user's ingest tokens (used to enforce the device cap).
+// CountAPITokens counts a user's ACTIVE (non-revoked) ingest tokens — this is
+// what enforces the device cap, so revoking a device frees a slot.
 func (db *DB) CountAPITokens(userID uint) (int, error) {
 	var n int64
-	if err := db.Model(&APIToken{}).Where("user_id = ?", userID).Count(&n).Error; err != nil {
+	if err := db.Model(&APIToken{}).
+		Where("user_id = ? AND revoked_at IS NULL", userID).Count(&n).Error; err != nil {
 		return 0, err
 	}
 	return int(n), nil
 }
 
-// RevokeAPIToken deletes one token by ID, scoped to userID so a user can only
-// revoke their own. Returns gorm.ErrRecordNotFound if no such token exists for
-// the user.
+// RevokeAPIToken soft-revokes one token by ID, scoped to userID so a user can
+// only revoke their own. The row is kept (so the device's history stays named)
+// but marked revoked: it stops authenticating at ingest and no longer counts
+// against the device cap. Returns gorm.ErrRecordNotFound if the user has no such
+// token that is still active (already-revoked or unknown ids both 404).
 func (db *DB) RevokeAPIToken(userID, tokenID uint) error {
-	res := db.Where("user_id = ? AND id = ?", userID, tokenID).Delete(&APIToken{})
+	now := time.Now()
+	res := db.Model(&APIToken{}).
+		Where("user_id = ? AND id = ? AND revoked_at IS NULL", userID, tokenID).
+		Update("revoked_at", &now)
 	if res.Error != nil {
 		return res.Error
 	}
