@@ -133,6 +133,71 @@ func createPolarCheckout(ctx context.Context, userID uint) (string, error) {
 	return out.URL, nil
 }
 
+// handleBillingPortal creates a Polar customer-portal session for the logged-in
+// account and returns {"url": ...} so the browser can redirect there to manage or
+// cancel the subscription (update card, download invoices). Polar, as MoR, owns
+// that surface — we never handle payment details.
+func handleBillingPortal(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	u := userFrom(r)
+	url, err := createPolarPortal(r.Context(), u.ID)
+	if errors.Is(err, errNoCustomer) {
+		http.Error(w, "no billing account yet", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("billing: portal create failed for user %d: %v", u.ID, err)
+		http.Error(w, "could not open billing portal", http.StatusBadGateway)
+		return
+	}
+	writeJSON(w, map[string]any{"url": url})
+}
+
+// createPolarPortal POSTs to Polar's customer-sessions API keyed by the account's
+// external id (the numeric user id we set at checkout) and returns the hosted
+// customer-portal URL. A 404 means the account never checked out (no Polar
+// customer yet) — surfaced as errNoCustomer so the caller can 404.
+func createPolarPortal(ctx context.Context, userID uint) (string, error) {
+	ext := strconv.FormatUint(uint64(userID), 10)
+	body, err := json.Marshal(map[string]any{"customer_external_id": ext})
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, billing.APIBase+"/v1/customer-sessions/", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+billing.APIToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := billingHTTP.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode == http.StatusNotFound {
+		return "", errNoCustomer
+	}
+	if resp.StatusCode/100 != 2 {
+		return "", fmt.Errorf("polar customer-session status %d: %s", resp.StatusCode, string(rb))
+	}
+	var out struct {
+		CustomerPortalURL string `json:"customer_portal_url"`
+	}
+	if err := json.Unmarshal(rb, &out); err != nil {
+		return "", err
+	}
+	if out.CustomerPortalURL == "" {
+		return "", fmt.Errorf("polar customer-session returned no portal url")
+	}
+	return out.CustomerPortalURL, nil
+}
+
+var errNoCustomer = errors.New("billing: account has no Polar customer")
+
 // polarSubscriptionEvent is the subset of a Polar webhook we act on.
 type polarSubscriptionEvent struct {
 	Type string `json:"type"`

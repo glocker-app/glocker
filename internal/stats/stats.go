@@ -156,6 +156,8 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	// Session-gated: start a checkout for the paid tier. Only when billing is on.
 	if billingEnabled {
 		mux.HandleFunc("/api/billing/checkout", requireUser(handleBillingCheckout))
+		// Session-gated: open the Polar customer portal to manage/cancel the sub.
+		mux.HandleFunc("/api/billing/portal", requireUser(handleBillingPortal))
 		// Public but signature-verified: the Merchant-of-Record posts subscription
 		// events here. Not session-gated (the caller is Polar, not a browser).
 		mux.HandleFunc("/api/billing/webhook", handleBillingWebhook)

@@ -3464,6 +3464,23 @@ function setupDevices() {
     reveal.hidden = true;
     document.getElementById("device-config").textContent = "";
   };
+
+  const manage = document.getElementById("manage-billing");
+  if (manage) {
+    manage.onclick = async () => {
+      manage.disabled = true;
+      try {
+        const res = await fetch("api/billing/portal", { method: "POST" });
+        if (!res.ok) throw new Error(`server returned ${res.status}`);
+        const { url } = await res.json();
+        if (!url) throw new Error("no portal url");
+        location.href = url;
+      } catch {
+        manage.disabled = false;
+        alert("Could not open the billing portal. Please try again in a moment.");
+      }
+    };
+  }
 }
 
 // deviceConfig builds the sync block the user pastes into the agent's config.
@@ -3538,6 +3555,10 @@ async function renderDevices() {
   } else if (sub === "canceled") {
     usageEl.textContent += "  ·  Pro plan (cancels at period end)";
   }
+  // Manage/cancel is available once there's a subscription (active or winding
+  // down); an expired/free account sees the upgrade CTA instead.
+  const manage = document.getElementById("manage-billing");
+  if (manage) manage.hidden = !(state.me && state.me.billing && (sub === "active" || sub === "canceled"));
 
   listEl.textContent = "";
   if (!data.tokens.length) {
