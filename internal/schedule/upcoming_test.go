@@ -127,19 +127,25 @@ func TestUpcomingProgramExtensionLapsing(t *testing.T) {
 	cfg := &config.Config{Programs: config.ProgramsConfig{Enabled: true, List: []config.ForbiddenProgram{
 		{Name: "firefox-esr", Extendible: true},
 	}}}
+	// Anchor to real now (truncated to the minute so it lines up with the
+	// minute-by-minute scan), NOT the fixed `base`: the extension store drops
+	// grants that already lapsed relative to time.Now(), so a hardcoded past date
+	// would make the grant vanish and the lapse never show. The program is killed
+	// 24/7, so the only upcoming change is this lapse — independent of weekday.
+	now := time.Now().Truncate(time.Minute)
 	if err := state.AddProgramExtension(state.ProgramExtension{
 		Program:   "firefox-esr",
-		GrantedAt: base,
-		ExpiresAt: base.Add(8 * time.Minute),
+		GrantedAt: now,
+		ExpiresAt: now.Add(8 * time.Minute),
 	}); err != nil {
 		t.Fatalf("AddProgramExtension: %v", err)
 	}
 
-	got := Upcoming(cfg, base, DefaultHorizon)
+	got := Upcoming(cfg, now, DefaultHorizon)
 	if len(got) != 1 {
 		t.Fatalf("want 1 change, got %d (%+v)", len(got), got)
 	}
-	if c := got[0]; c.Name != "firefox-esr" || !c.At.Equal(base.Add(8*time.Minute)) {
+	if c := got[0]; c.Name != "firefox-esr" || !c.At.Equal(now.Add(8*time.Minute)) {
 		t.Errorf("unexpected change: %+v", c)
 	}
 }
