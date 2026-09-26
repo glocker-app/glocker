@@ -1,4 +1,4 @@
-.PHONY: build-all install full-install update-blocklists test release deploy deploy-config deploy-full deploy-rules sign-extension release-extension deploy-extension db-backup db-restore help
+.PHONY: build-all install full-install update-blocklists test release deploy deploy-full deploy-rules sign-extension release-extension deploy-extension db-backup help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -15,7 +15,18 @@ help: ## display this help message
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 GOLDFLAGS := -ldflags "-X main.version=$(VERSION)"
 
-build-all: ## Build all binaries
+# ── Deploy knobs ─────────────────────────────────────────────
+# Defaults suit a standalone glocker checkout. Override on the command line or
+# from a parent Makefile — the private hosted repo passes these pointing at its
+# own out-of-tree config/secrets (e.g. GLOCKPEEK_CONF=$(abspath conf/glockpeek.yaml)).
+DEPLOY_USER    ?= root
+DEPLOY_HOST    ?= glockerapp.com
+GLOCKPEEK_CONF ?= conf/glockpeek.yaml   # server config with secrets (gitignored)
+TAGS_FILE      ?= tags.json             # curated starter rules (hosted-only, gitignored)
+DB_BACKUP_DIR  ?= deploy/backups        # local pg_dump destination (gitignored)
+
+# Internal build step (dependency of install / full-install); not surfaced in help.
+build-all:
 	go build $(GOLDFLAGS) -o glocker ./cmd/glocker
 	go build $(GOLDFLAGS) -o glocklock ./cmd/glocklock
 	go build $(GOLDFLAGS) -o glockpeek ./cmd/glockpeek
@@ -43,14 +54,9 @@ test: ## Run tests
 # `full-install`); the rest ship one piece each (like `install`). One-time host
 # provisioning — postgres, caddy, the service user — is managed in a private ops
 # repo (this repo is consumed there as a git subtree); see deploy/README.md.
-#   make deploy-full DEPLOY_HOST=glockerapp.com          # binary + landing + extension
-#   make deploy | deploy-landing | deploy-extension      # just one piece
-DEPLOY_USER ?= root
-DEPLOY_HOST ?= glockerapp.com
-# The gitignored server config with secrets. Overridable so an external ops repo
-# (git-subtree deployment) can point at its own private copy without keeping the
-# file inside this tree — e.g. make deploy GLOCKPEEK_CONF=/path/to/glockpeek.yaml.
-GLOCKPEEK_CONF ?= conf/glockpeek.yaml
+#   make deploy-full DEPLOY_HOST=glockerapp.com          # binary + extension
+#   make deploy | deploy-extension                       # just one piece
+# (Deploy knobs — DEPLOY_HOST/USER, GLOCKPEEK_CONF — are defined up top.)
 
 deploy-full: deploy deploy-extension ## Full deploy: dashboard binary + extension
 
@@ -62,14 +68,6 @@ deploy: ## Deploy the glockpeek dashboard binary + server config to the VPS
 	scp $(GLOCKPEEK_CONF) $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.yaml.new
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -m 0755 /tmp/glockpeek.new /usr/local/bin/glockpeek && sudo install -o root -g glockpeek -m 0640 /tmp/glockpeek.yaml.new /etc/glocker/glockpeek.yaml && rm -f /tmp/glockpeek.new /tmp/glockpeek.yaml.new && sudo systemctl restart glockpeek && sleep 2 && systemctl is-active glockpeek'
 
-# Ship ONLY the server config (conf/glockpeek.yaml) and restart — for a config
-# tweak (e.g. enabling mail) without rebuilding/shipping the binary.
-deploy-config: ## Ship just the glockpeek server config and restart
-	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-config DEPLOY_HOST=my.example.com"; exit 1; }
-	@test -f $(GLOCKPEEK_CONF) || { echo "$(GLOCKPEEK_CONF) not found (gitignored server config with secrets) — create it from conf/glockpeek.yaml.sample"; exit 1; }
-	scp $(GLOCKPEEK_CONF) $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.yaml.new
-	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -o root -g glockpeek -m 0640 /tmp/glockpeek.yaml.new /etc/glocker/glockpeek.yaml && rm -f /tmp/glockpeek.yaml.new && sudo systemctl restart glockpeek && sleep 2 && systemctl is-active glockpeek'
-
 # Ship the curated Glocker starter rules (tags.json, hosted-only + gitignored)
 # and load them into the default-rules template so NEW accounts seed from them.
 # Idempotent (replaces the table); run after `deploy` (needs the new binary's
@@ -77,17 +75,16 @@ deploy-config: ## Ship just the glockpeek server config and restart
 # from /etc/glocker/glockpeek.yaml, so no -db/-driver needed on the box.
 deploy-rules:
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST"; exit 1; }
-	@test -f tags.json || { echo "tags.json not found (hosted-only asset, gitignored)"; exit 1; }
-	scp tags.json $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glocker-tags.json
+	@test -f $(TAGS_FILE) || { echo "$(TAGS_FILE) not found (hosted-only asset, gitignored)"; exit 1; }
+	scp $(TAGS_FILE) $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glocker-tags.json
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo /usr/local/bin/glockpeek -import-rules /tmp/glocker-tags.json && rm -f /tmp/glocker-tags.json'
 
-# ── Database backup / restore ────────────────────────────────
-# DigitalOcean backups cover droplet loss; a local pg_dump also lets you rebuild
-# from scratch (terraform apply + ansible + db-restore) or move hosts — the DB
-# holds data that can't be re-synced from the agent logs (accounts, tokens, the
-# key vault, rules, tag colours, the ignore overlay). Dumps contain sensitive data
-# (argon2 password hashes, the wrapped master key), so DB_BACKUP_DIR is gitignored.
-DB_BACKUP_DIR ?= deploy/backups
+# ── Database backup ──────────────────────────────────────────
+# Restore relies on DigitalOcean's managed droplet backups; this is a local
+# pg_dump for debugging/inspection of data that can't be re-synced from the agent
+# logs (accounts, tokens, the key vault, rules, tag colours, the ignore overlay).
+# Dumps carry sensitive data (argon2 hashes, the wrapped master key), so
+# DB_BACKUP_DIR (defined up top) is gitignored.
 
 db-backup: ## Pull a compressed pg_dump of the glockpeek DB to DB_BACKUP_DIR (local, gitignored)
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST"; exit 1; }
@@ -95,14 +92,6 @@ db-backup: ## Pull a compressed pg_dump of the glockpeek DB to DB_BACKUP_DIR (lo
 	@f="$(DB_BACKUP_DIR)/glockpeek-$$(date -u +%Y%m%dT%H%M%SZ).dump"; \
 	 ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo -u postgres pg_dump -Fc glockpeek' > "$$f" && \
 	 echo "saved $$f ($$(du -h "$$f" | cut -f1))"
-
-db-restore: ## Restore a dump into the server DB (DESTRUCTIVE): make db-restore FILE=deploy/backups/x.dump
-	@test -n "$(FILE)" || { echo "set FILE=path/to/.dump"; exit 1; }
-	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST"; exit 1; }
-	@echo "Restoring $(FILE) into glockpeek on $(DEPLOY_HOST) — this DROPS and recreates objects."
-	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo systemctl stop glockpeek'
-	cat "$(FILE)" | ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo -u postgres pg_restore --clean --if-exists --no-owner -d glockpeek'
-	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo systemctl start glockpeek'
 
 
 # Publish the SIGNED Firefox extension to the apex web root, served at
