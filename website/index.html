@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>glocker &mdash; a distraction blocker for Linux</title>
 <meta name="description" content="glocker is an open-source distraction blocker for Linux. It blocks sites, on-page content, and apps on a schedule, and makes switching it off slow and deliberate." />
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%235b4fe0'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23fff'/%3E%3C/svg%3E" />
+<link rel="icon" type="image/png" href="favicon.png" />
+<link rel="apple-touch-icon" href="logo-512.png" />
+<meta property="og:title" content="glocker — a distraction blocker for Linux" />
+<meta property="og:description" content="Blocks sites, on-page content, and apps on a schedule, and makes switching it off slow and deliberate." />
+<meta property="og:image" content="logo-512.png" />
 <style>
   :root {
     --bg: #fdfcfa;
@@ -31,7 +35,7 @@
 
   nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; font-size: 15px; }
   nav .brand { display: inline-flex; align-items: center; gap: 9px; font-weight: 700; font-size: 18px; color: var(--ink); }
-  nav .brand .dot { width: 15px; height: 15px; border-radius: 50%; background: var(--accent); box-shadow: inset 0 0 0 3.5px var(--bg); }
+  nav .brand .brand-mark { width: 28px; height: 28px; object-fit: contain; display: block; }
   nav .links { display: flex; gap: 20px; }
   nav .links a { color: var(--muted); font-weight: 500; }
   nav .links a:hover { color: var(--ink); text-decoration: none; }
@@ -63,7 +67,7 @@
 <body>
   <div class="wrap">
     <nav>
-      <span class="brand"><span class="dot"></span>glocker</span>
+      <span class="brand"><img class="brand-mark" src="logo.png" width="28" height="28" alt="" />glocker</span>
       <span class="links">
         <a href="https://github.com/nibrahim/glocker">GitHub</a>
         <a href="https://my.glockerapp.com">Sign in</a>
