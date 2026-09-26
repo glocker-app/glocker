@@ -24,6 +24,7 @@ DEPLOY_HOST    ?= glockerapp.com
 GLOCKPEEK_CONF ?= conf/glockpeek.yaml   # server config with secrets (gitignored)
 TAGS_FILE      ?= tags.json             # curated starter rules (hosted-only, gitignored)
 DB_BACKUP_DIR  ?= deploy/backups        # local pg_dump destination (gitignored)
+DB_DSN         ?=                       # set → dump this DB (e.g. managed PG); empty → on-box postgres
 
 # Internal build step (dependency of install / full-install); not surfaced in help.
 build-all:
@@ -102,7 +103,12 @@ db-backup: ## Pull a compressed pg_dump of the glockpeek DB to DB_BACKUP_DIR (lo
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST"; exit 1; }
 	@mkdir -p $(DB_BACKUP_DIR)
 	@f="$(DB_BACKUP_DIR)/glockpeek-$$(date -u +%Y%m%dT%H%M%SZ).dump"; \
-	 ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo -u postgres pg_dump -Fc glockpeek' > "$$f" && \
+	 if [ -n "$(DB_DSN)" ]; then \
+	   dump="pg_dump -Fc '$(DB_DSN)'"; \
+	 else \
+	   dump="sudo -u postgres pg_dump -Fc glockpeek"; \
+	 fi; \
+	 ssh $(DEPLOY_USER)@$(DEPLOY_HOST) "$$dump" > "$$f" && \
 	 echo "saved $$f ($$(du -h "$$f" | cut -f1))"
 
 
