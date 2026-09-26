@@ -1,113 +1,34 @@
-# Deploying a hosted glockpeek on DigitalOcean
+# Deploying glockpeek
 
-This provisions a small DigitalOcean droplet (under your **Personal** project) and
-configures it to run **glockpeek** in hosted mode — Postgres-backed, behind Caddy
-with automatic HTTPS. Your laptop keeps running the `glocker` agent as usual; it
-just syncs to this box over the internet instead of to a local glockpeek.
+The production deployment (DigitalOcean droplet, Terraform + Ansible, TLS via
+Caddy) and all real config/secrets/state are managed in a **separate private ops
+repo**, which consumes this repository as a git **subtree**. That keeps secrets,
+terraform state, and DB backups out of the open-source tree entirely.
 
-```
-deploy/
-  terraform/   # provisions the droplet + firewall (+ optional DNS)
-  ansible/     # configures the droplet: postgres, glockpeek, caddy, account, token
-```
+## Self-hosting
 
-## What you need locally
+glockpeek is a single Go binary. To run your own:
 
-- `terraform` (>= 1.5) and `ansible` (>= 2.15)
-- A DigitalOcean API token, and an SSH key already uploaded to your DO account
-- Two hostnames pointing at the droplet (DNS on DO or anywhere): an **apex** for
-  the static landing page (e.g. `glockerapp.com`) and a **subdomain** for the
-  dashboard app (e.g. `my.glockerapp.com`) — one A record each
-- `ansible-galaxy collection install -r ansible/requirements.yml`
+1. **Host**: any Linux box.
+2. **Database**: PostgreSQL (or SQLite via `-driver sqlite -db path.db` for a small
+   single-user setup).
+3. **Config**: copy `conf/glockpeek.yaml.sample` → `glockpeek.yaml`, fill in
+   `listen`, `database`, and (optionally) `mail` / `billing`. It's read from
+   `/etc/glocker/glockpeek.yaml` by default.
+4. **Build + run**: `go build ./cmd/glockpeek`, then run it behind a reverse proxy
+   (Caddy/nginx/Traefik) terminating TLS and forwarding to `127.0.0.1:4317`.
+5. **Accounts**: `glockpeek -adduser <email>` and `-addtoken <email>` (see
+   `glockpeek -help`).
 
-## 1. Provision the droplet
+`make deploy DEPLOY_HOST=… GLOCKPEEK_CONF=/path/to/glockpeek.yaml` builds the
+binary and ships it + your config over SSH to an already-provisioned host.
 
-```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars   # fill in token, ssh key name, region, domain
-terraform init
-terraform apply
-terraform output droplet_ip
-```
+For a scaled deployment (load balancer, managed Postgres, CDN for static assets),
+note that the app tier is stateless — sessions/tokens live in Postgres — so it
+scales horizontally behind a load balancer.
 
-This creates the droplet, attaches it to your **Personal** project, and adds a
-firewall (22/80/443). If your domain's DNS is on DigitalOcean, set `manage_dns`
-and it creates the A record too; otherwise point an A record at the output IP
-yourself and wait for it to propagate.
+## `testing/`
 
-## 2. Set up the machine (once)
-
-The Ansible playbook is a **one-time, idempotent** provision — Postgres, Caddy,
-the service user, config, the systemd unit, the firewall, and the static landing
-page (copied from `website/` to the apex domain's web root). It does **not**
-build or ship the glockpeek binary; that's `make deploy`.
-
-```bash
-cd ../ansible
-cp inventory.example.ini inventory.ini            # put the droplet IP in
-cp group_vars/all.example.yml group_vars/all.yml  # set landing_domain + dashboard_domain, DB + admin passwords
-# optional but recommended: ansible-vault encrypt group_vars/all.yml
-```
-
-Then, from `deploy/`:
-
-```bash
-make configure                         # plaintext all.yml
-make configure VAULT=--ask-vault-pass  # if you vaulted it
-```
-
-## 3. Deploy glockpeek
-
-The binary is built locally from your working tree and shipped over — nothing is
-built on the box, nothing needs to be on GitHub. From the **repo root**:
-
-```bash
-make deploy DEPLOY_HOST=my.example.com
-```
-
-`DEPLOY_HOST` is the **dashboard** subdomain. This starts the service; Caddy
-fetches TLS certs for both hostnames on first request (both must already resolve
-to the droplet). The apex serves the landing page from `website/`; to update it
-later, edit `website/index.html` and run `make deploy-landing DEPLOY_HOST=...`
-(a plain scp — no rebuild, no full ansible run).
-
-## 4. Create your account + ingest token (once)
-
-These need the binary, so run them after the first deploy:
-
-```bash
-ssh root@<droplet> "echo 'your-password' | sudo -u glockpeek glockpeek -adduser admin"
-ssh root@<droplet> "sudo -u glockpeek glockpeek -addtoken admin"
-```
-
-The second command prints the **ingest token** once — copy it.
-
-## 5. Point your laptop's agent at it
-
-In your local `conf/conf.yaml`:
-
-```yaml
-sync:
-  enabled: true
-  glockpeek_url: "https://my.example.com"   # your domain
-  token: "<the ingest token from step 4>"
-  interval_seconds: 300
-```
-
-Then `sudo glocker -reload` (or `make full-install`). The agent now backfills and
-syncs to the hosted dashboard. Log in at `https://my.example.com` with the admin
-account you created.
-
-Re-deploys after that are just `make deploy DEPLOY_HOST=...`; re-run the playbook
-only when the box's *setup* changes.
-
-## Notes
-
-- glockpeek runs as a dedicated non-root `glockpeek` user — it needs no
-  privileges, just its Postgres DSN.
-- Caddy handles TLS automatically (Let's Encrypt); `glockpeek_secure_cookies` is
-  on, so sessions are HTTPS-only.
-- Nothing here touches the `glocker` agent on your laptop — this is only the
-  dashboard half.
-- **Never commit** `terraform.tfvars`, `*.tfstate`, `inventory.ini`, or an
-  un-vaulted `all.yml`. The included `.gitignore` covers them.
+`testing/simulate-device.sh` posts synthetic batches to `/api/ingest` so you can
+exercise the multi-device dashboard without owning several machines. See
+`testing/README.md`.
