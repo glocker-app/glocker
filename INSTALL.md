@@ -54,8 +54,8 @@ Time windows follow the same `HH:MM` + `days` shape everywhere; the key name
 (adult content, ads, malware, proxy-bypass sites) directly:
 
 ```bash
-./update_domains.py        # list the available sources
-./update_domains.py all    # pull them all into conf/conf.yaml
+./scripts/update_domains.py        # list the available sources
+./scripts/update_domains.py all    # pull them all into conf/conf.yaml
 ```
 
 ## 4. Build and install
@@ -65,7 +65,7 @@ make full-install
 ```
 
 This builds every binary, pulls the blocklists, and installs and starts the
-services. (Under the hood: `make build-all`, then `update_domains.py all`, then
+services. (Under the hood: `make build-all`, then `scripts/update_domains.py all`, then
 `sudo ./glocker -install`.) You'll be asked for `sudo`.
 
 ## 5. Load the Firefox extension

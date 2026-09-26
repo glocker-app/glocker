@@ -32,11 +32,11 @@ glocker -status
 sudo glocker -uninstall "reason for uninstalling"
 ```
 
-The big blocklists aren't stored in `conf.yaml`. `update_domains.py` (run by
+The big blocklists aren't stored in `conf.yaml`. `scripts/update_domains.py` (run by
 `make full-install`) fetches them from curated sources into `conf/conf.d/`, one
 file per source, and `conf.yaml` pulls them in with `!include conf.d/…` lines.
 Edit `conf.yaml` for your own settings and hand-picked domains; regenerate the
-lists any time with `python3 update_domains.py all`.
+lists any time with `python3 scripts/update_domains.py all`.
 
 Install **refuses up front** if a capability its enabled features need is missing
 — no `systemd` (it runs as a service), or no `visudo` while sudoers management is
@@ -343,7 +343,7 @@ glocker/
 ├── extensions/firefox/         # Browser extension
 ├── conf/conf.yaml.sample       # Sample config (lean; copy to conf.yaml)
 ├── conf/conf.d/                # Generated blocklists, pulled in via !include
-├── update_domains.py           # Fetches blocklists into conf.d/
+├── scripts/update_domains.py           # Fetches blocklists into conf.d/
 ├── extras/glocker.service      # Systemd service (daemon)
 ├── extras/glockpeek.service    # Systemd service (dashboard)
 └── docs/                       # Documentation
@@ -353,7 +353,7 @@ See [CLAUDE.md](CLAUDE.md) for complete file map and developer guide.
 
 ## Additional Resources
 
-- **[Domain Blocklist Updater](update_domains.py)** - Automated domain list updates from curated sources
+- **[Domain Blocklist Updater](scripts/update_domains.py)** - Automated domain list updates from curated sources
 - **[Android Port Architecture](ANDROID.md)** - Design docs for Android version
 
 ## Verifying a release

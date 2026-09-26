@@ -35,7 +35,7 @@ security-check: build-all ## Report bypass/recovery routes (read-only, needs sud
 
 
 update-blocklists: ## Update blocklists
-	python3 update_domains.py all
+	python3 scripts/update_domains.py all
 
 
 test: ## Run tests
