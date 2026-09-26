@@ -1,4 +1,4 @@
-.PHONY: build-all install full-install security-check update-blocklists test release deploy deploy-config deploy-full deploy-rules sign-extension release-extension deploy-extension db-backup db-restore help
+.PHONY: build-all install full-install update-blocklists test release deploy deploy-config deploy-full deploy-rules sign-extension release-extension deploy-extension db-backup db-restore help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -30,11 +30,8 @@ full-install: build-all update-blocklists ## Rebuild, update blocklists, and rei
 	sudo ./glocker -install
 
 
-security-check: build-all ## Report bypass/recovery routes (read-only, needs sudo)
-	sudo ./glocker -security-check
-
-
-update-blocklists: ## Update blocklists
+# update-blocklists is a step of full-install; not surfaced in `make help`.
+update-blocklists:
 	python3 scripts/update_domains.py all
 
 
@@ -78,7 +75,7 @@ deploy-config: ## Ship just the glockpeek server config and restart
 # Idempotent (replaces the table); run after `deploy` (needs the new binary's
 # -import-rules). Existing accounts are untouched. glockpeek reads the DB DSN
 # from /etc/glocker/glockpeek.yaml, so no -db/-driver needed on the box.
-deploy-rules: ## Load tags.json into the hosted default-rules template (run after deploy)
+deploy-rules:
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST"; exit 1; }
 	@test -f tags.json || { echo "tags.json not found (hosted-only asset, gitignored)"; exit 1; }
 	scp tags.json $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glocker-tags.json
@@ -122,7 +119,7 @@ db-restore: ## Restore a dump into the server DB (DESTRUCTIVE): make db-restore 
 # AMO rejects a version it has already signed, so the "version" in
 # extensions/firefox/manifest.json must be bumped first — `make sign-extension`
 # does that check for you. Then `make deploy-extension` ships it.
-sign-extension: ## Sign the Firefox extension via AMO (needs web-ext + AMO_JWT_* env)
+sign-extension:
 	@command -v web-ext >/dev/null || { echo "web-ext not found — install with: npm i -g web-ext"; exit 1; }
 	@test -n "$$AMO_JWT_ISSUER" -a -n "$$AMO_JWT_SECRET" || { echo "set AMO_JWT_ISSUER and AMO_JWT_SECRET (addons.mozilla.org → Developer Hub → Manage API Keys)"; exit 1; }
 	@ver=$$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' extensions/firefox/manifest.json | head -1); \
