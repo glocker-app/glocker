@@ -23,18 +23,21 @@ const (
 // InstallGlocker performs the complete installation of Glocker on the system.
 // This includes copying the binary, config file, setting up systemd service,
 // and installing the Firefox extension.
-func InstallGlocker() error {
+// confPath is the source config to install (its directory also holds conf.d/).
+// Callers pass a path so the config can live outside the source tree (e.g. a
+// private ops repo) while code assets (extras/*.service) stay relative to CWD.
+func InstallGlocker(confPath string) error {
 	log.Println("╔════════════════════════════════════════════════╗")
 	log.Println("║              GLOCKER FULL INSTALL              ║")
 	log.Println("╚════════════════════════════════════════════════╝")
 	log.Println()
 
 	// Step 1: Validate config file before installation. LoadFile resolves any
-	// !include directives (conf.d/ list files) relative to conf/ first.
+	// !include directives (conf.d/ list files) relative to the config's dir first.
 	log.Println("Validating configuration file...")
-	cfgPtr, err := config.LoadFile("conf/conf.yaml")
+	cfgPtr, err := config.LoadFile(confPath)
 	if err != nil {
-		return fmt.Errorf("reading/parsing conf/conf.yaml: %w", err)
+		return fmt.Errorf("reading/parsing %s: %w", confPath, err)
 	}
 	cfg := *cfgPtr
 
@@ -85,8 +88,8 @@ func InstallGlocker() error {
 		return fmt.Errorf("failed to resolve executable path: %w", err)
 	}
 
-	// Step 3: Copy config file from conf/conf.yaml to target location
-	log.Printf("Copying config file from conf/conf.yaml to %s", config.GlockerConfigFile)
+	// Step 3: Copy config file from confPath to target location
+	log.Printf("Copying config file from %s to %s", confPath, config.GlockerConfigFile)
 
 	// Create config directory if it doesn't exist
 	configDir := filepath.Dir(config.GlockerConfigFile)
@@ -98,7 +101,7 @@ func InstallGlocker() error {
 	// the existing config is `chattr +i`, and CopyFile (os.Create) would fail with
 	// EPERM otherwise.
 	_ = exec.Command("chattr", "-i", config.GlockerConfigFile).Run()
-	if err := utils.CopyFile("conf/conf.yaml", config.GlockerConfigFile); err != nil {
+	if err := utils.CopyFile(confPath, config.GlockerConfigFile); err != nil {
 		return fmt.Errorf("failed to copy config file: %w", err)
 	}
 	log.Printf("✓ Config file copied to %s", config.GlockerConfigFile)
@@ -113,7 +116,7 @@ func InstallGlocker() error {
 
 	// Step 3b: Install the generated conf.d/ blocklists that the config pulls in
 	// via !include, made immutable like the config itself.
-	installConfD()
+	installConfD(filepath.Join(filepath.Dir(confPath), "conf.d"))
 
 	// Step 4: Install binary. Clear any prior immutable flag, then atomically
 	// replace (temp file + rename) so this works even when the old binary is
@@ -293,8 +296,7 @@ func InstallGlocker() error {
 // pulls in with !include) to /etc/glocker/conf.d/ and makes them immutable, so
 // they can't be quietly emptied to unblock. No-op if conf/conf.d/ is absent
 // (a config with only inline domains). Best-effort — warnings, not failures.
-func installConfD() {
-	srcDir := "conf/conf.d"
+func installConfD(srcDir string) {
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
 		if !os.IsNotExist(err) {

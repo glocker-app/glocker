@@ -83,6 +83,7 @@ func stripANSI(s string) string {
 func main() {
 	// Parse command-line flags
 	installFlag := flag.Bool("install", false, "Install glocker as a system service")
+	confFlag := flag.String("conf", "conf/conf.yaml", "source config for -install (its dir also holds conf.d/); lets the config live outside the source tree")
 	uninstallReason := flag.String("uninstall", "", "Uninstall Glocker and revert all changes (provide reason)")
 	uninstallNote := flag.String("note", "", "Optional free-form note to attach to -uninstall (e.g. context for the reason)")
 	daemonFlag := flag.Bool("daemon", false, "Run as daemon (for systemd service)")
@@ -145,7 +146,7 @@ func main() {
 		if !install.RunningAsRoot(true) {
 			log.Fatal("Installation must be run as root (use sudo)")
 		}
-		if err := install.InstallGlocker(); err != nil {
+		if err := install.InstallGlocker(*confFlag); err != nil {
 			log.Fatalf("Installation failed: %v", err)
 		}
 		return
