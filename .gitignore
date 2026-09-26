@@ -49,3 +49,6 @@ docs/habits.pdf
 
 # Hosted-only curated Glocker starter rules (loaded via `glockpeek -import-rules`)
 tags.json
+
+# Marketing logo source art lives in the private hosted repo, not here.
+/logo.png
