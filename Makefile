@@ -1,4 +1,4 @@
-.PHONY: build-all install full-install security-check update-blocklists test release deploy deploy-config deploy-full deploy-rules deploy-landing sign-extension release-extension deploy-extension db-backup db-restore help
+.PHONY: build-all install full-install security-check update-blocklists test release deploy deploy-config deploy-full deploy-rules sign-extension release-extension deploy-extension db-backup db-restore help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -55,7 +55,7 @@ DEPLOY_HOST ?= glockerapp.com
 # file inside this tree — e.g. make deploy GLOCKPEEK_CONF=/path/to/glockpeek.yaml.
 GLOCKPEEK_CONF ?= conf/glockpeek.yaml
 
-deploy-full: deploy deploy-landing deploy-extension ## Full deploy: dashboard binary + landing page + extension
+deploy-full: deploy deploy-extension ## Full deploy: dashboard binary + extension
 
 deploy: ## Deploy the glockpeek dashboard binary + server config to the VPS
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy DEPLOY_HOST=my.example.com"; exit 1; }
@@ -107,13 +107,6 @@ db-restore: ## Restore a dump into the server DB (DESTRUCTIVE): make db-restore 
 	cat "$(FILE)" | ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo -u postgres pg_restore --clean --if-exists --no-owner -d glockpeek'
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo systemctl start glockpeek'
 
-# Ship just the static landing page (website/index.html) to the apex web root.
-# Same droplet as the dashboard, so DEPLOY_HOST can be the dashboard subdomain.
-# For copy tweaks this is all you need — no rebuild, no ansible run.
-deploy-landing: ## Deploy the static landing page to the apex web root
-	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-landing DEPLOY_HOST=my.example.com"; exit 1; }
-	scp website/index.html $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glocker-landing.html
-	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -D -o caddy -g caddy -m 0644 /tmp/glocker-landing.html /var/www/glocker-landing/index.html && rm -f /tmp/glocker-landing.html && echo "landing page updated"'
 
 # Publish the SIGNED Firefox extension to the apex web root, served at
 # https://$(DEPLOY_HOST)/glocker.xpi — where `glocker -install` fetches it on a
