@@ -1,4 +1,4 @@
-.PHONY: build-all install full-install update-blocklists test release deploy deploy-full deploy-rules sign-extension release-extension deploy-extension db-backup help
+.PHONY: build-all install full-install update-blocklists test release migrate deploy deploy-full deploy-rules sign-extension release-extension deploy-extension db-backup help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -59,6 +59,18 @@ test: ## Run tests
 # (Deploy knobs — DEPLOY_HOST/USER, GLOCKPEEK_CONF — are defined up top.)
 
 deploy-full: deploy deploy-extension ## Full deploy: dashboard binary + extension
+
+# Apply DB migrations as an EXPLICIT step, run BEFORE `deploy` — the hosted server
+# no longer migrates on boot (N nodes would race on DDL). Ships a freshly built
+# binary to a temp path and runs `-migrate` with it (reading the box's own
+# /etc/glocker/glockpeek.yaml), without touching the running service. Migrations
+# are additive/backward-compatible, so the old code keeps serving on the new schema
+# until `deploy` rolls the binary.
+migrate: ## Apply DB migrations on the box (run before deploy; server no longer migrates on boot)
+	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make migrate DEPLOY_HOST=my.example.com"; exit 1; }
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o dist/glockpeek ./cmd/glockpeek
+	scp dist/glockpeek $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.migrate
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo -u glockpeek /tmp/glockpeek.migrate -migrate && rm -f /tmp/glockpeek.migrate'
 
 deploy: ## Deploy the glockpeek dashboard binary + server config to the VPS
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy DEPLOY_HOST=my.example.com"; exit 1; }

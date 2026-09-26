@@ -6,38 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/time/rate"
 )
-
-func TestIPRateLimiter_AllowsBurstThenBlocks(t *testing.T) {
-	// No refill within the test window, so only the burst is available.
-	l := newIPRateLimiter(rate.Every(time.Hour), 2, time.Hour)
-
-	if !l.allow("1.1.1.1") {
-		t.Fatal("first request should be allowed")
-	}
-	if !l.allow("1.1.1.1") {
-		t.Fatal("second request (within burst) should be allowed")
-	}
-	if l.allow("1.1.1.1") {
-		t.Fatal("third request should be blocked once the burst is spent")
-	}
-}
-
-func TestIPRateLimiter_PerIPIndependent(t *testing.T) {
-	l := newIPRateLimiter(rate.Every(time.Hour), 1, time.Hour)
-
-	if !l.allow("1.1.1.1") {
-		t.Fatal("first IP should be allowed")
-	}
-	if l.allow("1.1.1.1") {
-		t.Fatal("first IP should now be blocked")
-	}
-	if !l.allow("2.2.2.2") {
-		t.Fatal("a different IP must have its own bucket")
-	}
-}
 
 func TestClientIP(t *testing.T) {
 	tests := []struct {
@@ -47,7 +16,9 @@ func TestClientIP(t *testing.T) {
 		want       string
 	}{
 		{"xff single", "203.0.113.9", "127.0.0.1:5000", "203.0.113.9"},
-		{"xff chain uses left-most", "203.0.113.9, 10.0.0.1", "127.0.0.1:5000", "203.0.113.9"},
+		// The trusted proxy appends what it saw LAST — take the right-most, not the
+		// client-spoofable left-most.
+		{"xff chain uses right-most", "evil-spoof, 10.0.0.1", "127.0.0.1:5000", "10.0.0.1"},
 		{"no xff falls back to peer", "", "198.51.100.7:44321", "198.51.100.7"},
 	}
 	for _, tt := range tests {
@@ -64,22 +35,22 @@ func TestClientIP(t *testing.T) {
 	}
 }
 
-func TestRateLimited_Returns429AfterBurst(t *testing.T) {
-	l := newIPRateLimiter(rate.Every(time.Hour), 1, time.Hour)
+// TestRateLimited_Returns429OverLimit exercises the DB-backed limiter: within one
+// window, requests beyond the limit get 429 and the handler doesn't run.
+func TestRateLimited_Returns429OverLimit(t *testing.T) {
+	newMux(t) // sets the package db the limiter reads/writes
 	var served int
-	h := rateLimited(l, func(w http.ResponseWriter, r *http.Request) {
+	h := rateLimited("test", 1, time.Hour, func(w http.ResponseWriter, r *http.Request) {
 		served++
 		w.WriteHeader(http.StatusOK)
 	})
-
 	call := func() int {
-		r := httptest.NewRequest(http.MethodPost, "/api/register", nil)
+		r := httptest.NewRequest(http.MethodPost, "/x", nil)
 		r.Header.Set("X-Forwarded-For", "203.0.113.9")
 		w := httptest.NewRecorder()
 		h(w, r)
 		return w.Code
 	}
-
 	if code := call(); code != http.StatusOK {
 		t.Fatalf("first call: got %d, want 200", code)
 	}
@@ -91,13 +62,34 @@ func TestRateLimited_Returns429AfterBurst(t *testing.T) {
 	}
 }
 
-// TestLoginEndpointRateLimited guards that /api/login is actually wired through a
-// limiter (not just that the limiter works in isolation): repeated attempts from
-// one IP must start returning 429 once the burst is spent.
+// TestRateLimited_PerIPIndependent: a different IP has its own shared counter.
+func TestRateLimited_PerIPIndependent(t *testing.T) {
+	newMux(t)
+	h := rateLimited("test2", 1, time.Hour, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	call := func(ip string) int {
+		r := httptest.NewRequest(http.MethodPost, "/x", nil)
+		r.Header.Set("X-Forwarded-For", ip)
+		w := httptest.NewRecorder()
+		h(w, r)
+		return w.Code
+	}
+	if code := call("1.1.1.1"); code != http.StatusOK {
+		t.Fatalf("ip1 first: %d", code)
+	}
+	if code := call("1.1.1.1"); code != http.StatusTooManyRequests {
+		t.Fatalf("ip1 second (over limit): %d", code)
+	}
+	if code := call("2.2.2.2"); code != http.StatusOK {
+		t.Fatalf("ip2 must have its own counter: %d", code)
+	}
+}
+
+// TestLoginEndpointRateLimited guards that /api/login is wired through a limiter:
+// repeated attempts from one IP start returning 429 once the limit is spent.
 func TestLoginEndpointRateLimited(t *testing.T) {
 	mux, _ := newMux(t)
 	got429 := false
-	for i := 0; i < 15; i++ {
+	for i := 0; i < 20; i++ {
 		r := httptest.NewRequest(http.MethodPost, "/api/login",
 			strings.NewReader(`{"username":"nobody","password":"wrong"}`))
 		r.Header.Set("X-Forwarded-For", "203.0.113.50")
@@ -109,6 +101,6 @@ func TestLoginEndpointRateLimited(t *testing.T) {
 		}
 	}
 	if !got429 {
-		t.Fatal("/api/login should return 429 after the burst is spent")
+		t.Fatal("/api/login should return 429 after the limit is spent")
 	}
 }

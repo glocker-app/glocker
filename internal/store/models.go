@@ -293,6 +293,7 @@ func AllModels() []any {
 		&SyncStatus{}, &KeyVault{}, &DeviceConfig{},
 		&Tag{}, &TagOverride{}, &RuleTag{}, &DefaultRule{},
 		&AccountabilityConfig{},
+		&RateHit{}, &CaptchaUse{}, &SchedulerLease{},
 	}
 }
 

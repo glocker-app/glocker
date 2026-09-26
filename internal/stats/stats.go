@@ -18,8 +18,6 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/time/rate"
-
 	"glocker/internal/store"
 )
 
@@ -101,12 +99,6 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	mux.HandleFunc("/stats/", redirectToRoot)
 
 	// Public: static dashboard assets, login, self-service signup + verify.
-	// Registration is unauthenticated and sends real email, so it is rate-limited
-	// per client IP: a small burst for honest retries, then a slow refill.
-	regLimiter := newIPRateLimiter(rate.Every(10*time.Minute), 3, time.Hour)
-	// Login is also unauthenticated; throttle per IP to blunt password guessing
-	// while leaving room for a legitimate user's typos: a burst of 10, then ~10/min.
-	loginLimiter := newIPRateLimiter(rate.Every(6*time.Second), 10, time.Hour)
 	// The SSR shell (templates/dashboard.html.tmpl) is served at "/" and at every
 	// clean app-view URL, so a deep link or refresh to /config, /analytics/usage,
 	// etc. loads the shell and app.js's client router shows the right view from the
@@ -127,8 +119,12 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	for _, p := range []string{"/overview", "/analytics", "/analytics/", "/insights", "/config", "/devices", "/users"} {
 		mux.HandleFunc(p, serveShell)
 	}
-	mux.HandleFunc("/api/login", rateLimited(loginLimiter, handleLogin))
-	mux.HandleFunc("/api/register", rateLimited(regLimiter, handleRegister))
+	// Fleet-shared per-IP limits (DB-backed). Login: 10/min (blunt guessing, room
+	// for typos). Register: 3 per 10 min (unauthenticated + sends real mail).
+	mux.HandleFunc("/api/login", rateLimited("login", 10, time.Minute, handleLogin))
+	mux.HandleFunc("/api/register", rateLimited("register", 3, 10*time.Minute, handleRegister))
+	// Unauthenticated liveness for the load balancer — pings the DB, no session.
+	mux.HandleFunc("/healthz", handleHealthz)
 	mux.HandleFunc("/verify", handleVerify) // browser link from the email, not /api/
 	// SSR pages (Go html/template; chrome only — client crypto/analytics stay JS).
 	mux.HandleFunc("/settings/encryption", handleEncryptionSetup)
@@ -376,7 +372,6 @@ func handleIgnored(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
-
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")

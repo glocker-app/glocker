@@ -47,6 +47,13 @@ func decodeSol(t *testing.T, payload string) altchaSolution {
 }
 
 func TestAltchaVerify(t *testing.T) {
+	// verifyAltcha records spent salts in the DB (fleet-shared replay set).
+	sdb, err := store.Open(store.Options{Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "test.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sdb.Close() })
+	db = sdb
 	initCaptcha(true)
 
 	ch := newAltchaChallenge()

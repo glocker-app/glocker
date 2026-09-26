@@ -19,6 +19,11 @@ import (
 type Options struct {
 	Driver string
 	DSN    string
+	// SkipMigrate opens the DB WITHOUT running migrations. Hosted/multi-node uses
+	// it so N nodes don't race on DDL at boot — migrations are an explicit
+	// `glockpeek -migrate` step run once before a deploy. Local/single-process and
+	// tests leave it false (migrate on open, as before).
+	SkipMigrate bool
 }
 
 // DB wraps the GORM handle. Callers use the embedded *gorm.DB directly; the
@@ -77,8 +82,10 @@ func Open(o Options) (*DB, error) {
 	}
 
 	db := &DB{gdb}
-	if err := db.Migrate(); err != nil {
-		return nil, err
+	if !o.SkipMigrate {
+		if err := db.Migrate(); err != nil {
+			return nil, err
+		}
 	}
 	return db, nil
 }

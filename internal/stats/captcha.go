@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -126,8 +125,11 @@ func verifyAltcha(payloadB64 string) bool {
 	if subtle.ConstantTimeCompare([]byte(want), []byte(s.Challenge)) != 1 {
 		return false
 	}
-	// Single use within its lifetime.
-	return altchaSalts.useOnce(s.Salt, exp)
+	// Single use within its lifetime — recorded in the DB so the solution can't be
+	// replayed on another node. Fail closed on a DB error (a captcha bypass is a
+	// security hole, not a UX blip).
+	used, uErr := db.CaptchaUseOnce(s.Salt, exp)
+	return uErr == nil && used
 }
 
 // altchaExpiry pulls the expiry stamped into the salt (…?expires=<unix>).
@@ -145,31 +147,4 @@ func altchaExpiry(salt string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 	return time.Unix(sec, 0), true
-}
-
-// altchaSalts tracks spent challenge salts so a solution can't be replayed
-// within its lifetime; entries are pruned lazily once expired.
-var altchaSalts = &saltSet{seen: map[string]time.Time{}}
-
-type saltSet struct {
-	mu   sync.Mutex
-	seen map[string]time.Time
-}
-
-// useOnce records salt as spent (with its expiry), returning false if it was
-// already spent.
-func (s *saltSet) useOnce(salt string, exp time.Time) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := time.Now()
-	for k, e := range s.seen {
-		if now.After(e) {
-			delete(s.seen, k)
-		}
-	}
-	if _, dup := s.seen[salt]; dup {
-		return false
-	}
-	s.seen[salt] = exp
-	return true
 }

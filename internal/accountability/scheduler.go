@@ -9,7 +9,9 @@ package accountability
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -28,6 +30,10 @@ const (
 	darkAfter = 15 * time.Minute
 	// tickEvery: how often the scheduler wakes to check due digests + alerts.
 	tickEvery = 5 * time.Minute
+	// schedulerLease: how long a node holds fleet leadership. Longer than tickEvery
+	// so the leader renews each tick and keeps it; a dead leader's lease expires
+	// within this and another node takes over.
+	schedulerLease = 3 * tickEvery
 )
 
 // Scheduler sends the digests and alerts.
@@ -35,13 +41,16 @@ type Scheduler struct {
 	db     *store.DB
 	mail   Mailer
 	appURL string
+	nodeID string           // this process's fleet identity (for the leader lease)
 	now    func() time.Time // injectable for tests
 }
 
 // New builds a scheduler. mail may be a disabled mailer (Send is then a no-op),
 // in which case the scheduler runs but sends nothing.
 func New(db *store.DB, mail Mailer, appURL string) *Scheduler {
-	return &Scheduler{db: db, mail: mail, appURL: appURL, now: time.Now}
+	host, _ := os.Hostname()
+	return &Scheduler{db: db, mail: mail, appURL: appURL,
+		nodeID: fmt.Sprintf("%s-%d", host, os.Getpid()), now: time.Now}
 }
 
 // accountEmail returns the account's login email to label the digest/alert, or ""
@@ -58,10 +67,25 @@ func (n *Scheduler) accountEmail(uid uint) string {
 func (n *Scheduler) Run() {
 	t := time.NewTicker(tickEvery)
 	defer t.Stop()
-	n.tick(n.now())
+	n.maybeTick()
 	for range t.C {
-		n.tick(n.now())
+		n.maybeTick()
 	}
+}
+
+// maybeTick runs a pass only if this node currently holds the fleet-wide
+// scheduler lease, so N nodes don't each fire the same digests/alerts. On sqlite
+// (single-process local mode) the lease is always granted.
+func (n *Scheduler) maybeTick() {
+	leader, err := n.db.TryAcquireSchedulerLease(n.nodeID, schedulerLease)
+	if err != nil {
+		slog.Warn("scheduler: lease acquire failed; skipping this round", "err", err)
+		return
+	}
+	if !leader {
+		return // another node is the leader this round
+	}
+	n.tick(n.now())
 }
 
 // tick does one pass over the opted-in accounts.

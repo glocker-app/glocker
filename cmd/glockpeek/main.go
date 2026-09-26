@@ -29,9 +29,9 @@ import (
 
 	"golang.org/x/term"
 
+	"glocker/internal/accountability"
 	"glocker/internal/config"
 	"glocker/internal/mailer"
-	"glocker/internal/accountability"
 	"glocker/internal/stats"
 	"glocker/internal/store"
 )
@@ -54,6 +54,7 @@ func main() {
 	addToken := flag.String("addtoken", "", "mint an ingest API token for this account (email), then exit")
 	setLimit := flag.String("setlimit", "", "set the device (API-token) limit for this email (use with -devices), then exit")
 	importRules := flag.String("import-rules", "", "load Glocker starter rules from a JSON file ({\"rules\":[{tag,program,title}]}) into the default-rules template that new accounts seed from, then exit")
+	migrateFlag := flag.Bool("migrate", false, "run DB migrations, then exit — the explicit pre-deploy step for hosted/multi-node (local + admin subcommands still migrate on open)")
 	devices := flag.Int("devices", 1, "device limit to apply with -setlimit (negative = unlimited)")
 	flag.Parse()
 
@@ -136,9 +137,20 @@ func main() {
 		addr = forceLoopback(addr)
 	}
 
-	db, err := store.Open(store.Options{Driver: driver, DSN: dsn})
+	// Migrations are an explicit step in hosted/multi-node: N nodes booting together
+	// must not race on DDL, so the server boot skips them and a one-shot
+	// `glockpeek -migrate` (run once before a deploy) applies them. Local mode,
+	// admin subcommands, and `-migrate` itself all migrate on open (single process,
+	// no race).
+	adminCmd := *addUser != "" || *passwd != "" || *addToken != "" || *setLimit != "" || *importRules != ""
+	skipMigrate := hosted && !*migrateFlag && !adminCmd
+	db, err := store.Open(store.Options{Driver: driver, DSN: dsn, SkipMigrate: skipMigrate})
 	if err != nil {
 		log.Fatalf("glockpeek: open database (%s): %v", driver, err)
+	}
+	if *migrateFlag {
+		log.Printf("glockpeek: migrations applied (%s)", driver)
+		return
 	}
 
 	// Admin subcommands: touch the DB and exit, no server.
@@ -162,10 +174,10 @@ func main() {
 
 	mailSvc := mailer.New(mailCfg)
 	opts := stats.Options{
-		Auth:          hosted,
-		SecureCookies: secureCookies,
-		Mailer:        mailSvc,
-		AppURL:        appURL,
+		Auth:              hosted,
+		SecureCookies:     secureCookies,
+		Mailer:            mailSvc,
+		AppURL:            appURL,
 		AdminEmail:        adminEmail,
 		Captcha:           captcha,
 		RequireEncryption: requireEncryption,
