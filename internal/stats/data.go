@@ -76,11 +76,13 @@ type dataResponse struct {
 	Usage      []usageSample   `json:"usage"`
 }
 
-// buildData assembles the full history the dashboard renders, reading from the
-// glockpeek DB (populated by the glocker syncer). Times are epoch milliseconds
-// and every slice is sorted ascending. Sources reflect whether each table has
-// any rows.
-func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
+// buildData assembles the dashboard payload from the glockpeek DB (populated by
+// the syncer). Times are epoch milliseconds; every slice is sorted ascending;
+// Sources reflect whether each table has rows. from/to (millis, 0 = unbounded)
+// window the high-volume rows (violations, unblocks, usage) so the whole history
+// isn't materialised per request; lifecycle stays full because an uninstall
+// before the window can still be an open unmanaged span.
+func buildData(db *store.DB, userID uint, now time.Time, from, to int64) dataResponse {
 	resp := dataResponse{
 		Now:        now.UnixMilli(),
 		Violations: []violationJSON{},
@@ -99,7 +101,7 @@ func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 	// applied in the browser now — so this endpoint never reads violation
 	// content. That's the prerequisite for serving ciphertext blobs here under
 	// E2E (see docs/e2e-design.md): the server stays content-blind.
-	if rows, err := db.Violations(userID); err == nil {
+	if rows, err := db.ViolationsRange(userID, from, to); err == nil {
 		resp.Sources.Reports = len(rows) > 0
 		for _, e := range rows {
 			resp.Violations = append(resp.Violations, violationJSON{
@@ -108,7 +110,7 @@ func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 		}
 	}
 
-	if rows, err := db.Unblocks(userID); err == nil {
+	if rows, err := db.UnblocksRange(userID, from, to); err == nil {
 		resp.Sources.Unblocks = len(rows) > 0
 		for _, e := range rows {
 			resp.Unblocks = append(resp.Unblocks, unblockJSON{
@@ -157,7 +159,7 @@ func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 		}
 	}
 
-	if rows, err := db.UsageSamples(userID); err == nil {
+	if rows, err := db.UsageSamplesRange(userID, from, to); err == nil {
 		resp.Sources.Usage = len(rows) > 0
 		for _, s := range rows {
 			us := usageSample{TS: s.TS, DeviceID: s.DeviceID, IdleMS: s.IdleMS, WindowCount: s.WindowCount}

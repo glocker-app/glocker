@@ -66,7 +66,7 @@ func TestAccessGate_ReadOnlyWhenLapsed(t *testing.T) {
 		t.Errorf("lapsed token mint: got %d, want 402", c)
 	}
 	// Reads stay open.
-	rg := httptest.NewRequest("GET", "/api/data", nil)
+	rg := httptest.NewRequest("GET", "/api/data?from=0", nil)
 	rg.AddCookie(cookie)
 	if c := do(mux, rg).Code; c != http.StatusOK {
 		t.Errorf("lapsed read /api/data: got %d, want 200", c)

@@ -46,15 +46,37 @@ func hashURL(url string) string {
 
 // ── Reads (ordered by TS ascending, scoped to userID) ──
 
+// tsBound adds a [from,to] millisecond window when either is > 0 (from = lower
+// inclusive, to = upper inclusive). Zero means unbounded on that side. Used to
+// cap /api/data so one account's whole history isn't loaded into memory per
+// request on a small node.
+func tsBound(q *gorm.DB, from, to int64) *gorm.DB {
+	if from > 0 {
+		q = q.Where("ts >= ?", from)
+	}
+	if to > 0 {
+		q = q.Where("ts <= ?", to)
+	}
+	return q
+}
+
 func (db *DB) Violations(userID uint) ([]Violation, error) {
+	return db.ViolationsRange(userID, 0, 0)
+}
+
+func (db *DB) ViolationsRange(userID uint, from, to int64) ([]Violation, error) {
 	var out []Violation
-	err := db.Where("user_id = ?", userID).Order("ts asc").Find(&out).Error
+	err := tsBound(db.Where("user_id = ?", userID), from, to).Order("ts asc").Find(&out).Error
 	return out, err
 }
 
 func (db *DB) Unblocks(userID uint) ([]Unblock, error) {
+	return db.UnblocksRange(userID, 0, 0)
+}
+
+func (db *DB) UnblocksRange(userID uint, from, to int64) ([]Unblock, error) {
 	var out []Unblock
-	err := db.Where("user_id = ?", userID).Order("ts asc").Find(&out).Error
+	err := tsBound(db.Where("user_id = ?", userID), from, to).Order("ts asc").Find(&out).Error
 	return out, err
 }
 
@@ -65,8 +87,12 @@ func (db *DB) LifecycleEvents(userID uint) ([]LifecycleEvent, error) {
 }
 
 func (db *DB) UsageSamples(userID uint) ([]UsageSample, error) {
+	return db.UsageSamplesRange(userID, 0, 0)
+}
+
+func (db *DB) UsageSamplesRange(userID uint, from, to int64) ([]UsageSample, error) {
 	var out []UsageSample
-	err := db.Where("user_id = ?", userID).Order("ts asc").Find(&out).Error
+	err := tsBound(db.Where("user_id = ?", userID), from, to).Order("ts asc").Find(&out).Error
 	return out, err
 }
 

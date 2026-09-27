@@ -15,6 +15,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -169,8 +170,31 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	mux.HandleFunc("/api/test-email", requireToken(handleTestEmail))
 }
 
+// statsWindowDays bounds /api/data by default so a single account's whole
+// history isn't materialised in memory per request on a small node. A client can
+// widen it with ?from=<ms>&to=<ms> (from=0 = all history).
+const statsWindowDays = 400
+
 func handleData(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, buildData(db, userFrom(r).ID, time.Now()))
+	now := time.Now()
+	from, to := dataWindow(r, now)
+	writeJSON(w, buildData(db, userFrom(r).ID, now, from, to))
+}
+
+// dataWindow reads the [from,to] millisecond window from the query. Absent `from`
+// defaults to now-statsWindowDays (bounding the payload); an explicit from=0
+// means all history. Absent `to` means up to now.
+func dataWindow(r *http.Request, now time.Time) (from, to int64) {
+	q := r.URL.Query()
+	if q.Has("from") {
+		from, _ = strconv.ParseInt(q.Get("from"), 10, 64)
+	} else {
+		from = now.AddDate(0, 0, -statsWindowDays).UnixMilli()
+	}
+	if v := q.Get("to"); v != "" {
+		to, _ = strconv.ParseInt(v, 10, 64)
+	}
+	return from, to
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {

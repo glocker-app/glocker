@@ -93,7 +93,7 @@ func TestAuthDisabled(t *testing.T) {
 	}
 
 	// Data with no cookie works.
-	rec := do(mux, httptest.NewRequest("GET", "/api/data", nil))
+	rec := do(mux, httptest.NewRequest("GET", "/api/data?from=0", nil))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("data without cookie (auth off): %d", rec.Code)
 	}
@@ -271,7 +271,7 @@ func TestIngestThenData(t *testing.T) {
 	ingest()
 	ingest() // idempotent
 
-	req := httptest.NewRequest("GET", "/api/data", nil)
+	req := httptest.NewRequest("GET", "/api/data?from=0", nil)
 	req.AddCookie(cookie)
 	rec := do(mux, req)
 	if rec.Code != http.StatusOK {
@@ -310,7 +310,7 @@ func TestTenantSeparationOverHTTP(t *testing.T) {
 	}
 
 	// Bob reads his own data — must be empty.
-	req = httptest.NewRequest("GET", "/api/data", nil)
+	req = httptest.NewRequest("GET", "/api/data?from=0", nil)
 	req.AddCookie(bobCookie)
 	rec := do(mux, req)
 	var d dataResponse
@@ -342,7 +342,7 @@ func TestDataUnfilteredIgnoreOverlayStaysServed(t *testing.T) {
 	}
 
 	// /api/data returns the violation unfiltered (server no longer hides it).
-	get := httptest.NewRequest("GET", "/api/data", nil)
+	get := httptest.NewRequest("GET", "/api/data?from=0", nil)
 	get.AddCookie(cookie)
 	var d dataResponse
 	json.Unmarshal(do(mux, get).Body.Bytes(), &d)
