@@ -104,17 +104,22 @@ func daemonAlive(path string) bool {
 func HandleConnection(cfg *config.Config, conn net.Conn) {
 	defer conn.Close()
 
+	// One command per connection: read a SINGLE line, dispatch it, then close (the
+	// deferred conn.Close). The daemon used to loop over every line, so a newline
+	// embedded in a command argument could inject a second, separate command;
+	// reading exactly one closes that at the daemon itself, regardless of who
+	// connects. Unknown actions fall to the default case and are rejected.
 	scanner := bufio.NewScanner(conn)
-	for scanner.Scan() {
+	if scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
-			continue
+			return
 		}
 
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) < 1 {
 			conn.Write([]byte("ERROR: Invalid format\n"))
-			continue
+			return
 		}
 
 		action := strings.TrimSpace(parts[0])
@@ -135,30 +140,30 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 		case "unblock":
 			if len(parts) != 2 {
 				conn.Write([]byte("ERROR: Invalid format. Use 'unblock:domains:reason'\n"))
-				continue
+				return
 			}
 			payload := strings.TrimSpace(parts[1])
 			payloadParts := strings.SplitN(payload, ":", 2)
 			if len(payloadParts) != 2 {
 				conn.Write([]byte("ERROR: Reason required. Use 'unblock:domains:reason'\n"))
-				continue
+				return
 			}
 			domains := strings.TrimSpace(payloadParts[0])
 			reason := strings.TrimSpace(payloadParts[1])
 			if reason == "" {
 				conn.Write([]byte("ERROR: Reason cannot be empty\n"))
-				continue
+				return
 			}
 			// Process unblock request and check for errors
 			if err := cli.ProcessUnblockRequest(cfg, domains, reason); err != nil {
 				conn.Write([]byte(fmt.Sprintf("ERROR: %v\n", err)))
-				continue
+				return
 			}
 			conn.Write([]byte("OK: Unblock request received\n"))
 		case "block":
 			if len(parts) != 2 {
 				conn.Write([]byte("ERROR: Invalid format. Use 'block:domains'\n"))
-				continue
+				return
 			}
 			domains := strings.TrimSpace(parts[1])
 			conn.Write([]byte("OK: Block request received\n"))
@@ -166,7 +171,7 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 		case "block-app":
 			if len(parts) != 2 {
 				conn.Write([]byte("ERROR: Invalid format. Use 'block-app:programs'\n"))
-				continue
+				return
 			}
 			programs := strings.TrimSpace(parts[1])
 			conn.Write([]byte("OK: Block-app request received\n"))
@@ -177,23 +182,23 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 		case "extend":
 			if len(parts) != 2 {
 				conn.Write([]byte("ERROR: Invalid format. Use 'extend:program:reason'\n"))
-				continue
+				return
 			}
 			payload := strings.TrimSpace(parts[1])
 			payloadParts := strings.SplitN(payload, ":", 2)
 			if len(payloadParts) != 2 {
 				conn.Write([]byte("ERROR: Reason required. Use 'extend:program:reason'\n"))
-				continue
+				return
 			}
 			program := strings.TrimSpace(payloadParts[0])
 			reason := strings.TrimSpace(payloadParts[1])
 			if program == "" || reason == "" {
 				conn.Write([]byte("ERROR: Program and reason cannot be empty\n"))
-				continue
+				return
 			}
 			if err := cli.ProcessExtendRequest(cfg, program, reason); err != nil {
 				conn.Write([]byte(fmt.Sprintf("ERROR: %v\n", err)))
-				continue
+				return
 			}
 			conn.Write([]byte(fmt.Sprintf("OK: Extension granted for %s\n", program)))
 		case "lock":
@@ -230,7 +235,7 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 		case "add-keyword":
 			if len(parts) != 2 {
 				conn.Write([]byte("ERROR: Invalid format. Use 'add-keyword:keywords'\n"))
-				continue
+				return
 			}
 			keywords := strings.TrimSpace(parts[1])
 			conn.Write([]byte("OK: Add keyword request received\n"))
@@ -238,7 +243,7 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 		case "uninstall":
 			if len(parts) != 2 {
 				conn.Write([]byte("ERROR: Invalid format. Use 'uninstall:reason[:note]'\n"))
-				continue
+				return
 			}
 			payload := strings.TrimSpace(parts[1])
 			payloadParts := strings.SplitN(payload, ":", 2)
@@ -249,7 +254,7 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 			}
 			if reason == "" {
 				conn.Write([]byte("ERROR: Reason cannot be empty\n"))
-				continue
+				return
 			}
 			// Validate reason against configured valid reasons
 			if len(cfg.Lifecycle.Reasons) > 0 {
@@ -264,7 +269,7 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 					errMsg := fmt.Sprintf("ERROR: Invalid reason '%s'. Valid reasons: %s\n",
 						reason, strings.Join(cfg.Lifecycle.Reasons, ", "))
 					conn.Write([]byte(errMsg))
-					continue
+					return
 				}
 			}
 			conn.Write([]byte("OK: Uninstall request received\n"))

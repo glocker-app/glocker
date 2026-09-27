@@ -1,12 +1,19 @@
 package web
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
 	"log"
 	"log/slog"
+	"math/big"
+	"net"
 	"net/http"
-	"os"
-	"os/exec"
+	"time"
 
 	"glocker/internal/config"
 )
@@ -56,19 +63,19 @@ func StartWebTrackingServer(cfg *config.Config) {
 		}()
 	}
 
-	// Generate the self-signed cert once, shared by both loopback HTTPS listeners.
-	certFile, keyFile, err := generateSelfSignedCert()
+	// Generate the self-signed cert once (in memory), shared by both loopback
+	// HTTPS listeners. Nothing is written to disk.
+	cert, err := generateSelfSignedCert()
 	if err != nil {
 		log.Printf("Failed to generate SSL certificate: %v", err)
 		return
 	}
-	// NB: not removed — both servers need the files for the process lifetime, and
-	// the daemon runs until exit. (The fixed /tmp path is a separate item.)
+	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}}
 	for _, addr := range []string{"127.0.0.1:443", "[::1]:443"} {
 		addr := addr
 		go func() {
 			log.Printf("Web tracking HTTPS server started on %s", addr)
-			if err := (&http.Server{Addr: addr}).ListenAndServeTLS(certFile, keyFile); err != nil {
+			if err := (&http.Server{Addr: addr, TLSConfig: tlsCfg}).ListenAndServeTLS("", ""); err != nil {
 				log.Printf("Web tracking HTTPS server (%s) error: %v", addr, err)
 			}
 		}()
@@ -77,20 +84,32 @@ func StartWebTrackingServer(cfg *config.Config) {
 
 // generateSelfSignedCert creates a temporary self-signed SSL certificate for HTTPS.
 // Returns paths to the certificate and key files.
-func generateSelfSignedCert() (string, string, error) {
-	// Generate a private key
-	priv, err := exec.Command("openssl", "genrsa", "-out", "/tmp/glocker-key.pem", "2048").CombinedOutput()
+// generateSelfSignedCert builds a self-signed loopback certificate entirely in
+// memory. The private key never touches disk, so there's no fixed /tmp key file
+// a local user could pre-create or read, and no dependency on the openssl binary.
+func generateSelfSignedCert() (tls.Certificate, error) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to generate private key: %v, output: %s", err, priv)
+		return tls.Certificate{}, fmt.Errorf("generate key: %w", err)
 	}
-
-	// Generate a self-signed certificate
-	cert, err := exec.Command("openssl", "req", "-new", "-x509", "-key", "/tmp/glocker-key.pem",
-		"-out", "/tmp/glocker-cert.pem", "-days", "365", "-subj", "/CN=localhost").CombinedOutput()
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
-		os.Remove("/tmp/glocker-key.pem")
-		return "", "", fmt.Errorf("failed to generate certificate: %v, output: %s", err, cert)
+		return tls.Certificate{}, fmt.Errorf("serial: %w", err)
 	}
-
-	return "/tmp/glocker-cert.pem", "/tmp/glocker-key.pem", nil
+	tmpl := x509.Certificate{
+		SerialNumber:          serial,
+		Subject:               pkix.Name{CommonName: "localhost"},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().AddDate(1, 0, 0),
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+		DNSNames:              []string{"localhost"},
+		IPAddresses:           []net.IP{net.IPv4(127, 0, 0, 1), net.IPv6loopback},
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &tmpl, &tmpl, &priv.PublicKey, priv)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("create certificate: %w", err)
+	}
+	return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: priv}, nil
 }
