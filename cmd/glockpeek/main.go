@@ -26,6 +26,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 
@@ -66,6 +67,7 @@ func main() {
 	addr := defaultListen
 	driver := config.DefaultDatabaseDriver
 	dsn := config.DefaultDatabaseDSN
+	dbMaxOpen, dbMaxIdle, dbLifetimeMin := 0, 0, 0
 	secureCookies := false
 	mode := config.GlockpeekModeLocal
 	var mailCfg config.MailConfig
@@ -87,6 +89,9 @@ func main() {
 		if gp.Database.DSN != "" {
 			dsn = gp.Database.DSN
 		}
+		dbMaxOpen = gp.Database.MaxOpenConns
+		dbMaxIdle = gp.Database.MaxIdleConns
+		dbLifetimeMin = gp.Database.ConnMaxLifetimeMinutes
 		secureCookies = gp.SecureCookies
 		if gp.Mode != "" {
 			mode = gp.Mode
@@ -144,7 +149,14 @@ func main() {
 	// no race).
 	adminCmd := *addUser != "" || *passwd != "" || *addToken != "" || *setLimit != "" || *importRules != ""
 	skipMigrate := hosted && !*migrateFlag && !adminCmd
-	db, err := store.Open(store.Options{Driver: driver, DSN: dsn, SkipMigrate: skipMigrate})
+	db, err := store.Open(store.Options{
+		Driver:          driver,
+		DSN:             dsn,
+		SkipMigrate:     skipMigrate,
+		MaxOpenConns:    dbMaxOpen,
+		MaxIdleConns:    dbMaxIdle,
+		ConnMaxLifetime: time.Duration(dbLifetimeMin) * time.Minute,
+	})
 	if err != nil {
 		log.Fatalf("glockpeek: open database (%s): %v", driver, err)
 	}

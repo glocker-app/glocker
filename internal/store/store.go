@@ -24,6 +24,10 @@ type Options struct {
 	// `glockpeek -migrate` step run once before a deploy. Local/single-process and
 	// tests leave it false (migrate on open, as before).
 	SkipMigrate bool
+	// Connection-pool bounds; zero means a per-driver default (see Open).
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
 }
 
 // DB wraps the GORM handle. Callers use the embedded *gorm.DB directly; the
@@ -82,6 +86,38 @@ func Open(o Options) (*DB, error) {
 	}
 
 	db := &DB{gdb}
+
+	// Bound the connection pool. Unbounded, a burst opens connections until the
+	// managed Postgres hits its cap and refuses the rest; with N app nodes keep
+	// N*MaxOpenConns under that cap (or add a PgBouncer pool). sqlite gets a single
+	// connection to avoid "database is locked" on the shared file.
+	if sqlDB, derr := gdb.DB(); derr == nil {
+		maxOpen, maxIdle, lifetime := o.MaxOpenConns, o.MaxIdleConns, o.ConnMaxLifetime
+		if driver == "sqlite" {
+			if maxOpen == 0 {
+				maxOpen = 1
+			}
+			if maxIdle == 0 {
+				maxIdle = 1
+			}
+		} else {
+			if maxOpen == 0 {
+				maxOpen = 20
+			}
+			if maxIdle == 0 {
+				maxIdle = 5
+			}
+			if lifetime == 0 {
+				lifetime = 30 * time.Minute
+			}
+		}
+		sqlDB.SetMaxOpenConns(maxOpen)
+		sqlDB.SetMaxIdleConns(maxIdle)
+		if lifetime > 0 {
+			sqlDB.SetConnMaxLifetime(lifetime)
+		}
+	}
+
 	if !o.SkipMigrate {
 		if err := db.Migrate(); err != nil {
 			return nil, err

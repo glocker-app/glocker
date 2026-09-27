@@ -363,4 +363,11 @@ type DatabaseConfig struct {
 	// DSN is the data source. For sqlite it's a file path
 	// (default DefaultDatabaseDSN); for postgres a libpq/pgx connection string.
 	DSN string `yaml:"dsn"`
+	// Connection-pool bounds (postgres). Zero = a sensible per-driver default.
+	// Cap MaxOpenConns so a traffic burst can't exhaust a managed Postgres's
+	// connection limit; with N app nodes keep N*MaxOpenConns under that limit
+	// (or front the DB with a PgBouncer pool).
+	MaxOpenConns           int `yaml:"max_open_conns"`
+	MaxIdleConns           int `yaml:"max_idle_conns"`
+	ConnMaxLifetimeMinutes int `yaml:"conn_max_lifetime_minutes"`
 }
