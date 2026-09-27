@@ -41,43 +41,38 @@ func StartWebTrackingServer(cfg *config.Config) {
 	// (cmd/glockpeek), not the daemon. The daemon's web server only handles
 	// browser-extension traffic here.
 
-	// Start HTTP server. Bind loopback only: the extension talks to 127.0.0.1 and
-	// hosts-blocked domains resolve to 127.0.0.1, so nothing legitimate comes from
-	// the LAN. Binding ":80" exposed /keywords, /report and the blocked-page
-	// command trigger to every host on the network.
-	go func() {
-		server := &http.Server{
-			Addr:    "127.0.0.1:80",
-			Handler: nil,
-		}
+	// Bind loopback only (both v4 AND v6): the extension uses 127.0.0.1, and
+	// hosts-blocked domains resolve to BOTH 127.0.0.1 and ::1 (see
+	// enforcement/hosts.go), so a client reaching the blocked page over ::1 must
+	// still be served + recorded. But NOT all interfaces — ":80"/":443" exposed
+	// /keywords, /report and the blocked-page command trigger to the whole LAN.
+	for _, addr := range []string{"127.0.0.1:80", "[::1]:80"} {
+		addr := addr
+		go func() {
+			log.Printf("Web tracking HTTP server started on %s", addr)
+			if err := (&http.Server{Addr: addr}).ListenAndServe(); err != nil {
+				log.Printf("Web tracking HTTP server (%s) error: %v", addr, err)
+			}
+		}()
+	}
 
-		log.Printf("Web tracking HTTP server started on port 80")
-		if err := server.ListenAndServe(); err != nil {
-			log.Printf("Web tracking HTTP server error: %v", err)
-		}
-	}()
-
-	// Start HTTPS server (loopback only, same reasoning as :80 above).
-	go func() {
-		server := &http.Server{
-			Addr:    "127.0.0.1:443",
-			Handler: nil,
-		}
-
-		// Generate self-signed certificate
-		certFile, keyFile, err := generateSelfSignedCert()
-		if err != nil {
-			log.Printf("Failed to generate SSL certificate: %v", err)
-			return
-		}
-		defer os.Remove(certFile)
-		defer os.Remove(keyFile)
-
-		log.Printf("Web tracking HTTPS server started on port 443")
-		if err := server.ListenAndServeTLS(certFile, keyFile); err != nil {
-			log.Printf("Web tracking HTTPS server error: %v", err)
-		}
-	}()
+	// Generate the self-signed cert once, shared by both loopback HTTPS listeners.
+	certFile, keyFile, err := generateSelfSignedCert()
+	if err != nil {
+		log.Printf("Failed to generate SSL certificate: %v", err)
+		return
+	}
+	// NB: not removed — both servers need the files for the process lifetime, and
+	// the daemon runs until exit. (The fixed /tmp path is a separate item.)
+	for _, addr := range []string{"127.0.0.1:443", "[::1]:443"} {
+		addr := addr
+		go func() {
+			log.Printf("Web tracking HTTPS server started on %s", addr)
+			if err := (&http.Server{Addr: addr}).ListenAndServeTLS(certFile, keyFile); err != nil {
+				log.Printf("Web tracking HTTPS server (%s) error: %v", addr, err)
+			}
+		}()
+	}
 }
 
 // generateSelfSignedCert creates a temporary self-signed SSL certificate for HTTPS.

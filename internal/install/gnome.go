@@ -91,56 +91,32 @@ func parseGnomeMajor(s string) int {
 	return 0
 }
 
+// copyExtensionTo installs the extension source into the user's home. It runs
+// mkdir + cp AS THE USER (dropping to their uid/gid), never as root. This is the
+// only robust defence against symlink attacks on a user-owned path: doing it as
+// root, a symlink the user plants at dst — or at any PARENT of dst, or swapped in
+// after a check (TOCTOU) — redirects the write/chown onto a system file. As the
+// user, a symlink can only ever point at something they could already write, so
+// there is nothing to escalate. Files land owned by the user, so no chown either.
 func copyExtensionTo(src, dst string, u *user.User) error {
-	// Refuse a pre-planted symlink at dst: MkdirAll would follow it (e.g. dst →
-	// /etc) and then root would write the extension files into the target.
-	if fi, err := os.Lstat(dst); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing to install into a symlink: %s", dst)
+	uid, err1 := strconv.Atoi(u.Uid)
+	gid, err2 := strconv.Atoi(u.Gid)
+	if err1 != nil || err2 != nil {
+		return fmt.Errorf("bad uid/gid for %s: %v / %v", u.Username, err1, err2)
 	}
-	if err := os.MkdirAll(dst, 0o755); err != nil {
-		return err
-	}
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		return err
-	}
-	// This runs as root but writes into a user-owned directory, so a malicious
-	// user could pre-plant symlinks. Create dest files with O_NOFOLLOW (so a
-	// symlink target isn't overwritten as root) and chown with Lchown (so a
-	// symlink target — e.g. /etc/shadow — isn't chowned to the user).
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
+	cred := &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}}
+	runAsUser := func(name string, args ...string) error {
+		c := exec.Command(name, args...)
+		c.SysProcAttr = cred
+		if out, err := c.CombinedOutput(); err != nil {
+			return fmt.Errorf("%s as %s: %w: %s", name, u.Username, err, strings.TrimSpace(string(out)))
 		}
-		if err := copyFileNoFollow(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
-			return err
-		}
+		return nil
 	}
-	uid, _ := strconv.Atoi(u.Uid)
-	gid, _ := strconv.Atoi(u.Gid)
-	return filepath.Walk(dst, func(p string, _ os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		return os.Lchown(p, uid, gid)
-	})
-}
-
-// copyFileNoFollow copies src→dst, refusing to follow a symlink at dst (a
-// pre-planted one would otherwise redirect a root write onto a system file).
-func copyFileNoFollow(src, dst string) error {
-	in, err := os.Open(src)
-	if err != nil {
+	if err := runAsUser("mkdir", "-p", dst); err != nil {
 		return err
 	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC|syscall.O_NOFOLLOW, 0o644)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-	_, err = out.ReadFrom(in)
-	return err
+	return runAsUser("cp", "-rT", src, dst)
 }
 
 // RemoveGnomeExtension disables and deletes the window-bridge extension for the
