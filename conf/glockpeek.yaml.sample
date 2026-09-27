@@ -52,6 +52,14 @@ glockpeek:
   #
   # captcha: true                           # proof-of-work captcha on signup
   #
+  # cdn_base: "https://<bucket>.<region>.cdn.digitaloceanspaces.com"
+  #                                          # serve leaf static assets (styles.css,
+  #                                          # Chart.js) from a CDN, content-hashed +
+  #                                          # SRI. Upload with `glockpeek
+  #                                          # -export-assets <dir>` + `aws s3 sync`.
+  #                                          # Omit = all assets same-origin. The E2E
+  #                                          # crypto JS is never CDN-served.
+  #
   # mail:                                   # account-verification emails (Mailgun)
   #   enabled: true
   #   domain: "mg.example.com"

@@ -15,7 +15,13 @@ import (
 //go:embed templates/*.tmpl
 var templatesFS embed.FS
 
-var pageTemplates = template.Must(template.ParseFS(templatesFS, "templates/*.tmpl"))
+// The `asset` func resolves a static asset to its URL + SRI hash — a CDN URL
+// (content-hashed, integrity-pinned) when a CDN base is configured, else the
+// same-origin path. It reads assetManifest, which Register fills before any
+// request is served.
+var pageTemplates = template.Must(template.New("").Funcs(template.FuncMap{
+	"asset": assetOf,
+}).ParseFS(templatesFS, "templates/*.tmpl"))
 
 // renderPage executes a named SSR page template.
 func renderPage(w http.ResponseWriter, name string, data any) {

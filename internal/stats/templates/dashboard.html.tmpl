@@ -14,7 +14,7 @@
     href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800;900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
     rel="stylesheet"
   />
-  <link rel="stylesheet" href="styles.css" />
+  {{ $css := asset "styles.css" }}<link rel="stylesheet" href="{{ $css.URL }}"{{ with $css.Integrity }} integrity="{{ . }}" crossorigin="anonymous"{{ end }} />
 </head>
 <body>
   <div class="grain" aria-hidden="true"></div>
@@ -475,7 +475,7 @@
   </div>
   <div id="error" class="error" hidden></div>
 
-  <script src="chart.umd.min.js"></script>
+  {{ $chart := asset "chart.umd.min.js" }}<script src="{{ $chart.URL }}"{{ with $chart.Integrity }} integrity="{{ . }}" crossorigin="anonymous"{{ end }}></script>
   <script src="app.js" type="module"></script>
 </body>
 </html>

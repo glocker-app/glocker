@@ -57,6 +57,7 @@ func main() {
 	importRules := flag.String("import-rules", "", "load Glocker starter rules from a JSON file ({\"rules\":[{tag,program,title}]}) into the default-rules template that new accounts seed from, then exit")
 	migrateFlag := flag.Bool("migrate", false, "run DB migrations, then exit — the explicit pre-deploy step for hosted/multi-node (local + admin subcommands still migrate on open)")
 	devices := flag.Int("devices", 1, "device limit to apply with -setlimit (negative = unlimited)")
+	exportAssets := flag.String("export-assets", "", "write the CDN-eligible static assets (content-hashed names) to this dir, then exit — for `aws s3 sync` to the assets bucket")
 	flag.Parse()
 
 	if *showVersion {
@@ -64,10 +65,21 @@ func main() {
 		return
 	}
 
+	// Emit the content-hashed static assets for uploading to the CDN bucket. No
+	// config or DB needed; the names match what the running server points its HTML at.
+	if *exportAssets != "" {
+		if err := stats.ExportCDNAssets(*exportAssets); err != nil {
+			log.Fatalf("glockpeek: export-assets: %v", err)
+		}
+		log.Printf("glockpeek: exported CDN assets to %s", *exportAssets)
+		return
+	}
+
 	addr := defaultListen
 	driver := config.DefaultDatabaseDriver
 	dsn := config.DefaultDatabaseDSN
 	dbMaxOpen, dbMaxIdle, dbLifetimeMin := 0, 0, 0
+	cdnBase := ""
 	secureCookies := false
 	mode := config.GlockpeekModeLocal
 	var mailCfg config.MailConfig
@@ -92,6 +104,7 @@ func main() {
 		dbMaxOpen = gp.Database.MaxOpenConns
 		dbMaxIdle = gp.Database.MaxIdleConns
 		dbLifetimeMin = gp.Database.ConnMaxLifetimeMinutes
+		cdnBase = gp.CDNBase
 		secureCookies = gp.SecureCookies
 		if gp.Mode != "" {
 			mode = gp.Mode
@@ -195,6 +208,7 @@ func main() {
 		RequireEncryption: requireEncryption,
 		Billing:           billingOpts,
 		Version:           version,
+		CDNBase:           cdnBase,
 	}
 	desc := "hosted: login required"
 	if !hosted {

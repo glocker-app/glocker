@@ -71,6 +71,10 @@ type GlockpeekConfig struct {
 	// Billing wires the hosted paid tier to a Merchant-of-Record. Disabled by
 	// default; only a hosted instance selling subscriptions configures it.
 	Billing BillingConfig `yaml:"billing"`
+	// CDNBase, when set, serves the leaf static assets (styles.css, Chart.js) from
+	// this base URL (content-hashed + SRI) instead of same-origin. Upload them with
+	// `glockpeek -export-assets <dir>` + `aws s3 sync`. Empty = all assets local.
+	CDNBase string `yaml:"cdn_base"`
 }
 
 // BillingConfig wires the hosted paid tier to a Merchant-of-Record (Polar). The

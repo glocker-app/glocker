@@ -59,6 +59,10 @@ type Options struct {
 	// Version is the build tag (git describe), surfaced via /api/me for the
 	// dashboard footer so you can tell what's deployed.
 	Version string
+	// CDNBase, when set, serves the leaf static assets (styles.css, Chart.js)
+	// from this base URL with content-hashed names + SRI. Empty keeps every asset
+	// same-origin (local/dev). The E2E crypto JS is never CDN-served.
+	CDNBase string
 }
 
 // requireEncryption, when true, makes /api/ingest refuse plaintext batches.
@@ -83,6 +87,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	adminEmail = strings.TrimSpace(o.AdminEmail)
 	requireEncryption = o.RequireEncryption
 	buildVersion = o.Version
+	buildAssetManifest(o.CDNBase)
 	initBilling(o.Billing)
 	initCaptcha(o.Captcha)
 	sub, err := fs.Sub(assetsFS, "assets")
