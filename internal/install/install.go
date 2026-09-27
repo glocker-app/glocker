@@ -110,6 +110,13 @@ func InstallGlocker(confPath string) error {
 	if err := os.Chown(config.GlockerConfigFile, 0, 0); err != nil {
 		log.Printf("Warning: couldn't set config file ownership: %v", err)
 	}
+	// Root-only: the config carries sync.token (a bearer credential for the hosted
+	// account). CopyFile preserves the source mode, which is world-readable on a dev
+	// checkout, so any local user could read the token. The daemon runs as root, so
+	// 0600 loses nothing.
+	if err := os.Chmod(config.GlockerConfigFile, 0o600); err != nil {
+		log.Printf("Warning: couldn't tighten config file permissions: %v", err)
+	}
 	if err := exec.Command("chattr", "+i", config.GlockerConfigFile).Run(); err != nil {
 		log.Printf("Warning: couldn't set immutable flag on config file: %v", err)
 	}

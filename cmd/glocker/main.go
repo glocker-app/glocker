@@ -108,6 +108,18 @@ func main() {
 
 	flag.Parse()
 
+	// Socket payloads are newline-terminated and the daemon reads the connection
+	// line by line, so a newline embedded in any of these flag values would inject
+	// a second, unauthenticated command (e.g. -unblock $'x\nuninstall:reason',
+	// skipping the real-uid + mindful gates). The socket dir is root-only, so the
+	// setuid client is the only thing that can connect — refusing newlines here
+	// closes the injection at its only source.
+	for _, v := range []string{*uninstallReason, *uninstallNote, *blockHosts, *blockApps, *unblockHosts, *extendProgram, *addKeyword} {
+		if strings.ContainsAny(v, "\r\n") {
+			log.Fatal("glocker: a command argument may not contain a newline")
+		}
+	}
+
 	// Surface the build version in -status (rendered both here and, for the live
 	// path, inside the daemon — same binary, so the same stamped value).
 	cli.Version = version

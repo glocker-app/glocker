@@ -41,10 +41,13 @@ func StartWebTrackingServer(cfg *config.Config) {
 	// (cmd/glockpeek), not the daemon. The daemon's web server only handles
 	// browser-extension traffic here.
 
-	// Start HTTP server
+	// Start HTTP server. Bind loopback only: the extension talks to 127.0.0.1 and
+	// hosts-blocked domains resolve to 127.0.0.1, so nothing legitimate comes from
+	// the LAN. Binding ":80" exposed /keywords, /report and the blocked-page
+	// command trigger to every host on the network.
 	go func() {
 		server := &http.Server{
-			Addr:    ":80",
+			Addr:    "127.0.0.1:80",
 			Handler: nil,
 		}
 
@@ -54,10 +57,10 @@ func StartWebTrackingServer(cfg *config.Config) {
 		}
 	}()
 
-	// Start HTTPS server
+	// Start HTTPS server (loopback only, same reasoning as :80 above).
 	go func() {
 		server := &http.Server{
-			Addr:    ":443",
+			Addr:    "127.0.0.1:443",
 			Handler: nil,
 		}
 

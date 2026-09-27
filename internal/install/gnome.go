@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"glocker/internal/config"
-	"glocker/internal/utils"
+	"syscall"
 )
 
 const gnomeExtUUID = "glocker-usage@glocker.app"
@@ -92,6 +92,11 @@ func parseGnomeMajor(s string) int {
 }
 
 func copyExtensionTo(src, dst string, u *user.User) error {
+	// Refuse a pre-planted symlink at dst: MkdirAll would follow it (e.g. dst →
+	// /etc) and then root would write the extension files into the target.
+	if fi, err := os.Lstat(dst); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to install into a symlink: %s", dst)
+	}
 	if err := os.MkdirAll(dst, 0o755); err != nil {
 		return err
 	}
@@ -99,11 +104,15 @@ func copyExtensionTo(src, dst string, u *user.User) error {
 	if err != nil {
 		return err
 	}
+	// This runs as root but writes into a user-owned directory, so a malicious
+	// user could pre-plant symlinks. Create dest files with O_NOFOLLOW (so a
+	// symlink target isn't overwritten as root) and chown with Lchown (so a
+	// symlink target — e.g. /etc/shadow — isn't chowned to the user).
 	for _, e := range entries {
 		if e.IsDir() {
 			continue
 		}
-		if err := utils.CopyFile(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+		if err := copyFileNoFollow(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
 			return err
 		}
 	}
@@ -113,8 +122,25 @@ func copyExtensionTo(src, dst string, u *user.User) error {
 		if err != nil {
 			return err
 		}
-		return os.Chown(p, uid, gid)
+		return os.Lchown(p, uid, gid)
 	})
+}
+
+// copyFileNoFollow copies src→dst, refusing to follow a symlink at dst (a
+// pre-planted one would otherwise redirect a root write onto a system file).
+func copyFileNoFollow(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC|syscall.O_NOFOLLOW, 0o644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	_, err = out.ReadFrom(in)
+	return err
 }
 
 // RemoveGnomeExtension disables and deletes the window-bridge extension for the
