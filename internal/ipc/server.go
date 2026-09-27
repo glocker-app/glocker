@@ -42,7 +42,15 @@ func SetupCommunication(cfg *config.Config) error {
 		log.Printf("Warning: couldn't set socket directory permissions: %v", err)
 	}
 
-	// Remove existing socket
+	// Refuse to start if a daemon is already listening: removing the socket below
+	// would otherwise hijack the running (systemd) daemon — the old one becomes
+	// unreachable while both keep enforcing. A stale socket (nothing answering) is
+	// safe to replace. Since the binary is setuid, this also stops a local user
+	// from displacing the real daemon with `glocker -daemon`.
+	if daemonAlive(SocketPath) {
+		return fmt.Errorf("a glocker daemon is already running (socket %s is live); refusing to start a second one", SocketPath)
+	}
+	// Remove a stale socket file left by an unclean exit.
 	os.Remove(SocketPath)
 
 	// Create Unix domain socket
@@ -73,6 +81,23 @@ func handleConnections(cfg *config.Config, listener net.Listener) {
 
 		go HandleConnection(cfg, conn)
 	}
+}
+
+// daemonAlive reports whether a glocker daemon is already listening on path — a
+// live socket answers "ping" with "pong". A missing/stale socket returns false.
+func daemonAlive(path string) bool {
+	conn, err := net.DialTimeout("unix", path, 500*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(500 * time.Millisecond))
+	if _, err := conn.Write([]byte("ping\n")); err != nil {
+		return false
+	}
+	buf := make([]byte, 16)
+	n, err := conn.Read(buf)
+	return err == nil && strings.Contains(string(buf[:n]), "pong")
 }
 
 // HandleConnection processes commands from a single socket connection.
