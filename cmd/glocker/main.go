@@ -80,6 +80,18 @@ func stripANSI(s string) string {
 	return ansiRE.ReplaceAllString(s, "")
 }
 
+// hasControlChar reports whether s contains any control character (incl. \r and
+// \n). Command arguments sent over the line-delimited socket must not — a newline
+// would inject a second command.
+func hasControlChar(s string) bool {
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 func main() {
 	// Parse command-line flags
 	installFlag := flag.Bool("install", false, "Install glocker as a system service")
@@ -412,10 +424,19 @@ func main() {
 		if reason == "" {
 			log.Fatal("ERROR: Reason cannot be empty")
 		}
-		// Validate the reason against the configured set here (the daemon checks it
-		// too, authoritatively). This gives a clean message + the valid options, and
-		// it means a reason carrying a newline is rejected as "invalid reason" before
-		// it's sent — never reaching the socket to be split into a second command.
+		// Reject control characters outright — the socket protocol is line-delimited,
+		// so a newline is a command-injection attempt, and no legitimate domain or
+		// reason contains one. Deliberate and independent of the configured set (so
+		// it holds even when no reasons are configured), not a side effect of a
+		// string match failing.
+		if hasControlChar(domains) {
+			log.Fatal("invalid domain")
+		}
+		if hasControlChar(reason) {
+			log.Fatal("invalid reason")
+		}
+		// Then validate the reason against the configured set (the daemon checks it
+		// too, authoritatively) for a clean message listing the valid options.
 		if cfg, err := config.LoadConfig(); err == nil && len(cfg.Domains.Unblocking.Reasons) > 0 {
 			valid := false
 			for _, r := range cfg.Domains.Unblocking.Reasons {
