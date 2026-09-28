@@ -3,22 +3,28 @@
    amber = signal accent. The vulnerability heatmap is the hero. */
 
 :root {
-  --bg: #07090d;
-  --bg-2: #0b0e14;
-  --panel: #0e1219;
-  --panel-2: #11161f;
-  --line: #1b2230;
-  --line-2: #283142;
-  --ink: #eef2f7;
-  --ink-dim: #c3ccd9;   /* secondary text — still clearly legible on dark */
-  --ink-faint: #97a3b4; /* least important text — readable, never decorative */
+  /* Muted dark, grounded in the glocker logo — a cyan clock on a slate case.
+     The accent is the logo's cyan; violations/exposure stay quiet earth tones so
+     nothing screams until it earns it. */
+  --bg: #131417;        /* app ground */
+  --bg-2: #0f1013;      /* deeper wells (inputs, tracks) */
+  --panel: #191b1f;     /* cards / panels */
+  --panel-2: #1e2126;   /* raised surfaces within a panel */
+  --line: #282b31;      /* hairlines */
+  --line-2: #333740;    /* stronger dividers */
+  --ink: #e3e4e7;       /* primary text */
+  --ink-dim: #a2a7b0;   /* secondary text — still clearly legible on dark */
+  --ink-faint: #71767f; /* least important text — readable, never decorative */
 
-  --safe: #2f9e8f;     /* clean / quiet */
-  --signal: #f0a020;   /* accent, deliberate */
-  --danger: #ff4d4d;   /* violation / exposure */
-  --danger-deep: #b81d24;
-  --exposed: #c0468f;  /* unmanaged — a different kind of vulnerability */
-  --exposed-dim: #7c3a5e; /* downtime — same family as unmanaged, one step back */
+  --safe: #7fa38d;     /* clean / quiet — muted sage */
+  --signal: #4bbdd4;   /* accent — the logo's cyan, calmed for a dark UI */
+  --signal-strong: #48d8f0; /* the logo cyan at full, for hover/emphasis */
+  --slate: #5d6a80;    /* the logo's case — secondary accent, emphasis borders */
+  --danger: #b96b6e;   /* violation — muted brick */
+  --danger-deep: #95595d;
+  --exposed: #9a7f94;  /* unmanaged — muted mauve, a different vulnerability */
+  --exposed-dim: #6d5c6b; /* downtime — same family, one step back */
+  --on-accent: #0f1013; /* text/glyphs sitting on a filled accent */
 
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --sans: "IBM Plex Sans", system-ui, sans-serif;
@@ -46,7 +52,7 @@ body {
   min-height: 100vh;
   background:
     radial-gradient(1200px 600px at 80% -10%, rgba(192, 70, 143, 0.08), transparent 60%),
-    radial-gradient(900px 500px at 0% 0%, rgba(47, 158, 143, 0.07), transparent 55%),
+    radial-gradient(900px 500px at 0% 0%, rgba(127,163,141, 0.07), transparent 55%),
     linear-gradient(var(--bg), var(--bg-2));
   background-attachment: fixed;
 }
@@ -82,22 +88,12 @@ body {
 }
 
 .brand { display: flex; align-items: center; gap: 12px; padding: 0 6px; }
-.reticle {
-  width: 38px; height: 38px;
+.brand-mark {
+  width: 34px; height: 34px;
   flex: none;
-  border-radius: 50%;
-  border: 1px solid var(--line-2);
-  position: relative;
-  background: radial-gradient(circle, rgba(255,77,77,0.18), transparent 70%);
+  display: block;
+  object-fit: contain;
 }
-.reticle::before, .reticle::after {
-  content: "";
-  position: absolute;
-  background: var(--danger);
-  box-shadow: 0 0 8px var(--danger);
-}
-.reticle::before { left: 50%; top: 7px; bottom: 7px; width: 1px; transform: translateX(-50%); opacity: 0.6; }
-.reticle::after  { top: 50%; left: 7px; right: 7px; height: 1px; transform: translateY(-50%); opacity: 0.6; }
 
 .brand h1 {
   font-family: var(--display);
@@ -108,7 +104,7 @@ body {
   line-height: 1;
   text-transform: lowercase;
 }
-.brand h1 span { color: var(--danger); }
+.brand h1 span { color: var(--signal); }
 .tagline {
   margin: 4px 0 0;
   font-family: var(--mono);
@@ -139,7 +135,7 @@ body {
 .nav button.active {
   color: #fff;
   background: var(--panel-2);
-  box-shadow: inset 2px 0 0 var(--danger);
+  box-shadow: inset 2px 0 0 var(--signal);
 }
 
 /* Admin nav item: set apart from the regular views (divider + signal accent). */
@@ -425,7 +421,7 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
   aspect-ratio: 1 / 1;
   min-width: 0;
   border-radius: 3px;
-  background: #0c1119;
+  background: var(--bg-2);
   border: 1px solid rgba(255,255,255,0.03);
   position: relative;
   cursor: default;
@@ -492,7 +488,7 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
   overflow: hidden;
   aspect-ratio: 1 / 1;
   border-radius: 5px;
-  background: #0d1320;
+  background: var(--bg-2);
   border: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   align-items: flex-start;
@@ -507,8 +503,8 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .cal-day.out { opacity: 0.32; }            /* day outside the selected window */
 .cal-day.has { color: #fff; font-weight: 600; }
 /* Entirely clean, glocker-managed day — a quiet dark green. */
-.cal-day.clean { background: #123a29; border-color: rgba(47, 158, 143, 0.3); }
-.clean-swatch { background: #123a29; box-shadow: inset 0 0 0 1px rgba(47, 158, 143, 0.45); }
+.cal-day.clean { background: rgba(127,163,141,0.16); border-color: rgba(127,163,141,0.34); }
+.clean-swatch { background: rgba(127,163,141,0.16); box-shadow: inset 0 0 0 1px rgba(127,163,141,0.5); }
 .cal-day:not(.blank):hover { transform: scale(1.12); z-index: 2; border-color: rgba(255,255,255,0.4); }
 .cal-daynum { position: relative; z-index: 1; }
 /* Proportional unmanaged strip, filling from the bottom by day fraction. */
@@ -580,7 +576,7 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
 .subtabs button:hover { color: var(--ink); }
-.subtabs button.active { color: #07090d; background: var(--signal); border-color: var(--signal); }
+.subtabs button.active { color: var(--on-accent); background: var(--signal); border-color: var(--signal); }
 /* Sidebar nav groups (Overview / Monitoring / Account / Admin). */
 .nav-group { margin-top: 14px; }
 /* Monitoring container: the device switcher heads a soft panel that holds the
@@ -644,7 +640,7 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .account-caret { color: var(--ink-faint); font-size: 10px; }
 .account-drop {
   position: absolute; top: calc(100% + 6px); right: 0; min-width: 168px; z-index: 50;
-  background: #0d1320; border: 1px solid var(--line-2); border-radius: 10px;
+  background: var(--bg-2); border: 1px solid var(--line-2); border-radius: 10px;
   padding: 6px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 .account-item {
@@ -659,7 +655,7 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 
 /* Selected day: a bright ring on the calendar cell, mirrored by the timeline's
    selected-day band, so clicking one shows the selection in the other. */
-.cal-day.sel { box-shadow: 0 0 0 2px #e8eefc; z-index: 1; }
+.cal-day.sel { box-shadow: 0 0 0 2px var(--signal); z-index: 1; }
 .dd-empty {
   font-family: var(--mono); font-size: 13px; color: var(--ink-faint);
   display: flex; align-items: center; justify-content: center;
@@ -739,7 +735,7 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
   border-radius: 0 6px 6px 0;
 }
 .dd-cov .cov-unm { color: var(--exposed); }
-.dd-cov .cov-unm b { color: #f4cfe5; font-weight: 600; }
+.dd-cov .cov-unm b { color: #c9b6c6; font-weight: 600; }
 .dd-cov .cov-man { color: var(--ink-dim); }
 .dd-cov .cov-why { color: var(--ink-faint); }
 
@@ -861,7 +857,7 @@ canvas { max-height: 260px; }
   position: absolute;
   inset: -18%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(47, 158, 143, 0.16), transparent 68%);
+  background: radial-gradient(circle, rgba(127,163,141, 0.16), transparent 68%);
   animation: boot-breathe 3.2s ease-in-out infinite;
 }
 
@@ -883,7 +879,7 @@ canvas { max-height: 260px; }
   stroke: var(--safe);
   stroke-dasharray: var(--arc);
   stroke-dashoffset: calc(var(--arc) * (1 - var(--p)));
-  filter: drop-shadow(0 0 5px rgba(47, 158, 143, 0.45));
+  filter: drop-shadow(0 0 5px rgba(127,163,141,0.5));
   /* Progress arrives in batches, not per field — glide between them so the arc
      reads as continuous motion instead of a series of jumps. */
   transition: stroke-dashoffset 0.28s linear;
@@ -1031,7 +1027,7 @@ canvas { max-height: 260px; }
   padding: 4px 9px; cursor: pointer; white-space: nowrap;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.untag-tag:hover { color: #07090d; background: var(--signal); border-color: var(--signal); }
+.untag-tag:hover { color: var(--on-accent); background: var(--signal); border-color: var(--signal); }
 .untag-hide {
   grid-area: hide;
   font-family: var(--mono); font-size: 11px; color: var(--ink-dim);
@@ -1039,7 +1035,7 @@ canvas { max-height: 260px; }
   padding: 4px 9px; cursor: pointer; white-space: nowrap;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.untag-hide:hover { color: #07090d; background: var(--ink-dim); border-color: var(--ink-dim); }
+.untag-hide:hover { color: var(--on-accent); background: var(--ink-dim); border-color: var(--ink-dim); }
 .untag-bar { grid-area: bar; height: 3px; border-radius: 3px; background: var(--line); overflow: hidden; }
 .untag-bar > span { display: block; height: 100%; background: var(--ink-faint); border-radius: 3px; }
 
@@ -1208,7 +1204,7 @@ canvas { max-height: 260px; }
   transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
 .ns-pill:hover { color: var(--ink); }
-.ns-pill.active { color: #07090d; background: var(--signal); border-color: var(--signal); }
+.ns-pill.active { color: var(--on-accent); background: var(--signal); border-color: var(--signal); }
 
 /* Tag registry editor (Tags sub-tab). */
 .tagreg-ns { margin-bottom: 22px; }
@@ -1253,7 +1249,7 @@ canvas { max-height: 260px; }
   transition: transform 0.15s, background 0.15s;
 }
 .switch input:checked + .switch-track { background: var(--signal); border-color: var(--signal); }
-.switch input:checked + .switch-track .switch-thumb { transform: translateX(16px); background: #07090d; }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(16px); background: var(--bg); }
 .switch input:focus-visible + .switch-track { box-shadow: 0 0 0 2px rgba(240,160,32,0.3); }
 .switch-text { color: var(--ink-dim); }
 .tagreg-del {
@@ -1280,7 +1276,7 @@ canvas { max-height: 260px; }
 }
 .btn-ghost { color: var(--ink-dim); background: transparent; border: 1px solid var(--line); }
 .btn-ghost:hover { color: var(--ink); border-color: var(--line-2); }
-.btn-primary { color: #07090d; background: var(--signal); border: 1px solid var(--signal); }
+.btn-primary { color: var(--on-accent); background: var(--signal); border: 1px solid var(--signal); }
 .btn-primary:hover { box-shadow: 0 0 0 2px rgba(240,160,32,0.25); }
 .btn-primary:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 

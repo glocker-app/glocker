@@ -221,12 +221,12 @@ function promptPassphrase(errMsg) {
     ov.style.cssText =
       "position:fixed;inset:0;background:rgba(7,9,13,.94);display:flex;align-items:center;justify-content:center;z-index:9999;";
     ov.innerHTML = `
-      <form style="background:#0d1017;border:1px solid #1b2230;border-radius:12px;padding:24px;width:min(420px,90vw);color:#e7ecf3;font-family:inherit;">
+      <form style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px;width:min(420px,90vw);color:var(--ink);font-family:inherit;">
         <h2 style="margin:0 0 8px;font-size:1.1rem;">Unlock your data</h2>
-        <p style="color:#8b97a8;font-size:.9rem;margin:0 0 14px;">Enter your passphrase to view your dashboard.</p>
-        <input type="password" autocomplete="current-password" placeholder="passphrase" style="width:100%;padding:10px 12px;background:#05070a;border:1px solid #1b2230;border-radius:8px;color:#e7ecf3;font-size:1rem;box-sizing:border-box;" />
-        <div class="pp-err" style="color:#ff4d4d;font-size:.85rem;min-height:1.2em;margin-top:8px;"></div>
-        <button type="submit" style="margin-top:12px;width:100%;padding:11px;background:#ff4d4d;color:#150404;border:none;border-radius:8px;font-weight:600;cursor:pointer;">Unlock</button>
+        <p style="color:var(--ink-dim);font-size:.9rem;margin:0 0 14px;">Enter your passphrase to view your dashboard.</p>
+        <input type="password" autocomplete="current-password" placeholder="passphrase" style="width:100%;padding:10px 12px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:1rem;box-sizing:border-box;" />
+        <div class="pp-err" style="color:var(--danger);font-size:.85rem;min-height:1.2em;margin-top:8px;"></div>
+        <button type="submit" style="margin-top:12px;width:100%;padding:11px;background:var(--signal);color:var(--on-accent);border:none;border-radius:8px;font-weight:600;cursor:pointer;">Unlock</button>
       </form>`;
     ov.querySelector(".pp-err").textContent = errMsg || "";
     const form = ov.querySelector("form");
@@ -1126,10 +1126,10 @@ function computeHealth(violations, unmanaged, b) {
 }
 
 function bandFor(s) {
-  if (s >= 90) return { label: "Excellent", color: "#34d399" };
+  if (s >= 90) return { label: "Excellent", color: "var(--safe)" };
   if (s >= 75) return { label: "Good", color: "var(--safe)" };
-  if (s >= 60) return { label: "Fair", color: "var(--signal)" };
-  if (s >= 40) return { label: "At risk", color: "#ff8a3c" };
+  if (s >= 60) return { label: "Fair", color: "#c2924e" };
+  if (s >= 40) return { label: "At risk", color: "#b5764a" };
   return { label: "Critical", color: "var(--danger)" };
 }
 
@@ -1414,14 +1414,14 @@ function renderTimeline(canvasId = "chart-timeline") {
     if (state.winStart == null) return;
     const x1 = xAt(a, state.winStart), x2 = xAt(a, state.winEnd);
     ctx.save();
-    ctx.fillStyle = "rgba(5,7,11,0.60)";
+    ctx.fillStyle = "rgba(15,16,19,0.62)";
     ctx.fillRect(a.left, a.top, x1 - a.left, a.height);
     ctx.fillRect(x2, a.top, a.right - x2, a.height);
-    ctx.strokeStyle = "#e8eefc";
+    ctx.strokeStyle = "#4bbdd4";
     ctx.lineWidth = 2;
     for (const x of [x1, x2]) {
       ctx.beginPath(); ctx.moveTo(x, a.top); ctx.lineTo(x, a.bottom); ctx.stroke();
-      ctx.fillStyle = "#e8eefc";
+      ctx.fillStyle = "#4bbdd4";
       ctx.fillRect(x - 1.5, a.top + a.height / 2 - 8, 3, 16); // grab knob
     }
     ctx.restore();
@@ -2333,7 +2333,7 @@ function renderUntagged(tu, available) {
     return;
   }
   const hiddenNote = tu.hidden > 0
-    ? `<div style="margin-top:10px;font-size:.82rem;color:#8b97a8;">${fmtDur(tu.hidden)} hidden by rules</div>`
+    ? `<div style="margin-top:10px;font-size:.82rem;color:var(--ink-dim);">${fmtDur(tu.hidden)} hidden by rules</div>`
     : "";
   const items = tu.untaggedItems || [];
   if (!items.length) {
