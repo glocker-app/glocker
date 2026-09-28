@@ -155,6 +155,8 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 
 	// Admin-gated: account management (only the configured admin account).
 	mux.HandleFunc("/api/admin/users", requireAdmin(handleAdminUsers))
+	// Admin-gated operational metrics (DB pool saturation, ping, uptime).
+	mux.HandleFunc("/metrics", requireAdmin(handleMetrics))
 
 	// Session-gated: start a checkout for the paid tier. Only when billing is on.
 	if billingEnabled {
