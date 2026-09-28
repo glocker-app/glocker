@@ -244,9 +244,16 @@ func (db *DB) IngestHeartbeats(userID, deviceID uint, rows []Heartbeat) error {
 	if len(rows) == 0 {
 		return nil
 	}
+	// Clamp a far-future timestamp (wrong client clock, or forged with a stolen
+	// token) to now+skew: an unbounded future heartbeat would suppress the
+	// went-dark alert indefinitely.
+	maxTS := time.Now().Add(5 * time.Minute).UnixMilli()
 	for i := range rows {
 		rows[i].UserID = userID
 		rows[i].DeviceID = deviceID
+		if rows[i].TS > maxTS {
+			rows[i].TS = maxTS
+		}
 	}
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "device_id"}, {Name: "ts"}},

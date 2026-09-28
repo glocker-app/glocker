@@ -221,6 +221,10 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 
 // handleLogout ends the current session (requires a session).
 func handleLogout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost { // POST-only: a GET logout is CSRF-triggerable
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
 	if c, err := r.Cookie(sessionCookie); err == nil {
 		_ = db.DeleteSession(c.Value)
 	}

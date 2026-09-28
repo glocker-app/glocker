@@ -231,7 +231,17 @@ func main() {
 
 	// Note: the DSN is deliberately NOT logged — it can carry a database password.
 	log.Printf("glockpeek %s serving the dashboard at http://%s/ (%s); db driver %s", version, addr, desc, driver)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	// Timeouts so a slow/stuck client can't tie up a connection indefinitely
+	// (slowloris) on a small node. WriteTimeout is generous for the larger reads.
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      120 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	log.Fatal(srv.ListenAndServe())
 }
 
 // forceLoopback rewrites addr's host to 127.0.0.1, preserving the port, so local

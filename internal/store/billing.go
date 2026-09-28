@@ -23,6 +23,14 @@ const (
 func (u *User) HasAccess() bool {
 	switch u.SubStatus {
 	case SubStatusTrialing, SubStatusActive, SubStatusCanceled:
+		// A set period-end bounds access. Without this, a lost `revoke`/`canceled`
+		// webhook leaves the status granting access forever; with it, access still
+		// lapses when the paid/trial period actually ends. (A missed renewal can
+		// deny a paying account early — acceptable vs. leaking access indefinitely,
+		// and re-syncing the subscription restores it.)
+		if !u.SubCurrentEnd.IsZero() && time.Now().After(u.SubCurrentEnd) {
+			return false
+		}
 		return true
 	default:
 		return false
