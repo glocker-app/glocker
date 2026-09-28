@@ -25,12 +25,11 @@ type Backend interface {
 type Config struct {
 	// Duration specifies how long the screen should be locked.
 	Duration time.Duration
-	// Message is displayed on the lock screen (X11 backend; Wayland shows a
-	// solid background for now).
+	// Message is displayed on the lock screen above the countdown.
 	Message string
 	// BackgroundColor is the lock screen background (0xRRGGBB).
 	BackgroundColor uint32
-	// BackgroundImage is the path to a PNG/JPG background image (X11 only).
+	// BackgroundImage is the path to a PNG/JPG background image.
 	BackgroundImage string
 }
 

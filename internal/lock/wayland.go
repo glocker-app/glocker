@@ -1,17 +1,14 @@
 // Wayland backend for the screen locker, built on the ext-session-lock-v1
 // protocol. The compositor guarantees the lock surface stays on top and that
 // input is confined to it — so, unlike X11, there is no manual keyboard grab to
-// defeat. This backend renders a solid full-screen surface per output and
-// unlocks automatically when the timer expires.
-//
-// Not yet rendered on Wayland: the countdown/message text and background image
-// the X11 backend draws. That needs glyph rendering into the shm buffer; the
-// Config carries the fields so it can be added here later without touching
-// callers.
+// defeat. Each output gets a full-screen surface showing the message and a live
+// countdown (rendered in software, see render.go) over the background colour or
+// image, and the lock ends automatically when the timer expires.
 package lock
 
 import (
 	"fmt"
+	"image"
 	"log"
 	"sync"
 	"time"
@@ -38,6 +35,9 @@ type waylandLocker struct {
 	lock        *ext.SessionLock
 	outputs     []*wl.Output
 	surfaces    []*waylandSurface
+
+	deadline time.Time
+	bgImage  image.Image // optional; nil = solid BackgroundColor
 
 	// Written only from the (single) dispatch goroutine via event handlers.
 	locked   bool
@@ -94,7 +94,17 @@ func (w *waylandLocker) Lock() error {
 		return fmt.Errorf("no wayland outputs to lock")
 	}
 
-	// Request the lock and create a surface per output.
+	if w.cfg.BackgroundImage != "" {
+		if img, err := loadBackgroundImage(w.cfg.BackgroundImage); err == nil {
+			w.bgImage = img
+		} else {
+			log.Printf("glocklock: background image: %v (using solid colour)", err)
+		}
+	}
+
+	// Request the lock and create a surface per output. The deadline is set first
+	// so the first frame (painted on configure) already shows the countdown.
+	w.deadline = time.Now().Add(w.cfg.Duration)
 	lk, err := w.lockManager.Lock()
 	if err != nil {
 		return w.fail("request session lock", err)
@@ -108,12 +118,15 @@ func (w *waylandLocker) Lock() error {
 	}
 
 	// Single-threaded event + timer loop: each roundtrip flushes our requests
-	// and processes incoming events (configure/locked/finished); between them we
-	// check the deadline and the stop signal.
-	deadline := time.Now().Add(w.cfg.Duration)
+	// and processes incoming events (configure/locked/finished/buffer release);
+	// between them we repaint any countdown that changed and check the deadline
+	// and the stop signal.
 	for {
 		if err := wlclient.DisplayRoundtrip(display); err != nil {
 			return w.fail("wayland roundtrip", err)
+		}
+		for _, s := range w.surfaces {
+			s.tick()
 		}
 		if w.finished {
 			// Compositor ended the lock itself (e.g. denied it).
@@ -126,7 +139,7 @@ func (w *waylandLocker) Lock() error {
 			return w.unlock()
 		default:
 		}
-		if !time.Now().Before(deadline) {
+		if !time.Now().Before(w.deadline) {
 			return w.unlock()
 		}
 		time.Sleep(pollInterval)
@@ -203,69 +216,134 @@ func (w *waylandLocker) HandleSessionLockFinished(ext.SessionLockFinishedEvent) 
 
 // ── Per-output lock surface ─────────────────────────────────────────────────
 
+// shmBuffer is one frame buffer shared with the compositor. It is busy from the
+// commit that attaches it until the compositor's release event.
+type shmBuffer struct {
+	buf  *wl.Buffer
+	data []byte // mmap of the buffer's memory
+	busy bool
+}
+
+func (b *shmBuffer) HandleBufferRelease(wl.BufferReleaseEvent) { b.busy = false }
+
+func (b *shmBuffer) destroy() {
+	b.buf.Destroy()
+	_ = wlos.Munmap(b.data)
+}
+
 type waylandSurface struct {
 	parent      *waylandLocker
 	wlSurface   *wl.Surface
 	lockSurface *ext.SessionLockSurface
-	width       uint32
-	height      uint32
+	width       int
+	height      int
 
-	buf  *wl.Buffer // kept alive for the lock's lifetime
-	data []byte     // mmap backing the buffer; kept mapped until exit
+	renderer *frameRenderer
+	bufs     [2]*shmBuffer // double-buffered: draw into one while the other is shown
+	shown    string        // countdown text currently on screen
 }
 
 // HandleSessionLockSurfaceConfigure sizes and paints the surface. The compositor
 // dictates the dimensions; we must ack and attach a matching buffer.
 func (s *waylandSurface) HandleSessionLockSurfaceConfigure(ev ext.SessionLockSurfaceConfigureEvent) {
-	s.width, s.height = ev.Width, ev.Height
 	s.lockSurface.AckConfigure(ev.Serial)
+	if int(ev.Width) != s.width || int(ev.Height) != s.height {
+		s.width, s.height = int(ev.Width), int(ev.Height)
+		s.renderer = nil
+		for i, b := range s.bufs {
+			if b != nil {
+				b.destroy()
+				s.bufs[i] = nil
+			}
+		}
+	}
+	s.shown = "" // a configure must be answered with a fresh commit
+	s.tick()
+}
+
+// tick repaints when the displayed countdown has changed (once a second).
+func (s *waylandSurface) tick() {
+	if s.width <= 0 || s.height <= 0 {
+		return // not configured yet
+	}
+	if formatRemaining(time.Until(s.parent.deadline)) == s.shown {
+		return
+	}
 	if err := s.paint(); err != nil {
 		log.Printf("glocklock: wayland paint failed: %v", err)
 	}
 }
 
-// paint fills the surface with the configured solid background colour.
+// paint renders the current frame into a free buffer and commits it. If both
+// buffers are still held by the compositor it skips; the next tick retries.
 func (s *waylandSurface) paint() error {
-	width, height := int(s.width), int(s.height)
-	if width <= 0 || height <= 0 {
+	if s.renderer == nil {
+		r, err := newFrameRenderer(s.width, s.height, s.parent.cfg.BackgroundColor, s.parent.bgImage)
+		if err != nil {
+			return err
+		}
+		s.renderer = r
+	}
+	var b *shmBuffer
+	for i := range s.bufs {
+		if s.bufs[i] == nil {
+			nb, err := s.newBuffer()
+			if err != nil {
+				return err
+			}
+			s.bufs[i] = nb
+		}
+		if !s.bufs[i].busy {
+			b = s.bufs[i]
+			break
+		}
+	}
+	if b == nil {
 		return nil
 	}
-	stride := width * 4
-	size := stride * height
+
+	remaining := time.Until(s.parent.deadline)
+	s.renderer.renderXRGB(b.data, s.width*4, s.parent.cfg.Message, remaining)
+	if err := s.wlSurface.Attach(b.buf, 0, 0); err != nil {
+		return err
+	}
+	if err := s.wlSurface.DamageBuffer(0, 0, int32(s.width), int32(s.height)); err != nil {
+		return err
+	}
+	if err := s.wlSurface.Commit(); err != nil {
+		return err
+	}
+	b.busy = true
+	s.shown = formatRemaining(remaining)
+	return nil
+}
+
+// newBuffer allocates one XRGB8888 shm buffer the size of the surface.
+func (s *waylandSurface) newBuffer() (*shmBuffer, error) {
+	stride := s.width * 4
+	size := stride * s.height
 
 	fd, err := wlos.CreateAnonymousFile(int64(size))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer fd.Close()
 	data, err := wlos.Mmap(int(fd.Fd()), 0, size, wlos.ProtRead|wlos.ProtWrite, wlos.MapShared)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	// XRGB8888 is little-endian, so bytes are laid out B, G, R, X.
-	col := s.parent.cfg.BackgroundColor
-	r, g, b := byte(col>>16), byte(col>>8), byte(col)
-	for i := 0; i+3 < size; i += 4 {
-		data[i], data[i+1], data[i+2], data[i+3] = b, g, r, 0xff
-	}
-
 	pool, err := s.parent.shm.CreatePool(fd.Fd(), int32(size))
 	if err != nil {
-		return err
+		wlos.Munmap(data)
+		return nil, err
 	}
-	buf, err := pool.CreateBuffer(0, int32(width), int32(height), int32(stride), wl.ShmFormatXrgb8888)
+	buf, err := pool.CreateBuffer(0, int32(s.width), int32(s.height), int32(stride), wl.ShmFormatXrgb8888)
 	pool.Destroy()
 	if err != nil {
-		return err
+		wlos.Munmap(data)
+		return nil, err
 	}
-	s.buf, s.data = buf, data
-
-	if err := s.wlSurface.Attach(buf, 0, 0); err != nil {
-		return err
-	}
-	if err := s.wlSurface.DamageBuffer(0, 0, int32(width), int32(height)); err != nil {
-		return err
-	}
-	return s.wlSurface.Commit()
+	b := &shmBuffer{buf: buf, data: data}
+	buf.AddReleaseHandler(b)
+	return b, nil
 }

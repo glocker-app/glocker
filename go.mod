@@ -1,6 +1,6 @@
 module glocker
 
-go 1.25.0
+go 1.26.0
 
 require (
 	github.com/alexedwards/argon2id v1.0.0
@@ -13,6 +13,7 @@ require (
 	github.com/neurlang/wayland v0.4.4
 	github.com/standard-webhooks/standard-webhooks/libraries v0.0.1
 	github.com/tuxx/wayland-ext-session-lock-go v0.0.0-20250328013740-430eff7f7869
+	golang.org/x/image v0.46.0
 	golang.org/x/term v0.45.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.2
@@ -54,9 +55,9 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yalue/native_endian v1.0.2 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
-	golang.org/x/sync v0.22.0 // indirect
-	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/sync v0.23.0 // indirect
+	golang.org/x/sys v0.48.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	modernc.org/libc v1.22.5 // indirect
 	modernc.org/mathutil v1.5.0 // indirect
 	modernc.org/memory v1.5.0 // indirect

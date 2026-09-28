@@ -222,12 +222,14 @@ violation_tracking:
   time_window_minutes: 60
   command: "sudo -u yourusername /usr/local/bin/glocklock"
   lock_duration: 5m
-  background: "/path/to/background.jpg"   # optional lock-screen background (X11 backend)
+  background: "/path/to/background.jpg"   # optional lock-screen background (PNG/JPG)
 
-# Usage monitor: samples the focused window + idle time to a JSONL log the
-# dashboard reads. Runs as root, so it needs the logged-in session's display and
-# X authority to see your windows (or WAYLAND_DISPLAY + XDG_RUNTIME_DIR on
-# Wayland). Adjust `display`/`xauthority` for your session (echo $DISPLAY).
+# Usage monitor: samples the focused window + idle time to a JSONL log that the
+# syncer ships to glockpeek. It runs as root, so it finds your session through
+# the top-level `user`: Hyprland and other Wayland sessions are found under
+# /run/user/<uid> with no extra settings (GNOME also needs extensions/gnome).
+# `display`/`xauthority` only matter on X11 (echo $DISPLAY / $XAUTHORITY). If
+# no session is up yet (e.g. at boot), it retries every interval.
 usage_monitor:
   enabled: true
   log_file: "/var/log/glocker/usage.jsonl"
@@ -235,11 +237,11 @@ usage_monitor:
   display: ":0"
   xauthority: "/run/user/1000/gdm/Xauthority"   # adjust the UID/path for your login manager
 
-# Heartbeat watchdog (glockdoc): a root cron job pings the glocker socket every
-# interval_minutes and appends a liveness sample to log_file. The cron + binary
-# intentionally SURVIVE uninstall so the run of "alive:false" samples records how
-# long glocker stayed removed. Remove /etc/cron.d/glocker-doc by hand to stop it
-# after a permanent uninstall.
+# Heartbeat watchdog (glockdoc): a systemd timer (glockdoc.timer; root cron if
+# the timer can't be set up) pings the glocker socket every interval_minutes and
+# appends a liveness sample to log_file. The schedule + binary intentionally
+# SURVIVE uninstall so the run of "alive:false" samples records how long glocker
+# stayed removed. `glocker -uninstall ... -purge` removes them too.
 heartbeat:
   enabled: true
   interval_minutes: 30
