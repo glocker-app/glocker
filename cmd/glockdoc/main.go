@@ -1,5 +1,5 @@
 // Command glockdoc is glocker's liveness watchdog — the doctor that takes
-// glocker's pulse. Run periodically by a root cron job, it pings the glocker
+// glocker's pulse. Run periodically by a systemd timer (or a root cron job), it pings the glocker
 // IPC socket and appends a one-line JSON sample (timestamp + alive) to the
 // heartbeat log.
 //
@@ -7,7 +7,7 @@
 // recording even after an uninstall removes the config and the daemon — the
 // resulting run of "alive:false" samples is exactly what it exists to capture.
 // All inputs come from flags, with compiled-in defaults matching what the
-// installer bakes into the cron line.
+// installer bakes into the scheduled command line.
 //
 //	glockdoc                                   # defaults
 //	glockdoc -socket /var/glocker/glocker.sock -log /var/log/glocker/heartbeat.jsonl -timeout 3s

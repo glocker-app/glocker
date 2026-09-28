@@ -115,7 +115,7 @@ func main() {
 	securityCheckFlag := flag.Bool("security-check", false, "Report bypass/recovery routes (root login, recovery mode, extra sudoers, SSH root, autologin); read-only")
 	connectFlag := flag.Bool("connect", false, "Connect this machine to your dashboard's encryption: fetch your key vault, unlock it with your passphrase, and install the key so synced data is end-to-end encrypted")
 	connectForce := flag.Bool("force", false, "With -connect: replace an existing key even if it differs from your vault (WARNING: makes data encrypted under the old key unreadable)")
-	purgeFlag := flag.Bool("purge", false, "With -uninstall: also remove the glockdoc watchdog + its cron. Alone: clean up a leftover watchdog from an earlier uninstall.")
+	purgeFlag := flag.Bool("purge", false, "With -uninstall: also remove the glockdoc watchdog + its schedule (timer/cron). Alone: clean up a leftover watchdog from an earlier uninstall.")
 	versionFlag := flag.Bool("version", false, "Show version information")
 
 	flag.Parse()
@@ -354,7 +354,7 @@ func main() {
 		log.Printf("   rm -f %s", config.GlockerConfigFile)
 		log.Printf("   rmdir %s", filepath.Dir(config.GlockerConfigFile))
 
-		// -purge also removes the glockdoc watchdog + cron that a normal uninstall
+		// -purge also removes the glockdoc watchdog + timer/cron that a normal uninstall
 		// leaves behind to record downtime.
 		if *purgeFlag {
 			log.Println()
@@ -701,7 +701,7 @@ func main() {
 	log.Println("Starting glocker daemon...")
 
 	// Warn if the machine is missing a capability glocker relies on (systemd,
-	// visudo, cron, or a filesystem that supports the immutable flag). The daemon
+	// visudo, a watchdog scheduler, or a filesystem that supports the immutable flag). The daemon
 	// warns and keeps running — it's already installed, and stopping enforcement
 	// would fail open.
 	envcheck.LogWarnings(envcheck.Check(cfg.Sudoers.Enabled), log.Printf)

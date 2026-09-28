@@ -7,7 +7,10 @@ const (
 	GlockpeekInstallPath = "/usr/local/bin/glockpeek"
 	GlockdocInstallPath  = "/usr/local/bin/glockdoc"
 	HeartbeatCronPath    = "/etc/cron.d/glocker-doc"
-	GlockerConfigFile    = "/etc/glocker/config.yaml"
+	// The glockdoc watchdog's systemd scheduler (preferred over the cron file).
+	GlockdocServicePath = "/etc/systemd/system/glockdoc.service"
+	GlockdocTimerPath   = "/etc/systemd/system/glockdoc.timer"
+	GlockerConfigFile   = "/etc/glocker/config.yaml"
 	// GlockerConfDDir holds the generated blocklist files that config.yaml pulls
 	// in via `!include conf.d/<file>`. Installed alongside the config.
 	GlockerConfDDir = "/etc/glocker/conf.d"
@@ -202,13 +205,14 @@ type MindfulUninstallConfig struct {
 }
 
 // HeartbeatConfig controls the glockdoc liveness watchdog. It is consumed at
-// install time to write the root cron job (internal/install). The glockdoc
-// binary itself takes its parameters from CLI flags baked into that cron line,
+// install time to schedule it — a systemd timer, or a root cron job where that
+// fails (internal/install). The glockdoc binary itself takes its parameters from
+// CLI flags baked into the scheduled command line,
 // so it never reads the config file — which matters because the config is
 // removed on uninstall, exactly when we still want the watchdog recording.
 type HeartbeatConfig struct {
 	Enabled         bool   `yaml:"enabled"`
-	IntervalMinutes int    `yaml:"interval_minutes"` // cron cadence (0 → 30)
+	IntervalMinutes int    `yaml:"interval_minutes"` // run cadence (0 → 30)
 	LogFile         string `yaml:"log_file"`         // heartbeat JSONL path (empty → DefaultHeartbeatLogFile)
 	TimeoutSeconds  int    `yaml:"timeout_seconds"`  // socket probe timeout (0 → 3)
 }

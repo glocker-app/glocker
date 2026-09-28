@@ -1,9 +1,9 @@
 // Package heartbeat implements the glockdoc liveness probe. Run periodically by
-// a root cron job, it pings the glocker IPC socket and appends a one-line JSON
+// a systemd timer (or root cron job), it pings the glocker IPC socket and appends a one-line JSON
 // sample recording whether the daemon answered.
 //
 // It reads nothing from the glocker config file: every input arrives as an
-// explicit parameter (the cron line supplies them as flags). That is
+// explicit parameter (the scheduled command line supplies them as flags). That is
 // deliberate — the config is deleted on uninstall, which is exactly when the
 // watchdog must keep recording so the gap in "alive" samples captures that
 // glocker was torn down.

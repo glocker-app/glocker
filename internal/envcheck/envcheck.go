@@ -1,5 +1,5 @@
 // Package envcheck verifies that the machine actually supports the mechanisms
-// glocker relies on — systemd, visudo, a cron daemon, and a filesystem that can
+// glocker relies on — systemd, visudo, a watchdog scheduler, and a filesystem that can
 // hold the immutable flag. When one is missing, the matching feature silently
 // no-ops (e.g. tamper protection is off, or the watchdog never runs), so this
 // surfaces a clear warning at install and at daemon startup instead.
@@ -25,15 +25,15 @@ type Result struct {
 
 // Check runs every capability probe. systemd is always required (glocker installs
 // and runs as a systemd service); visudo is required only when sudoers management
-// is enabled (it validates the sudo restriction). cron (the heartbeat watchdog)
-// and the immutable flag (tamper protection) are advisory — missing them degrades
+// is enabled (it validates the sudo restriction). A watchdog scheduler (the
+// heartbeat watchdog) and the immutable flag (tamper protection) are advisory — missing them degrades
 // glocker, but core blocking still works.
 func Check(needSudoers bool) []Result {
 	systemd := tool("systemd", "systemctl", "glocker installs and runs as a systemd service")
 	systemd.Required = true
 	visudo := tool("visudo", "visudo", "sudoers changes can't be validated before they're applied")
 	visudo.Required = needSudoers
-	return []Result{systemd, visudo, cron(), immutable()}
+	return []Result{systemd, visudo, watchdogScheduler(), immutable()}
 }
 
 // Verify returns an error naming any required capability that's missing, so the
@@ -78,13 +78,18 @@ func tool(name, bin, impact string) Result {
 	return Result{Name: name, OK: true}
 }
 
-func cron() Result {
-	for _, bin := range []string{"cron", "crond"} {
+// watchdogScheduler mirrors the installer's scheduler fallback chain (systemd
+// timer, then cron): the watchdog is only unavailable when none of them is.
+func watchdogScheduler() Result {
+	r := Result{Name: "watchdog scheduler (systemd timer or cron)"}
+	for _, bin := range []string{"systemctl", "cron", "crond"} {
 		if _, err := exec.LookPath(bin); err == nil {
-			return Result{Name: "cron", OK: true}
+			r.OK = true
+			return r
 		}
 	}
-	return Result{Name: "cron", Detail: "the glockdoc heartbeat watchdog won't run"}
+	r.Detail = "the glockdoc heartbeat watchdog won't run"
+	return r
 }
 
 // immutable probes whether the filesystem under /etc really supports `chattr +i`

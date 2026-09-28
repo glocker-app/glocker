@@ -148,10 +148,16 @@ func RestoreSystemChanges(cfg *config.Config) error {
 		log.Println("✓ glockpeek binary removed")
 	}
 
-	// The glockdoc watchdog and its cron job are deliberately left in place: it
-	// keeps pinging the (now absent) socket and recording "alive:false" samples,
-	// so the heartbeat log captures how long glocker stayed uninstalled. To stop
-	// it, remove it by hand — a separate, deliberate act.
+	// The glockdoc watchdog and its schedule (systemd timer or cron job) are
+	// deliberately left in place: it keeps pinging the (now absent) socket and
+	// recording "alive:false" samples, so the heartbeat log captures how long
+	// glocker stayed uninstalled. To stop it, remove it by hand — a separate,
+	// deliberate act (the glocker binary, and so -purge, is gone by now).
+	if _, err := os.Stat(config.GlockdocTimerPath); err == nil {
+		log.Println("Note: heartbeat watchdog (glockdoc) left running to record this downtime.")
+		log.Printf("      To stop it: sudo systemctl disable --now glockdoc.timer && sudo rm %s %s %s",
+			config.GlockdocTimerPath, config.GlockdocServicePath, config.GlockdocInstallPath)
+	}
 	if _, err := os.Stat(config.HeartbeatCronPath); err == nil {
 		log.Println("Note: heartbeat watchdog (glockdoc) left running to record this downtime.")
 		log.Printf("      To stop it: sudo rm %s %s", config.HeartbeatCronPath, config.GlockdocInstallPath)
@@ -161,22 +167,26 @@ func RestoreSystemChanges(cfg *config.Config) error {
 	return nil
 }
 
-// PurgeWatchdog removes the glockdoc watchdog binary and its cron job. A normal
-// uninstall deliberately leaves both running so the heartbeat gap records the
+// PurgeWatchdog removes the glockdoc watchdog binary and its schedule (systemd
+// timer and/or cron job). A normal uninstall deliberately leaves them running so the heartbeat gap records the
 // downtime; -purge (or a standalone `glocker -purge`) is the explicit "remove
 // everything, including the watchdog" cleanup. Idempotent and best-effort.
 func PurgeWatchdog() {
 	log.Println("Purging glockdoc watchdog...")
-	// Neither file is immutable, but clear the flag defensively before removing.
+	// Clear every scheduler, not just the one a fresh install would pick: an
+	// older install may have used a different one.
+	for _, s := range watchdogSchedulers {
+		s.remove()
+	}
+	log.Println("✓ Removed glockdoc schedule (systemd timer / cron)")
+	// The binary isn't immutable, but clear the flag defensively before removing.
 	_ = exec.Command("chattr", "-i", config.GlockdocInstallPath).Run()
-	for _, p := range []string{config.HeartbeatCronPath, config.GlockdocInstallPath} {
-		if err := os.Remove(p); err != nil {
-			if !os.IsNotExist(err) {
-				log.Printf("   Warning: couldn't remove %s: %v", p, err)
-			}
-		} else {
-			log.Printf("✓ Removed %s", p)
+	if err := os.Remove(config.GlockdocInstallPath); err != nil {
+		if !os.IsNotExist(err) {
+			log.Printf("   Warning: couldn't remove %s: %v", config.GlockdocInstallPath, err)
 		}
+	} else {
+		log.Printf("✓ Removed %s", config.GlockdocInstallPath)
 	}
 }
 

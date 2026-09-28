@@ -49,7 +49,7 @@ func InstallGlocker(confPath string) error {
 	// Preflight the host capabilities glocker's enabled features need. Abort if a
 	// required one is missing (no systemd to run the service, or no visudo while
 	// sudoers management is on) — installing something that won't work is worse
-	// than refusing. Merely-degrading gaps (no cron watchdog, no immutable-flag
+	// than refusing. Merely-degrading gaps (no watchdog scheduler, no immutable-flag
 	// support) are warnings. (The separate bypass-routes security audit,
 	// `glocker -security-check`, is not part of install.)
 	envResults := envcheck.Check(cfg.Sudoers.Enabled)
@@ -201,8 +201,9 @@ func InstallGlocker(confPath string) error {
 		log.Printf("Note: glockpeek binary not found at %s, skipping", glockpeekSource)
 	}
 
-	// Step 4d: Install the glockdoc watchdog and its root cron job. Unlike the
-	// other sidecars, glockdoc and its cron intentionally survive uninstall so
+	// Step 4d: Install the glockdoc watchdog and schedule it (systemd timer, else
+	// cron). Unlike the other sidecars, glockdoc and its schedule intentionally
+	// survive uninstall so
 	// the gap in heartbeat samples records that glocker was torn down.
 	if err := installHeartbeat(&cfg, exePath); err != nil {
 		log.Printf("Warning: failed to install heartbeat watchdog: %v", err)
@@ -366,11 +367,15 @@ func setupLogDir() {
 	}
 }
 
-// installHeartbeat installs the glockdoc watchdog binary and a root cron job
-// that runs it on a fixed cadence. All parameters are baked into the cron line
-// as flags so the watchdog never depends on the config file (removed on
-// uninstall). The binary and cron file are deliberately left in place by
+// installHeartbeat installs the glockdoc watchdog binary and schedules it on a
+// fixed cadence. All parameters are baked into the scheduled command line as
+// flags so the watchdog never depends on the config file (removed on
+// uninstall). The binary and its schedule are deliberately left in place by
 // uninstall so the watchdog keeps recording the resulting downtime.
+//
+// Scheduling is pluggable: each mechanism in watchdogSchedulers is tried in
+// order and the first that works wins; the others are cleared so a reinstall
+// that switches mechanism never runs the watchdog twice.
 func installHeartbeat(cfg *config.Config, exePath string) error {
 	if !cfg.Heartbeat.Enabled {
 		log.Println("Heartbeat watchdog disabled in config, skipping")
@@ -406,13 +411,108 @@ func installHeartbeat(cfg *config.Config, exePath string) error {
 	if timeout <= 0 {
 		timeout = 3
 	}
+	cmdLine := fmt.Sprintf("%s -socket %s -log %s -timeout %ds",
+		config.GlockdocInstallPath, config.GlockerSock, logFile, timeout)
 
-	// Bake every parameter into the cron line so glockdoc needs no config file.
+	var failures []string
+	for i, s := range watchdogSchedulers {
+		if err := s.install(interval, cmdLine); err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %v", s.name, err))
+			continue
+		}
+		for j, other := range watchdogSchedulers {
+			if j != i {
+				other.remove()
+			}
+		}
+		log.Printf("✓ Heartbeat watchdog scheduled every %d min via %s", interval, s.name)
+		return nil
+	}
+	return fmt.Errorf("no scheduler could run the watchdog (%s)", strings.Join(failures, "; "))
+}
+
+// watchdogScheduler is one way of running glockdoc periodically.
+type watchdogScheduler struct {
+	name    string
+	install func(intervalMin int, cmdLine string) error
+	remove  func() // best-effort, idempotent
+}
+
+// watchdogSchedulers in priority order. A systemd timer comes first because
+// glocker already requires systemd; cron is the fallback.
+var watchdogSchedulers = []watchdogScheduler{
+	{"systemd timer", installWatchdogTimer, removeWatchdogTimer},
+	{"cron", installWatchdogCron, removeWatchdogCron},
+}
+
+func installWatchdogTimer(intervalMin int, cmdLine string) error {
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return err
+	}
+	service := fmt.Sprintf(`[Unit]
+Description=glockdoc heartbeat watchdog for glocker
+
+[Service]
+Type=oneshot
+ExecStart=%s
+`, cmdLine)
+	// OnBootSec fires right away when the timer starts after boot has already
+	// passed (i.e. at install), then every interval after each run.
+	timer := fmt.Sprintf(`[Unit]
+Description=Run the glockdoc heartbeat watchdog every %d min
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=%dmin
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+`, intervalMin, intervalMin)
+
+	if err := os.WriteFile(config.GlockdocServicePath, []byte(service), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", config.GlockdocServicePath, err)
+	}
+	if err := os.WriteFile(config.GlockdocTimerPath, []byte(timer), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", config.GlockdocTimerPath, err)
+	}
+	// restart (not just enable --now) so a reinstall picks up a changed interval.
+	for _, args := range [][]string{
+		{"daemon-reload"},
+		{"enable", "glockdoc.timer"},
+		{"restart", "glockdoc.timer"},
+	} {
+		if out, err := exec.Command("systemctl", args...).CombinedOutput(); err != nil {
+			return fmt.Errorf("systemctl %s: %v: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		}
+	}
+	return nil
+}
+
+func removeWatchdogTimer() {
+	if _, err := os.Stat(config.GlockdocTimerPath); err != nil {
+		return
+	}
+	_ = exec.Command("systemctl", "disable", "--now", "glockdoc.timer").Run()
+	_ = exec.Command("systemctl", "stop", "glockdoc.service").Run()
+	for _, p := range []string{config.GlockdocTimerPath, config.GlockdocServicePath} {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			log.Printf("   Warning: couldn't remove %s: %v", p, err)
+		}
+	}
+	_ = exec.Command("systemctl", "daemon-reload").Run()
+}
+
+func installWatchdogCron(intervalMin int, cmdLine string) error {
+	if !cronDaemonPresent() {
+		return fmt.Errorf("no cron daemon (cron/crond) in PATH")
+	}
+	if err := os.MkdirAll(filepath.Dir(config.HeartbeatCronPath), 0o755); err != nil {
+		return err
+	}
 	// cron.d requires a username field and a trailing newline.
-	cronLine := fmt.Sprintf("*/%d * * * * root %s -socket %s -log %s -timeout %ds\n",
-		interval, config.GlockdocInstallPath, config.GlockerSock, logFile, timeout)
-
-	if err := os.WriteFile(config.HeartbeatCronPath, []byte(cronLine), 0644); err != nil {
+	cronLine := fmt.Sprintf("*/%d * * * * root %s\n", intervalMin, cmdLine)
+	if err := os.WriteFile(config.HeartbeatCronPath, []byte(cronLine), 0o644); err != nil {
 		return fmt.Errorf("writing cron file %s: %w", config.HeartbeatCronPath, err)
 	}
 	// cron.d ignores files that are group/world-writable or not root-owned.
@@ -422,16 +522,22 @@ func installHeartbeat(cfg *config.Config, exePath string) error {
 	if err := os.Chmod(config.HeartbeatCronPath, 0o644); err != nil {
 		log.Printf("Warning: couldn't set cron file mode: %v", err)
 	}
+	return nil
+}
 
-	// Warn (don't fail) if no cron daemon is available to run the job.
-	if _, err := exec.LookPath("cron"); err != nil {
-		if _, err2 := exec.LookPath("crond"); err2 != nil {
-			log.Printf("Warning: no cron/crond found in PATH — the heartbeat watchdog won't run until a cron daemon is installed")
+func removeWatchdogCron() {
+	if err := os.Remove(config.HeartbeatCronPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("   Warning: couldn't remove %s: %v", config.HeartbeatCronPath, err)
+	}
+}
+
+func cronDaemonPresent() bool {
+	for _, bin := range []string{"cron", "crond"} {
+		if _, err := exec.LookPath(bin); err == nil {
+			return true
 		}
 	}
-
-	log.Printf("✓ Heartbeat watchdog scheduled every %d min (%s)", interval, config.HeartbeatCronPath)
-	return nil
+	return false
 }
 
 // RunningAsRoot checks if the process is running with root privileges.

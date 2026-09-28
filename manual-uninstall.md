@@ -97,7 +97,9 @@ visudo
 rm -f /usr/local/bin/glocker /usr/local/bin/glocklock \
       /usr/local/bin/glockpeek /usr/local/bin/glockdoc
 rm -f /etc/systemd/system/glocker.service /etc/systemd/system/glockpeek.service
-rm -f /etc/cron.d/glocker-doc          # the glockdoc heartbeat cron
+systemctl disable --now glockdoc.timer 2>/dev/null   # the glockdoc heartbeat timer
+rm -f /etc/systemd/system/glockdoc.timer /etc/systemd/system/glockdoc.service
+rm -f /etc/cron.d/glocker-doc          # the glockdoc heartbeat cron (older installs / no systemd timer)
 rm -f /etc/sudoers.glocker.backup
 rm -f /var/glocker/glocker.sock
 rm -rf /etc/glocker
