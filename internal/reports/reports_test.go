@@ -293,3 +293,33 @@ not json, skip me
 		t.Errorf("expected [alive, down], got [%v, %v]", got[0].Alive, got[1].Alive)
 	}
 }
+
+// TestAppendViolationRoundTrips guards the accountability pipe both new callers use:
+// what AppendViolation writes (blocked-domain hits and forbidden-program kills) must
+// be exactly what ParseReportsLog reads back, including sanitizing spaces the parser
+// would otherwise reject.
+func TestAppendViolationRoundTrips(t *testing.T) {
+	tmp := t.TempDir() + "/reports.log"
+	if err := AppendViolation(tmp, ReportTypeWebAccess, "reddit.com", "https://reddit.com/r/all", "reddit.com"); err != nil {
+		t.Fatalf("web_access: %v", err)
+	}
+	if err := AppendViolation(tmp, ReportTypeForbiddenProgram, "steam client", "steam client", "steam client"); err != nil {
+		t.Fatalf("forbidden_program: %v", err)
+	}
+	entries, err := ParseReportsLog(tmp)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("want 2 entries, got %d", len(entries))
+	}
+	if entries[0].Type != ReportTypeWebAccess || entries[0].Domain != "reddit.com" {
+		t.Errorf("web_access entry = %+v", entries[0])
+	}
+	if entries[1].Type != ReportTypeForbiddenProgram {
+		t.Errorf("forbidden_program type = %q, want %q", entries[1].Type, ReportTypeForbiddenProgram)
+	}
+	if entries[1].Keyword != "steam%20client" { // space sanitized so the line parses
+		t.Errorf("forbidden keyword = %q, want steam%%20client", entries[1].Keyword)
+	}
+}

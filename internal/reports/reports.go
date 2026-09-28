@@ -4,6 +4,7 @@ package reports
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -30,7 +31,35 @@ const (
 	// caught a request to it — e.g. curl or a browser). Recorded here so it reaches
 	// glockpeek, not just the in-memory count the lock threshold uses.
 	ReportTypeWebAccess ReportType = "web_access"
+	// ReportTypeForbiddenProgram is a blocked application killed during a window.
+	// Same story as web_access: it was only counted in memory, never synced.
+	ReportTypeForbiddenProgram ReportType = "forbidden_program"
 )
+
+// AppendViolation writes one violation to the reports log in the exact format
+// ParseReportsLog reads, so callers on the web side (blocked-domain hits) and the
+// monitoring side (forbidden-program kills) both reach glockpeek through the
+// syncer — the pipe that RecordViolation (in-memory only) never had. It lives here,
+// not in web, so monitoring can call it without an import cycle. Fields are
+// sanitized because the parser splits on " | " and rejects spaces/pipes in the
+// type:keyword and URL fields.
+func AppendViolation(logFile string, t ReportType, keyword, rawURL, domain string) error {
+	if logFile == "" {
+		logFile = config.DefaultReportsLogFile
+	}
+	clean := func(s string) string { return strings.NewReplacer(" ", "%20", "|", "%7C").Replace(s) }
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	entry := fmt.Sprintf("[%s] | %s:%s | %s | %s\n", ts, t, clean(keyword), clean(rawURL), clean(domain))
+	f, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("open reports log: %w", err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(entry); err != nil {
+		return fmt.Errorf("write reports log: %w", err)
+	}
+	return nil
+}
 
 // ReportEntry represents a single content/URL report entry.
 type ReportEntry struct {
@@ -78,7 +107,7 @@ func ParseUnblocksLog(path string) ([]UnblockEntry, error) {
 }
 
 // reportLineRegex matches: [2025-11-17 15:35:46] | type:keyword | url | domain
-var reportLineRegex = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \| (url-keyword|content-keyword|web_access):([^ |]+) \| ([^ |]+)(?: \| (.+))?$`)
+var reportLineRegex = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \| (url-keyword|content-keyword|web_access|forbidden_program):([^ |]+) \| ([^ |]+)(?: \| (.+))?$`)
 
 // ParseReportsLog reads and parses the reports log file.
 func ParseReportsLog(path string) ([]ReportEntry, error) {

@@ -296,16 +296,21 @@ func TestBlockedAccessReachesSyncPayload(t *testing.T) {
 	dir := t.TempDir()
 	c := newCapture(t)
 	write(t, filepath.Join(dir, "reports.log"),
-		"[2025-11-17 15:00:00] | web_access:reddit.com | https://reddit.com/x | reddit.com\n")
+		"[2025-11-17 15:00:00] | web_access:reddit.com | https://reddit.com/x | reddit.com\n"+
+			"[2025-11-17 15:00:01] | forbidden_program:steam | steam | steam\n")
 
 	all, _ := testSyncer(c.srv.URL, dir, "", c.srv.Client()).build()
-	if len(all.Violations) != 1 {
-		t.Fatalf("want 1 violation from a blocked-domain hit, got %d", len(all.Violations))
+	if len(all.Violations) != 2 {
+		t.Fatalf("want 2 violations (blocked-domain hit + program kill), got %d", len(all.Violations))
 	}
-	if all.Violations[0].Type != "web_access" {
-		t.Errorf("violation type = %q, want web_access", all.Violations[0].Type)
+	got := map[string]string{}
+	for _, v := range all.Violations {
+		got[v.Type] = v.Domain
 	}
-	if all.Violations[0].Domain != "reddit.com" {
-		t.Errorf("violation domain = %q, want reddit.com", all.Violations[0].Domain)
+	if got["web_access"] != "reddit.com" {
+		t.Errorf("web_access domain = %q, want reddit.com", got["web_access"])
+	}
+	if _, ok := got["forbidden_program"]; !ok {
+		t.Errorf("forbidden_program violation missing from payload: %+v", all.Violations)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"glocker/internal/config"
+	"glocker/internal/reports"
 	"glocker/internal/state"
 	"glocker/internal/utils"
 )
@@ -171,8 +172,15 @@ func killMatchingProcesses(cfg *config.Config, programName string) {
 	// matched count is known before any kill is attempted, mirroring the
 	// original behavior of recording on detection rather than success.
 	_, matched := terminateMatching(programName)
-	if matched > 0 && cfg.ViolationTracking.Enabled {
-		RecordViolation(cfg, "forbidden_program", programName, fmt.Sprintf("Killed %d process(es)", matched))
+	if matched > 0 {
+		if cfg.ViolationTracking.Enabled {
+			RecordViolation(cfg, "forbidden_program", programName, fmt.Sprintf("Killed %d process(es)", matched))
+		}
+		// Persist so the kill reaches glockpeek — RecordViolation above is in-memory
+		// only (feeds -status and the lock). The domain field carries the program name.
+		if err := reports.AppendViolation(cfg.Content.Monitoring.LogFile, reports.ReportTypeForbiddenProgram, programName, programName, programName); err != nil {
+			slog.Warn("failed to log forbidden-program kill to reports", "program", programName, "err", err)
+		}
 	}
 }
 
