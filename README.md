@@ -40,8 +40,44 @@ lists any time with `python3 scripts/update_domains.py all`.
 
 Install **refuses up front** if a capability its enabled features need is missing
 — no `systemd` (it runs as a service), or no `visudo` while sudoers management is
-on. Missing `cron` (heartbeat watchdog) or immutable-flag support only warn;
-blocking still works.
+on. Missing immutable-flag support only warns; blocking still works. The
+heartbeat watchdog (`glockdoc`) is scheduled with a systemd timer
+(`glockdoc.timer`), falling back to cron only if the timer can't be set up.
+
+### Connect to the hosted dashboard
+
+The Quick Start above gives you a **local** dashboard on `127.0.0.1:4317`. To
+sync to the hosted dashboard at <https://my.glockerapp.com> instead:
+
+1. **Register** an account at <https://my.glockerapp.com> and confirm your email.
+2. **Set an encryption passphrase** (Settings → Encryption,
+   `/settings/encryption`). This creates your key vault: records are encrypted on
+   your machine, and the server only ever stores ciphertext. Losing the
+   passphrase means losing access to that data, so keep it somewhere safe.
+3. **Mint a device token** on the **Devices** page. It's shown once, so copy it.
+4. **Point the agent at it.** Set the `sync:` stanza in `conf/conf.yaml`:
+
+   ```yaml
+   sync:
+     enabled: true
+     glockpeek_url: "https://my.glockerapp.com"
+     token: "<device token from step 3>"
+     encrypt: true
+   ```
+
+5. **Install** so the daemon picks up the config: `make full-install` (or
+   `make install` if you've already fetched the blocklists).
+6. **Connect** this machine to your vault. It prompts for the passphrase from
+   step 2 and installs the key under `/etc/glocker`:
+
+   ```bash
+   sudo glocker -connect
+   sudo systemctl restart glocker
+   ```
+
+`glocker -status` then shows the last push to the dashboard. Accountability
+emails to a buddy are configured in the same file (`accountability:`); see the
+[sample config](conf/conf.yaml.sample).
 
 ## What It Does
 
@@ -170,7 +206,8 @@ violation_tracking:
   enabled: true
   max_violations: 5
   time_window_minutes: 60
-  command: "glocklock -duration 5m"
+  # Runs as root, so run the locker as you; it finds your X11/Wayland session.
+  command: "sudo -u yourusername /usr/local/bin/glocklock -duration 5m"
 ```
 
 **Domain Blocking Behavior:**

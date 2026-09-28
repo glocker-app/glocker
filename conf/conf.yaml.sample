@@ -44,8 +44,15 @@ domains:
     - brave
 
   # Command run when you actually load a blocked domain (an audible/visual nudge).
-  # Empty = none.
-  blocked_access_command: 'notify-send "glocker" "A blocked site was accessed"'
+  # Empty = none. It runs as ROOT from the glocker daemon — no desktop session,
+  # no D-Bus, no display — and is split on whitespace with no shell (quotes are
+  # NOT honoured). So a bare `notify-send ...` fails; point this at a script that
+  # re-enters your session, e.g. /usr/local/bin/glocker-nudge containing:
+  #   #!/bin/sh
+  #   exec sudo -u yourusername DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
+  #        notify-send glocker "Blocked: $GLOCKER_BLOCKED_HOST"
+  # (1000 = your uid, `id -u`). GLOCKER_BLOCKED_HOST/_URL/_TIME are set for it.
+  blocked_access_command: ""
 
   # Temporary unblocking: `glocker -unblock "domain:reason"`.
   unblocking:
@@ -203,13 +210,17 @@ lifecycle:
 # ── Accountability & telemetry ────────────────────────────────────────────────
 # Violation tracking: after max_violations blocked-access attempts within the
 # window, run command (typically a screen lock). glocklock locks for a fixed
-# duration then auto-unlocks. A GUI command needs `sudo -u <you> DISPLAY=:0`
-# (or WAYLAND_DISPLAY + XDG_RUNTIME_DIR on Wayland).
+# duration then auto-unlocks. The command runs as root and is split on
+# whitespace (no shell), so run glocklock as yourself with `sudo -u <you>`.
+# glocklock finds your session on its own (a live Wayland socket in
+# /run/user/<uid> wins, else the local X display), so don't hardcode
+# DISPLAY=:0 — on Wayland that yields an X11 overlay that native surfaces
+# (waybar etc.) stay clickable through.
 violation_tracking:
   enabled: true
   max_violations: 5
   time_window_minutes: 60
-  command: "sudo -u yourusername DISPLAY=:0 /usr/local/bin/glocklock"
+  command: "sudo -u yourusername /usr/local/bin/glocklock"
   lock_duration: 5m
   background: "/path/to/background.jpg"   # optional lock-screen background (X11 backend)
 

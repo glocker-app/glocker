@@ -211,7 +211,7 @@ func executeWebTrackingCommand(cfg *config.Config, host string, r *http.Request)
 	)
 
 	if err := cmd.Run(); err != nil {
-		log.Printf("Failed to execute web tracking command: %v", err)
+		log.Printf("Failed to execute domains.blocked_access_command %q: %v (it runs as root with no desktop session; see conf.yaml.sample)", cfg.Domains.BlockedAccessCommand, err)
 	} else {
 		slog.Debug("Web tracking command executed successfully", "host", host)
 	}
