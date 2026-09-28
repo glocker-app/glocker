@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"glocker/internal/accountability"
 )
@@ -29,10 +30,21 @@ func handleTestEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uid := userFrom(r).ID
+	u := userFrom(r)
+	uid := u.ID
+	// Gate on subscription (hosted) so a lapsed/abusive account can't keep sending
+	// through your Mailgun domain, and rate-limit per account so it can't blast.
+	if billingEnabled && !u.HasAccess() {
+		http.Error(w, "no active subscription", http.StatusPaymentRequired)
+		return
+	}
+	if ok, _ := db.RateAllow(fmt.Sprintf("testemail:%d", uid), time.Hour, 5, time.Now()); !ok {
+		http.Error(w, "too many test emails; try again later", http.StatusTooManyRequests)
+		return
+	}
 	// Route through the REAL digest pathway (report → template → send the scheduler
 	// uses), so the test exercises the live path rather than a bespoke message.
-	to, err := accountability.New(db, mail, "").SendDigestNow(uid)
+	to, err := accountability.New(db, mail, "", false).SendDigestNow(uid)
 	switch {
 	case errors.Is(err, accountability.ErrNoConfig):
 		http.Error(w, "no accountability config has synced yet for this account — reinstall the agent with the accountability stanza set", http.StatusUnprocessableEntity)

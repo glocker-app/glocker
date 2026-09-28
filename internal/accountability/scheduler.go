@@ -43,14 +43,17 @@ type Scheduler struct {
 	appURL string
 	nodeID string           // this process's fleet identity (for the leader lease)
 	now    func() time.Time // injectable for tests
+	// requireAccess gates sending on the account's subscription (hosted/billing).
+	// Off for self-hosted, where there's no subscription to check.
+	requireAccess bool
 }
 
 // New builds a scheduler. mail may be a disabled mailer (Send is then a no-op),
 // in which case the scheduler runs but sends nothing.
-func New(db *store.DB, mail Mailer, appURL string) *Scheduler {
+func New(db *store.DB, mail Mailer, appURL string, requireAccess bool) *Scheduler {
 	host, _ := os.Hostname()
 	return &Scheduler{db: db, mail: mail, appURL: appURL,
-		nodeID: fmt.Sprintf("%s-%d", host, os.Getpid()), now: time.Now}
+		nodeID: fmt.Sprintf("%s-%d", host, os.Getpid()), now: time.Now, requireAccess: requireAccess}
 }
 
 // accountEmail returns the account's login email to label the digest/alert, or ""
@@ -105,6 +108,14 @@ func (n *Scheduler) process(c store.AccountabilityConfig, now time.Time) {
 	to := c.Buddies()
 	if len(to) == 0 {
 		return
+	}
+	// Don't send for an account without an active subscription (hosted): a
+	// lapsed/abusive account must not keep burning the sending domain's reputation
+	// and quota. Off for self-hosted (requireAccess=false).
+	if n.requireAccess {
+		if u, err := n.db.UserByID(c.UserID); err != nil || !u.HasAccess() {
+			return
+		}
 	}
 	nowMS := now.UnixMilli()
 	who := n.accountEmail(c.UserID) // identify whose machine, for the subject/header

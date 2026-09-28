@@ -105,6 +105,12 @@ func handleConfigPost(w http.ResponseWriter, r *http.Request) {
 	// Accountability config (cleartext) is account-level; the latest sync wins.
 	if in.Accountability != nil {
 		n := in.Accountability
+		// Cap the buddy list: each address is a recipient of every digest/alert, so
+		// an uncapped list is a mail-fan-out amplifier through your sending domain.
+		const maxBuddyEmails = 10
+		if len(n.BuddyEmails) > maxBuddyEmails {
+			n.BuddyEmails = n.BuddyEmails[:maxBuddyEmails]
+		}
 		if err := db.SaveAccountabilityConfig(uid, store.AccountabilityConfig{
 			Enabled: n.Enabled, BuddyEmails: store.EncodeBuddies(n.BuddyEmails),
 			DigestEveryHours: n.DigestEveryHours, DigestWhenQuiet: n.DigestWhenQuiet,
