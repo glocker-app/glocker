@@ -653,6 +653,9 @@ async function bootDashboard(me) {
   migrateLegacyHash();     // turn an old #usage-style bookmark into the clean URL
   setView(viewFromPath()); // honour a deep-linked path like /analytics/usage on load
   reconcileAfterCheckout(); // just back from Polar? poll for the granted sub, no manual reload
+  // Learn the agent's usage sampling cadence (Bug 5), then re-render usage with the
+  // accurate per-sample attribution. Non-fatal: usage falls back to the median gap.
+  fetchDeviceConfigs().then(() => { if (state.usageIntervalMs) render(); }).catch(() => {});
 }
 
 // The view named by the URL path, or "overview" if absent/unknown. Analytics
@@ -2045,7 +2048,7 @@ function stackedBar(id, labels, series, { yUnit = "", precision = 0, autoSkipX =
 // sample's active window — unless the user was idle (AFK) or the tracker had a
 // gap (capped so a tracker restart doesn't count as hours of use).
 const USAGE_IDLE_THRESHOLD_MS = 60_000; // idle ≥ 60s → counted as away, not active
-const USAGE_MAX_GAP_MS = 5 * 60_000;    // cap per-sample attribution across gaps
+const USAGE_MAX_GAP_MS = 5 * 60_000;    // fallback gap cap when the agent's interval is unknown
 
 // Attribute each sample's duration (the gap until the next sample, capped) and
 // call fn(entry, dt, away). `away` folds in idle and no-focus so both the raw
@@ -2056,13 +2059,19 @@ function eachSampleDuration(entries, fn) {
   const gaps = [];
   for (let i = 1; i < entries.length; i++) gaps.push(entries[i].ts - entries[i - 1].ts);
   gaps.sort((a, b) => a - b);
-  const nominal = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 10_000;
+  // Attribute one interval to a lone sample, and cap gaps at a few intervals so a
+  // tracker restart isn't counted as hours. Prefer the agent's reported sampling
+  // cadence (state.usageIntervalMs, from the config snapshot — Bug 5); else the
+  // median observed gap; else the real default of 60s (not a 10s guess, which
+  // under-attributed every sample at the true cadence).
+  const nominal = state.usageIntervalMs || (gaps.length ? gaps[Math.floor(gaps.length / 2)] : 60_000);
+  const maxGap = state.usageIntervalMs ? 3 * state.usageIntervalMs : USAGE_MAX_GAP_MS;
 
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
     let dt = i + 1 < entries.length ? entries[i + 1].ts - e.ts : nominal;
     if (dt <= 0) continue;
-    dt = Math.min(dt, USAGE_MAX_GAP_MS);
+    dt = Math.min(dt, maxGap);
     const away = e.idleMs >= USAGE_IDLE_THRESHOLD_MS || !e.active;
     fn(e, dt, away);
   }
@@ -4237,6 +4246,14 @@ async function fetchDeviceConfigs() {
       if (parsed !== CONFIG_LOCKED && parsed && typeof parsed === "object") out.push(parsed);
     }
   } catch { /* no configs -> insights just can't cross-check */ }
+  // Side effect (Bug 5): learn the agent's usage sampling cadence for time
+  // attribution — the tightest interval reported across devices.
+  let ms = null;
+  for (const cfg of out) {
+    const s = cfg.services && cfg.services.usageIntervalSeconds;
+    if (s > 0) ms = ms == null ? s * 1000 : Math.min(ms, s * 1000);
+  }
+  if (ms) state.usageIntervalMs = ms;
   return out;
 }
 

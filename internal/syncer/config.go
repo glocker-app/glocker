@@ -55,6 +55,9 @@ type cfgServices struct {
 	Panic             bool `json:"panic"`
 	Sync              bool `json:"sync"`
 	SyncEncrypted     bool `json:"syncEncrypted"`
+	// UsageIntervalSeconds is the usage-monitor sampling cadence, so the dashboard
+	// attributes time per sample from the real interval instead of a hardcoded guess.
+	UsageIntervalSeconds int `json:"usageIntervalSeconds"`
 }
 
 type cfgKeywords struct {
@@ -203,6 +206,7 @@ func buildConfigSnapshot(cfg *config.Config) cfgSnapshot {
 			Panic:             cfg.Panic.Enabled,
 			Sync:              cfg.Sync.Enabled,
 			SyncEncrypted:     cfg.Sync.Encryption(),
+			UsageIntervalSeconds: int(cfg.UsageMonitor.Interval() / time.Second),
 		},
 		Keywords: cfgKeywords{
 			URL:            cfg.Content.Keywords.URLKeywords,
