@@ -79,8 +79,8 @@ github.com/muesli/cancelreader v0.2.2 h1:3I4Kt4BQjOR54NavqnDogx/MIoWBFa0StPA8ELU
 github.com/muesli/cancelreader v0.2.2/go.mod h1:3XuTXfFS2VjM+HTLZY9Ak0l6eUKfijIfMUZ4EgX0QYo=
 github.com/muesli/termenv v0.16.0 h1:S5AlUN9dENB57rsbnkPyfdGuWIlkmzJjbFf0Tf5FWUc=
 github.com/muesli/termenv v0.16.0/go.mod h1:ZRfOIKPFDYQoDFF4Olj7/QJbW60Ol/kL1pU3VfY/Cnk=
-github.com/neurlang/wayland v0.2.1 h1:/krK1Flt6VMCj/+KgEYhbm27fkYYEDGkiF1IzNlO43E=
-github.com/neurlang/wayland v0.2.1/go.mod h1:YKS+7tdgk07sNzFBF1Xd50Fwf+7ecrFBYaW+6+l5O08=
+github.com/neurlang/wayland v0.4.4 h1:OilGHhlFTi1eP2WMbR4lF6QAVrimHcAhO2g/Gt/c+hs=
+github.com/neurlang/wayland v0.4.4/go.mod h1:ZPUsmrcHQDH9q26qvwrrlCJpo4HjfNiAZvbbWrLMMBo=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=

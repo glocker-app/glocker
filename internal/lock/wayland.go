@@ -42,6 +42,10 @@ type waylandLocker struct {
 	// Written only from the (single) dispatch goroutine via event handlers.
 	locked   bool
 	finished bool
+	// protoErr is the compositor's fatal wl_display.error, if one arrived. The
+	// compositor disconnects right after sending it, so the call that surfaces
+	// the failure usually just sees a broken pipe; this carries the real cause.
+	protoErr error
 
 	stopOnce sync.Once
 	stop     chan struct{}
@@ -66,10 +70,11 @@ func (w *waylandLocker) Lock() error {
 	}
 	w.display = display
 	defer wlclient.DisplayDisconnect(display)
+	display.AddErrorHandler(w)
 
 	registry, err := display.GetRegistry()
 	if err != nil {
-		return fmt.Errorf("get wayland registry: %w", err)
+		return w.fail("get wayland registry", err)
 	}
 	w.registry = registry
 	registry.AddGlobalHandler(w)
@@ -77,7 +82,7 @@ func (w *waylandLocker) Lock() error {
 
 	// Discover the globals (compositor, shm, outputs, lock manager).
 	if err := wlclient.DisplayRoundtrip(display); err != nil {
-		return fmt.Errorf("wayland registry roundtrip: %w", err)
+		return w.fail("wayland registry roundtrip", err)
 	}
 	if w.compositor == nil || w.shm == nil {
 		return fmt.Errorf("wayland compositor/shm not available")
@@ -92,13 +97,13 @@ func (w *waylandLocker) Lock() error {
 	// Request the lock and create a surface per output.
 	lk, err := w.lockManager.Lock()
 	if err != nil {
-		return fmt.Errorf("request session lock: %w", err)
+		return w.fail("request session lock", err)
 	}
 	w.lock = lk
 	ext.SessionLockAddListener(lk, w)
 	for _, out := range w.outputs {
 		if err := w.addSurface(out); err != nil {
-			return fmt.Errorf("create lock surface: %w", err)
+			return w.fail("create lock surface", err)
 		}
 	}
 
@@ -108,7 +113,7 @@ func (w *waylandLocker) Lock() error {
 	deadline := time.Now().Add(w.cfg.Duration)
 	for {
 		if err := wlclient.DisplayRoundtrip(display); err != nil {
-			return fmt.Errorf("wayland roundtrip: %w", err)
+			return w.fail("wayland roundtrip", err)
 		}
 		if w.finished {
 			// Compositor ended the lock itself (e.g. denied it).
@@ -126,6 +131,15 @@ func (w *waylandLocker) Lock() error {
 		}
 		time.Sleep(pollInterval)
 	}
+}
+
+// fail wraps err for the step that hit it, preferring the compositor's protocol
+// error (the actual cause) over the transport error it leads to.
+func (w *waylandLocker) fail(step string, err error) error {
+	if w.protoErr != nil {
+		return fmt.Errorf("%s: %w", step, w.protoErr)
+	}
+	return fmt.Errorf("%s: %w", step, err)
 }
 
 // unlock tears the lock down and flushes the request to the compositor.
@@ -173,6 +187,13 @@ func (w *waylandLocker) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) {
 }
 
 func (w *waylandLocker) HandleRegistryGlobalRemove(wl.RegistryGlobalRemoveEvent) {}
+
+// HandleDisplayError records the compositor's fatal protocol error.
+func (w *waylandLocker) HandleDisplayError(ev wl.DisplayErrorEvent) {
+	if w.protoErr == nil {
+		w.protoErr = fmt.Errorf("compositor protocol error (code %d): %s", ev.Code, ev.Message)
+	}
+}
 
 // ── Session lock lifecycle ──────────────────────────────────────────────────
 
