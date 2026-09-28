@@ -652,6 +652,7 @@ async function bootDashboard(me) {
   loadUsage();             // usage is lazy-loaded + windowed (see loadUsage); fills in behind the first paint
   migrateLegacyHash();     // turn an old #usage-style bookmark into the clean URL
   setView(viewFromPath()); // honour a deep-linked path like /analytics/usage on load
+  reconcileAfterCheckout(); // just back from Polar? poll for the granted sub, no manual reload
 }
 
 // The view named by the URL path, or "overview" if absent/unknown. Analytics
@@ -3666,6 +3667,32 @@ async function startCheckout(btn) {
   } catch (err) {
     if (btn) { btn.disabled = false; btn.textContent = "Upgrade"; }
     alert("Could not start checkout. Please try again in a moment.");
+  }
+}
+
+// After returning from the Merchant-of-Record's checkout, the subscription webhook
+// can arrive a moment later than the redirect. When the return is marked
+// (?checkout=success), poll /api/me briefly so the granted access — the banner and
+// the device-add gate — appears without the user having to reload by hand.
+async function reconcileAfterCheckout() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("checkout") !== "success") return;
+  // Drop the marker so a later manual reload doesn't re-run this.
+  params.delete("checkout");
+  history.replaceState({}, "", location.pathname + (params.toString() ? "?" + params.toString() : ""));
+  const granted = () => {
+    const s = state.me && state.me.subStatus;
+    return s === "trialing" || s === "active" || s === "canceled";
+  };
+  for (let i = 0; i < 8 && !granted(); i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    try {
+      const res = await fetch("api/me");
+      if (!res.ok) continue;
+      state.me = await res.json();
+      renderAccessBanner();
+      if (state.view === "devices") renderDevices();
+    } catch { /* keep polling until the webhook lands */ }
   }
 }
 

@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	standardwebhooks "github.com/standard-webhooks/standard-webhooks/libraries/go"
@@ -94,7 +95,7 @@ func handleBillingCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := userFrom(r)
-	url, err := createPolarCheckout(r.Context(), u.ID)
+	url, err := createPolarCheckout(r.Context(), u.ID, u.Email)
 	if err != nil {
 		log.Printf("billing: checkout create failed for user %d: %v", u.ID, err)
 		http.Error(w, "could not start checkout", http.StatusBadGateway)
@@ -105,15 +106,27 @@ func handleBillingCheckout(w http.ResponseWriter, r *http.Request) {
 
 // createPolarCheckout POSTs to Polar's checkout API (raw HTTP — Polar's Go SDK
 // is archived) and returns the hosted checkout URL.
-func createPolarCheckout(ctx context.Context, userID uint) (string, error) {
+func createPolarCheckout(ctx context.Context, userID uint, email string) (string, error) {
 	ext := strconv.FormatUint(uint64(userID), 10)
 	reqBody := map[string]any{
 		"products":             []string{billing.ProductID},
 		"external_customer_id": ext,
 		"metadata":             map[string]string{"user_id": ext},
 	}
+	// Prefill the payer's email on Polar's page so the account holder doesn't retype
+	// it. Polar (the MoR) receives it either way; this only saves the keystrokes, and
+	// the numeric external_customer_id stays the mapping key — we still never key on email.
+	if email != "" {
+		reqBody["customer_email"] = email
+	}
+	// Mark the return so the dashboard can poll for the just-granted subscription
+	// (the webhook can land a beat after the redirect) instead of needing a manual reload.
 	if billing.SuccessURL != "" {
-		reqBody["success_url"] = billing.SuccessURL
+		sep := "?"
+		if strings.Contains(billing.SuccessURL, "?") {
+			sep = "&"
+		}
+		reqBody["success_url"] = billing.SuccessURL + sep + "checkout=success"
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
