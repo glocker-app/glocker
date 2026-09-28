@@ -228,11 +228,13 @@ var errNoCustomer = errors.New("billing: account has no Polar customer")
 type polarSubscriptionEvent struct {
 	Type string `json:"type"`
 	Data struct {
-		ID               string     `json:"id"`
-		Status           string     `json:"status"`
-		CurrentPeriodEnd time.Time  `json:"current_period_end"`
-		EndsAt           *time.Time `json:"ends_at"`
-		Customer         struct {
+		ID                string     `json:"id"`
+		Status            string     `json:"status"`
+		CancelAtPeriodEnd bool       `json:"cancel_at_period_end"`
+		CurrentPeriodEnd  time.Time  `json:"current_period_end"`
+		EndsAt            *time.Time `json:"ends_at"`
+		ModifiedAt        *time.Time `json:"modified_at"` // for the ordering guard
+		Customer          struct {
 			ExternalID string `json:"external_id"`
 		} `json:"customer"`
 	} `json:"data"`
@@ -300,33 +302,57 @@ func applyBillingEvent(evt polarSubscriptionEvent) error {
 	userID := uint(uid)
 	subID := evt.Data.ID
 
+	// Ordering guard: webhooks can arrive out of order or more than once. Drop any
+	// event older than the last one we applied, so a stale subscription.updated
+	// (status still "active") can't undo a newer cancel/revoke. Equal timestamps
+	// re-apply idempotently; events with no modified_at skip the guard.
+	eventAt := time.Time{}
+	if evt.Data.ModifiedAt != nil {
+		eventAt = *evt.Data.ModifiedAt
+	}
+	if !eventAt.IsZero() {
+		if u, err := db.UserByID(userID); err == nil && !u.SubEventAt.IsZero() && eventAt.Before(u.SubEventAt) {
+			return errIgnoredEvent
+		}
+	}
+
+	// periodEnd prefers ends_at (the concrete access-until on a cancel) over the
+	// rolling current_period_end.
+	periodEnd := func() time.Time {
+		if evt.Data.EndsAt != nil {
+			return *evt.Data.EndsAt
+		}
+		return evt.Data.CurrentPeriodEnd
+	}
+
 	switch evt.Type {
 	case "subscription.created", "subscription.active", "subscription.uncanceled", "subscription.updated":
-		// Grant by the subscription's own status: a card-up-front trial arrives as
-		// "trialing" (subscription.created) and auto-converts to "active" later.
-		// Both grant full access + the paid device cap; any other status here (e.g.
-		// past_due) we leave to the explicit canceled/revoked events below.
+		// A scheduled cancellation arrives as an updated/active event with
+		// cancel_at_period_end set — treat that as canceled, not a fresh grant, so a
+		// re-delivered or reordered updated can't flip a cancel back to active. The
+		// subscriber keeps the paid cap until the period ends (revoked drops it).
+		if evt.Data.CancelAtPeriodEnd {
+			return db.SetSubscription(userID, store.SubStatusCanceled, subID, periodEnd(), billing.PaidDeviceLimit, eventAt)
+		}
+		// Otherwise grant by status: a card-up-front trial arrives as "trialing"
+		// (subscription.created) and auto-converts to "active". Any other status
+		// (e.g. past_due) is left to the explicit canceled/revoked events below.
 		switch evt.Data.Status {
 		case store.SubStatusTrialing:
-			return db.SetSubscription(userID, store.SubStatusTrialing, subID, evt.Data.CurrentPeriodEnd, billing.PaidDeviceLimit)
+			return db.SetSubscription(userID, store.SubStatusTrialing, subID, evt.Data.CurrentPeriodEnd, billing.PaidDeviceLimit, eventAt)
 		case store.SubStatusActive:
-			return db.SetSubscription(userID, store.SubStatusActive, subID, evt.Data.CurrentPeriodEnd, billing.PaidDeviceLimit)
+			return db.SetSubscription(userID, store.SubStatusActive, subID, evt.Data.CurrentPeriodEnd, billing.PaidDeviceLimit, eventAt)
 		default:
 			return errIgnoredEvent
 		}
 	case "subscription.canceled":
-		// Cancellation scheduled: the subscriber keeps access until the period
-		// ends (Polar sends subscription.revoked then). Keep the paid cap, just
-		// record the pending end so the UI can say "cancels on <date>".
-		end := evt.Data.CurrentPeriodEnd
-		if evt.Data.EndsAt != nil {
-			end = *evt.Data.EndsAt
-		}
-		return db.SetSubscription(userID, store.SubStatusCanceled, subID, end, billing.PaidDeviceLimit)
+		// Cancellation scheduled: keep access + the paid cap until the period ends
+		// (Polar sends subscription.revoked then); record the end for "cancels on X".
+		return db.SetSubscription(userID, store.SubStatusCanceled, subID, periodEnd(), billing.PaidDeviceLimit, eventAt)
 	case "subscription.revoked":
 		// Access lost now (cancellation took effect or payment lapsed) — drop the
 		// cap back to the free tier.
-		return db.SetSubscription(userID, store.SubStatusExpired, subID, evt.Data.CurrentPeriodEnd, 0)
+		return db.SetSubscription(userID, store.SubStatusExpired, subID, evt.Data.CurrentPeriodEnd, 0, eventAt)
 	default:
 		return errIgnoredEvent
 	}

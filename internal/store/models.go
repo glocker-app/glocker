@@ -51,6 +51,10 @@ type User struct {
 	SubStatus     string    `json:"subStatus"`      // "" free, "active", "canceled" (access until period end), "expired"
 	SubID         string    `gorm:"index" json:"-"` // opaque provider subscription id; indexed for webhook lookups
 	SubCurrentEnd time.Time `json:"subCurrentEnd"`  // current period end / access-until
+	// SubEventAt is the provider's modified_at of the last webhook we applied. The
+	// webhook handler drops any event older than this so an out-of-order or
+	// re-delivered subscription.updated can't undo a newer cancel/revoke.
+	SubEventAt time.Time `json:"-"`
 }
 
 // VerificationToken is a single-use, expiring token emailed to a new account so

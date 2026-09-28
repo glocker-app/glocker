@@ -18,7 +18,7 @@ func TestSetSubscription(t *testing.T) {
 	end := time.Now().Add(30 * 24 * time.Hour).Round(time.Second)
 
 	// Grant: active subscription with an unlimited paid cap.
-	if err := db.SetSubscription(u.ID, SubStatusActive, "sub_123", end, -1); err != nil {
+	if err := db.SetSubscription(u.ID, SubStatusActive, "sub_123", end, -1, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := db.UserByEmail("sub@x.com")
@@ -30,7 +30,7 @@ func TestSetSubscription(t *testing.T) {
 	}
 
 	// Idempotent: replaying the same grant leaves the same state.
-	if err := db.SetSubscription(u.ID, SubStatusActive, "sub_123", end, -1); err != nil {
+	if err := db.SetSubscription(u.ID, SubStatusActive, "sub_123", end, -1, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = db.UserByEmail("sub@x.com")
@@ -39,7 +39,7 @@ func TestSetSubscription(t *testing.T) {
 	}
 
 	// Revoke: expired drops the cap back to the free tier (0 -> DefaultFreeDevices).
-	if err := db.SetSubscription(u.ID, SubStatusExpired, "sub_123", end, 0); err != nil {
+	if err := db.SetSubscription(u.ID, SubStatusExpired, "sub_123", end, 0, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = db.UserByEmail("sub@x.com")
@@ -51,7 +51,7 @@ func TestSetSubscription(t *testing.T) {
 	}
 
 	// Unknown user is an error, not a silent no-op.
-	if err := db.SetSubscription(99999, SubStatusActive, "x", end, -1); !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := db.SetSubscription(99999, SubStatusActive, "x", end, -1, time.Time{}); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Errorf("unknown user err = %v, want ErrRecordNotFound", err)
 	}
 }

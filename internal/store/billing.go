@@ -43,7 +43,7 @@ func (u *User) HasAccess() bool {
 // revoked. It is idempotent: the same event delivered twice yields the same row,
 // so the MoR re-delivering webhooks is safe. Returns gorm.ErrRecordNotFound if
 // userID matches no account.
-func (db *DB) SetSubscription(userID uint, status, subID string, currentEnd time.Time, deviceLimit int) error {
+func (db *DB) SetSubscription(userID uint, status, subID string, currentEnd time.Time, deviceLimit int, eventAt time.Time) error {
 	// A map (not a struct) so zero values are written too — revoking must set
 	// device_limit back to 0, which struct-based Updates would skip.
 	res := db.Model(&User{}).Where("id = ?", userID).Updates(map[string]any{
@@ -51,6 +51,7 @@ func (db *DB) SetSubscription(userID uint, status, subID string, currentEnd time
 		"sub_id":          subID,
 		"sub_current_end": currentEnd,
 		"device_limit":    deviceLimit,
+		"sub_event_at":    eventAt,
 	})
 	if res.Error != nil {
 		return res.Error
@@ -67,5 +68,7 @@ func (db *DB) SetSubscription(userID uint, status, subID string, currentEnd time
 // deleted at Polar whose revoke webhook never reached here). Returns
 // gorm.ErrRecordNotFound if userID matches no account.
 func (db *DB) ClearSubscription(userID uint) error {
-	return db.SetSubscription(userID, "", "", time.Time{}, 0)
+	// Zero eventAt so any later webhook (which carries a real modified_at) applies
+	// — an admin clear is a manual reset, not part of the provider event stream.
+	return db.SetSubscription(userID, "", "", time.Time{}, 0, time.Time{})
 }

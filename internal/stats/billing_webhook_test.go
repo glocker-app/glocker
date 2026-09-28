@@ -119,3 +119,37 @@ func TestBillingWebhook_UnknownUserAcked(t *testing.T) {
 		t.Fatalf("unknown user: code %d, want 200 (ack)", rec.Code)
 	}
 }
+
+// TestBillingWebhook_CancelStickyAndOrdered guards the two cancel-reliability fixes:
+// a scheduled cancel (updated + cancel_at_period_end) is recorded as canceled, and a
+// stale/reordered updated (older modified_at, still "active") can't flip it back.
+func TestBillingWebhook_CancelStickyAndOrdered(t *testing.T) {
+	mux, sdb, wh := billingMux(t)
+	u, err := sdb.CreateUser("cx@x.com", "longenough1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	uid := strconv.FormatUint(uint64(u.ID), 10)
+	payload := func(evtType, status string, cancel bool, modified string) string {
+		return fmt.Sprintf(`{"type":%q,"data":{"id":"sub_abc","status":%q,"cancel_at_period_end":%v,"current_period_end":"2027-01-01T00:00:00Z","ends_at":"2027-01-01T00:00:00Z","modified_at":%q,"customer":{"external_id":%q}}}`,
+			evtType, status, cancel, modified, uid)
+	}
+
+	if do(mux, signedWebhook(t, wh, payload("subscription.active", "active", false, "2026-01-01T00:00:00Z"))).Code != http.StatusOK {
+		t.Fatal("active webhook failed")
+	}
+	// Cancel scheduled: arrives as updated, status still active, cancel_at_period_end true.
+	if do(mux, signedWebhook(t, wh, payload("subscription.updated", "active", true, "2026-01-02T00:00:00Z"))).Code != http.StatusOK {
+		t.Fatal("cancel-updated webhook failed")
+	}
+	if got, _ := sdb.UserByEmail("cx@x.com"); got.SubStatus != store.SubStatusCanceled {
+		t.Fatalf("after scheduled cancel: status=%q, want canceled", got.SubStatus)
+	}
+	// A stale updated (older modified_at, no cancel flag) must be dropped, not revert.
+	if do(mux, signedWebhook(t, wh, payload("subscription.updated", "active", false, "2026-01-01T12:00:00Z"))).Code != http.StatusOK {
+		t.Fatal("stale webhook should still ack 200")
+	}
+	if got, _ := sdb.UserByEmail("cx@x.com"); got.SubStatus != store.SubStatusCanceled {
+		t.Errorf("stale updated reverted the cancel: status=%q, want canceled", got.SubStatus)
+	}
+}

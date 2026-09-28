@@ -116,7 +116,7 @@ func TestAdminClearSubscription(t *testing.T) {
 	}
 
 	// Give bob an active paid subscription (unlimited devices).
-	if err := sdb.SetSubscription(bob.ID, store.SubStatusActive, "sub_1", time.Now().Add(720*time.Hour), -1); err != nil {
+	if err := sdb.SetSubscription(bob.ID, store.SubStatusActive, "sub_1", time.Now().Add(720*time.Hour), -1, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	bobID := strconv.FormatUint(uint64(bob.ID), 10)

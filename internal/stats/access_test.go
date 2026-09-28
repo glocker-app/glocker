@@ -73,7 +73,7 @@ func TestAccessGate_ReadOnlyWhenLapsed(t *testing.T) {
 	}
 
 	// Grant a trial → writes now allowed.
-	if err := sdb.SetSubscription(uid, store.SubStatusTrialing, "sub_1", time.Now().Add(14*24*time.Hour), -1); err != nil {
+	if err := sdb.SetSubscription(uid, store.SubStatusTrialing, "sub_1", time.Now().Add(14*24*time.Hour), -1, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	if c := ingest(); c != http.StatusOK {
