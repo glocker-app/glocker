@@ -3,11 +3,14 @@ package usage
 import (
 	"context"
 	"time"
+
+	"glocker/internal/config"
 )
 
-// DefaultInterval is the sampling period used when Config.Interval is unset.
-// arbtt samples once a minute; we match that default.
-const DefaultInterval = 60 * time.Second
+// DefaultInterval is the sampling period used when Config.Interval is unset —
+// the same default as the usage_monitor config (arbtt also samples once a
+// minute), taken from there so the two can't drift.
+const DefaultInterval = time.Duration(config.DefaultUsageInterval) * time.Second
 
 // Config controls a Tracker.
 type Config struct {

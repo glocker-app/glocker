@@ -122,7 +122,7 @@ func New(cfg *config.Config) *Syncer {
 	s := &Syncer{
 		url:      strings.TrimRight(orDefault(cfg.Sync.GlockpeekURL, config.DefaultGlockpeekURL), "/"),
 		token:    cfg.Sync.Token,
-		interval: time.Duration(orInt(cfg.Sync.IntervalSeconds, config.DefaultSyncIntervalSeconds)) * time.Second,
+		interval: cfg.Sync.Interval(),
 		client:   &http.Client{Timeout: 30 * time.Second},
 		cursors:  map[string]int64{},
 		resyncCh: make(chan int64, 4),
@@ -674,12 +674,6 @@ func (p Payload) empty() bool {
 
 func orDefault(v, def string) string {
 	if v == "" {
-		return def
-	}
-	return v
-}
-func orInt(v, def int) int {
-	if v <= 0 {
 		return def
 	}
 	return v

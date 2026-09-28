@@ -788,10 +788,7 @@ func startUsageMonitor(cfg *config.Config) {
 	if logFile == "" {
 		logFile = config.DefaultUsageLogFile
 	}
-	interval := time.Duration(um.IntervalSeconds) * time.Second
-	if interval <= 0 {
-		interval = time.Duration(config.DefaultUsageInterval) * time.Second
-	}
+	interval := um.Interval()
 	// Pick a backend for the user's session (Hyprland, GNOME/Wayland or X11;
 	// others degrade gracefully). The daemon runs as root with none of the
 	// session's environment, so point it at the desktop user's runtime dir

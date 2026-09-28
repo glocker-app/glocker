@@ -230,10 +230,7 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 		}
 		// Records sitting in the local logs that the next push will carry.
 		pending := formatSyncCounts(syncer.PendingCounts(cfg, ss.Cursors))
-		interval := time.Duration(cfg.Sync.IntervalSeconds) * time.Second
-		if interval <= 0 {
-			interval = time.Duration(config.DefaultSyncIntervalSeconds) * time.Second
-		}
+		interval := cfg.Sync.Interval()
 		if ss.LastSyncAt.IsZero() {
 			f.row("status", "enabled"+dim(" — nothing pushed yet"))
 			f.row("pending", pending)

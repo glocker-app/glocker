@@ -28,7 +28,7 @@ import (
 func main() {
 	socket := flag.String("socket", config.GlockerSock, "path to the glocker IPC socket")
 	logPath := flag.String("log", config.DefaultHeartbeatLogFile, "path to the heartbeat JSONL log")
-	timeout := flag.Duration("timeout", 3*time.Second, "socket dial/response timeout")
+	timeout := flag.Duration("timeout", time.Duration(config.DefaultHeartbeatTimeoutSeconds)*time.Second, "socket dial/response timeout")
 	flag.Parse()
 
 	// The log line is the source of truth; a down daemon is a normal, expected

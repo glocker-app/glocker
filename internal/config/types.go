@@ -212,9 +212,9 @@ type MindfulUninstallConfig struct {
 // removed on uninstall, exactly when we still want the watchdog recording.
 type HeartbeatConfig struct {
 	Enabled         bool   `yaml:"enabled"`
-	IntervalMinutes int    `yaml:"interval_minutes"` // run cadence (0 → 30)
+	IntervalMinutes int    `yaml:"interval_minutes"` // run cadence (0 → DefaultHeartbeatIntervalMinutes; see Interval)
 	LogFile         string `yaml:"log_file"`         // heartbeat JSONL path (empty → DefaultHeartbeatLogFile)
-	TimeoutSeconds  int    `yaml:"timeout_seconds"`  // socket probe timeout (0 → 3)
+	TimeoutSeconds  int    `yaml:"timeout_seconds"`  // socket probe timeout (0 → DefaultHeartbeatTimeoutSeconds; see Timeout)
 }
 
 // ForbiddenProgram represents a program to be killed during blocking periods.

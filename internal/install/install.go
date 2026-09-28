@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"glocker/internal/config"
 	"glocker/internal/envcheck"
@@ -398,21 +399,15 @@ func installHeartbeat(cfg *config.Config, exePath string) error {
 	}
 	log.Println("✓ glockdoc binary installed")
 
-	// Resolve parameters, falling back to defaults.
-	interval := cfg.Heartbeat.IntervalMinutes
-	if interval <= 0 {
-		interval = 30
-	}
+	// Resolve parameters through the config's resolvers (the one source of the
+	// defaults).
+	interval := int(cfg.Heartbeat.Interval() / time.Minute)
 	logFile := cfg.Heartbeat.LogFile
 	if logFile == "" {
 		logFile = config.DefaultHeartbeatLogFile
 	}
-	timeout := cfg.Heartbeat.TimeoutSeconds
-	if timeout <= 0 {
-		timeout = 3
-	}
-	cmdLine := fmt.Sprintf("%s -socket %s -log %s -timeout %ds",
-		config.GlockdocInstallPath, config.GlockerSock, logFile, timeout)
+	cmdLine := fmt.Sprintf("%s -socket %s -log %s -timeout %s",
+		config.GlockdocInstallPath, config.GlockerSock, logFile, cfg.Heartbeat.Timeout())
 
 	var failures []string
 	for i, s := range watchdogSchedulers {
