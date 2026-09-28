@@ -273,7 +273,13 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 				}
 			}
 			conn.Write([]byte("OK: Uninstall request received\n"))
-			go processUninstallRequest(cfg, reason, note, conn)
+			// Synchronous, not `go`: one command per connection means HandleConnection
+			// returns right after this and its deferred conn.Close() fires. A background
+			// goroutine would then race a closed socket and never deliver COMPLETED (the
+			// client sees EOF and aborts its systemd teardown). Running it here keeps the
+			// socket open until COMPLETED is sent; it ends in os.Exit, so it never falls
+			// through to read a second command.
+			processUninstallRequest(cfg, reason, note, conn)
 		default:
 			conn.Write([]byte("ERROR: Unknown action\n"))
 		}
