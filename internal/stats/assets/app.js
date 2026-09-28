@@ -1827,7 +1827,7 @@ function showDay(dayTs) {
     const list = hits
       .map((h) => {
         const time = new Date(h.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
-        const kind = h.type === "url-keyword" ? "url" : "page";
+        const kind = h.type === "web_access" ? "blocked site" : h.type === "url-keyword" ? "url" : "page";
         return `<div class="hit">
           <span class="ht">${time}</span>
           <span class="hk">${esc(h.keyword)}</span>

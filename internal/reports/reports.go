@@ -26,6 +26,10 @@ type ReportType string
 const (
 	ReportTypeURL     ReportType = "url-keyword"
 	ReportTypeContent ReportType = "content-keyword"
+	// ReportTypeWebAccess is a direct hit on a blocked domain (the local web server
+	// caught a request to it — e.g. curl or a browser). Recorded here so it reaches
+	// glockpeek, not just the in-memory count the lock threshold uses.
+	ReportTypeWebAccess ReportType = "web_access"
 )
 
 // ReportEntry represents a single content/URL report entry.
@@ -74,7 +78,7 @@ func ParseUnblocksLog(path string) ([]UnblockEntry, error) {
 }
 
 // reportLineRegex matches: [2025-11-17 15:35:46] | type:keyword | url | domain
-var reportLineRegex = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \| (url-keyword|content-keyword):([^ |]+) \| ([^ |]+)(?: \| (.+))?$`)
+var reportLineRegex = regexp.MustCompile(`^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\] \| (url-keyword|content-keyword|web_access):([^ |]+) \| ([^ |]+)(?: \| (.+))?$`)
 
 // ParseReportsLog reads and parses the reports log file.
 func ParseReportsLog(path string) ([]ReportEntry, error) {

@@ -62,9 +62,15 @@ func HandleWebTrackingRequest(cfg *config.Config, w http.ResponseWriter, r *http
 		blockingReason := GetBlockingReason(cfg, matchedDomain, time.Now())
 		log.Printf("BLOCKED SITE ACCESS: %s -> matched domain: %s -> reason: %s", host, matchedDomain, blockingReason)
 
-		// Record violation
+		// Record violation. RecordViolation is in-memory only (feeds -status and the
+		// lock threshold); LogBlockedAccess persists it to the reports log so the
+		// syncer ships it to glockpeek too — otherwise blocked-domain hits never
+		// reach the dashboard (only the extension's keyword reports do).
 		if cfg.ViolationTracking.Enabled {
 			monitoring.RecordViolation(cfg, "web_access", host, r.URL.String())
+		}
+		if err := LogBlockedAccess(cfg, host, r.URL.String()); err != nil {
+			slog.Warn("failed to log blocked access to reports", "host", host, "err", err)
 		}
 
 		// Execute the configured command

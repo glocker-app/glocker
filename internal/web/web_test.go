@@ -12,8 +12,40 @@ import (
 	"time"
 
 	"glocker/internal/config"
+	"glocker/internal/reports"
 	"glocker/internal/state"
 )
+
+// TestLogBlockedAccessRoundTrips guards the accountability hole where blocked-domain
+// hits were counted only in memory and never reached glockpeek: what the web server
+// writes for a blocked hit must be exactly what the syncer's parser reads back.
+func TestLogBlockedAccessRoundTrips(t *testing.T) {
+	tmp, err := os.CreateTemp("", "glocker-block-*.log")
+	if err != nil {
+		t.Fatalf("temp file: %v", err)
+	}
+	defer os.Remove(tmp.Name())
+	tmp.Close()
+	cfg := &config.Config{Content: config.ContentConfig{Monitoring: config.ContentMonitoringConfig{LogFile: tmp.Name()}}}
+
+	if err := LogBlockedAccess(cfg, "reddit.com", "https://reddit.com/r/all"); err != nil {
+		t.Fatalf("LogBlockedAccess: %v", err)
+	}
+	entries, err := reports.ParseReportsLog(tmp.Name())
+	if err != nil {
+		t.Fatalf("ParseReportsLog: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("want 1 parsed entry, got %d (the line the parser used to reject)", len(entries))
+	}
+	e := entries[0]
+	if e.Type != reports.ReportTypeWebAccess {
+		t.Errorf("type = %q, want %q", e.Type, reports.ReportTypeWebAccess)
+	}
+	if e.Keyword != "reddit.com" || e.Domain != "reddit.com" || e.URL != "https://reddit.com/r/all" {
+		t.Errorf("parsed = kw:%q dom:%q url:%q", e.Keyword, e.Domain, e.URL)
+	}
+}
 
 func TestHandleKeywordsRequest(t *testing.T) {
 	cfg := &config.Config{

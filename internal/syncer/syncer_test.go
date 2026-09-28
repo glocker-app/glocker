@@ -288,3 +288,24 @@ func TestResyncSignal(t *testing.T) {
 		}
 	}
 }
+
+// TestBlockedAccessReachesSyncPayload closes the loop the accountability hole left
+// open: a blocked-domain hit written to reports.log must appear in the sync payload
+// as a web_access violation. Before the parser learned the type, it was dropped.
+func TestBlockedAccessReachesSyncPayload(t *testing.T) {
+	dir := t.TempDir()
+	c := newCapture(t)
+	write(t, filepath.Join(dir, "reports.log"),
+		"[2025-11-17 15:00:00] | web_access:reddit.com | https://reddit.com/x | reddit.com\n")
+
+	all, _ := testSyncer(c.srv.URL, dir, "", c.srv.Client()).build()
+	if len(all.Violations) != 1 {
+		t.Fatalf("want 1 violation from a blocked-domain hit, got %d", len(all.Violations))
+	}
+	if all.Violations[0].Type != "web_access" {
+		t.Errorf("violation type = %q, want web_access", all.Violations[0].Type)
+	}
+	if all.Violations[0].Domain != "reddit.com" {
+		t.Errorf("violation domain = %q, want reddit.com", all.Violations[0].Domain)
+	}
+}

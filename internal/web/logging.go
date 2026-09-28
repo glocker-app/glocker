@@ -10,8 +10,37 @@ import (
 	"time"
 
 	"glocker/internal/config"
+	"glocker/internal/reports"
 	"glocker/internal/state"
 )
+
+// LogBlockedAccess records a direct hit on a blocked domain to the reports log,
+// in the exact format reports.ParseReportsLog reads, so blocked-site accesses
+// (curl, a browser navigating to a blocked domain) reach glockpeek. Without this
+// they were only counted in memory (for -status and the lock threshold) and never
+// synced. The domain is the "keyword" field so the dashboard can show what was hit.
+func LogBlockedAccess(cfg *config.Config, host, rawURL string) error {
+	logFile := cfg.Content.Monitoring.LogFile
+	if logFile == "" {
+		logFile = config.DefaultReportsLogFile
+	}
+	// The parser splits on " | " and rejects spaces/pipes in the type:keyword and
+	// URL fields, so sanitize to keep the line parseable.
+	clean := func(s string) string { return strings.NewReplacer(" ", "%20", "|", "%7C").Replace(s) }
+	ts := time.Now().Format("2006-01-02 15:04:05")
+	entry := fmt.Sprintf("[%s] | %s:%s | %s | %s\n",
+		ts, reports.ReportTypeWebAccess, clean(host), clean(rawURL), clean(host))
+
+	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open reports log: %w", err)
+	}
+	defer file.Close()
+	if _, err := file.WriteString(entry); err != nil {
+		return fmt.Errorf("failed to write blocked access: %w", err)
+	}
+	return nil
+}
 
 // LogContentReport logs a content monitoring report from the browser extension.
 func LogContentReport(cfg *config.Config, report *state.ContentReport) error {
