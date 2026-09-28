@@ -768,6 +768,7 @@ function defaultWindow() {
   const all = allBounds();
   state.winEnd = all.end;
   state.winStart = Math.max(all.start, startOfDay(all.end) - (DEFAULT_WINDOW_DAYS - 1) * DAY);
+  state.windowLive = true; // pinned to "now" — tracks new data on refresh
 }
 
 // setWindow commits a new selection: clamp into the data extent, enforce a
@@ -779,26 +780,51 @@ function setWindow(start, end) {
   if (e - s < DAY) e = Math.min(all.end, s + DAY);
   state.winStart = s;
   state.winEnd = e;
+  state.windowLive = e >= all.end - LIVE_EPS; // dragged/resized to the live edge?
   saveWindow();
   render();
   loadUsage(); // window changed → fetch that window's usage (all usage views filter by it)
 }
 
 // ── Persisted window (cookie): remember the selection across reloads. ────────
+// A window whose end sits within LIVE_EPS of the data's end is "pinned to now":
+// we persist its DURATION, not an absolute end, so a later visit or an
+// auto-refresh tracks the new "now" instead of freezing the end in the past —
+// which would hide everything recorded since (usage most of all, being newest).
+const LIVE_EPS = 60 * 1000;
+
 function saveWindow() {
   if (state.winStart == null || state.winEnd == null) return;
-  setCookie(WINDOW_COOKIE, `${state.winStart}|${state.winEnd}`, 365);
+  if (state.windowLive) {
+    setCookie(WINDOW_COOKIE, `live|${state.winEnd - state.winStart}`, 365);
+  } else {
+    setCookie(WINDOW_COOKIE, `abs|${state.winStart}|${state.winEnd}`, 365);
+  }
 }
 
-// restoreWindow loads a saved [start,end] clamped to the current data extent,
-// falling back to defaultWindow if absent/unusable. Needs state.data.
+// restoreWindow loads the saved selection, clamped to the current data extent.
+// "live|<dur>" re-pins to now; "abs|<start>|<end>" restores a frozen range;
+// anything else — absent, unusable, or a legacy pre-prefix "<start>|<end>"
+// cookie — resets to the live default (a one-time correction that frees old
+// absolute-end cookies which were hiding new data). Needs state.data.
 function restoreWindow() {
   const all = allBounds();
-  const [a, b] = (getCookie(WINDOW_COOKIE) || "").split("|").map(Number);
-  if (Number.isFinite(a) && Number.isFinite(b) && b > a) {
-    state.winStart = Math.max(all.start, a);
-    state.winEnd = Math.min(all.end, b);
-    if (state.winEnd - state.winStart >= DAY) return;
+  const parts = (getCookie(WINDOW_COOKIE) || "").split("|");
+  if (parts[0] === "live") {
+    const dur = Number(parts[1]);
+    if (Number.isFinite(dur) && dur >= DAY) {
+      state.winEnd = all.end;
+      state.winStart = Math.max(all.start, all.end - dur);
+      state.windowLive = true;
+      return;
+    }
+  } else if (parts[0] === "abs") {
+    const a = Number(parts[1]), b = Number(parts[2]);
+    if (Number.isFinite(a) && Number.isFinite(b) && b > a) {
+      state.winStart = Math.max(all.start, a);
+      state.winEnd = Math.min(all.end, b);
+      if (state.winEnd - state.winStart >= DAY) { state.windowLive = false; return; }
+    }
   }
   defaultWindow();
 }
@@ -829,8 +855,20 @@ function windowBounds() {
 function updateRangeReadout() {
   if (state.winStart == null) return;
   const fmt = (ts) => new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const live = state.winEnd >= allBounds().end - LIVE_EPS;
+  // A frozen end that isn't midnight would read like a full day otherwise, so
+  // show its time; a live end reads "now" so it's never mistaken for a cutoff.
+  let to;
+  if (live) {
+    to = "now";
+  } else {
+    const d = new Date(state.winEnd);
+    to = (d.getHours() === 0 && d.getMinutes() === 0)
+      ? fmt(state.winEnd)
+      : `${fmt(state.winEnd)} ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+  }
   const days = Math.round((state.winEnd - state.winStart) / DAY);
-  const html = `<span class="rr-from">${fmt(state.winStart)}</span><span class="rr-arrow">→</span><span class="rr-to">${fmt(state.winEnd)}</span><span class="rr-days">${days}d</span>`;
+  const html = `<span class="rr-from">${fmt(state.winStart)}</span><span class="rr-arrow">→</span><span class="rr-to">${to}</span><span class="rr-days">${days}d</span>`;
   document.querySelectorAll(".range-readout").forEach((el) => { el.innerHTML = html; el.hidden = false; });
 }
 
@@ -1660,9 +1698,17 @@ async function reloadData() {
     await decryptData(state.data); // decrypt the small stuff (usage is empty here → no jobs)
     state.data.usage = savedUsage; // keep the already-decrypted usage we lazy-loaded
     applyOverlay();                // hide ignored + domain fallback, like initial load
+    // A live window tracks "now": slide it to the new data end so freshly-synced
+    // rows (usage especially) appear on auto-refresh without a manual reload.
+    if (state.windowLive && state.winStart != null) {
+      const dur = state.winEnd - state.winStart;
+      state.winEnd = state.data.now;
+      state.winStart = Math.max(allBounds().start, state.winEnd - dur);
+      saveWindow();
+    }
     render();
     if (state.openDay != null) showDay(state.openDay);
-    loadUsage();                   // refresh the window's usage too
+    loadUsage();                   // refresh the window's usage too (now the advanced window)
   } catch { /* keep current view */ }
 }
 
