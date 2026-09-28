@@ -22,6 +22,7 @@ import (
 func main() {
 	display := flag.String("display", "", "X11 DISPLAY override (empty = $DISPLAY)")
 	dbusAddr := flag.String("dbus", "", "Wayland session-bus address override (empty = $DBUS_SESSION_BUS_ADDRESS)")
+	runtimeDir := flag.String("runtime-dir", "", "session runtime dir, e.g. /run/user/1000 (empty = $XDG_RUNTIME_DIR)")
 	interval := flag.Duration("interval", 0, "capture repeatedly at this interval (0 = once)")
 	flag.Parse()
 
@@ -29,6 +30,7 @@ func main() {
 		Display:     *display,
 		XAuthority:  os.Getenv("XAUTHORITY"),
 		DBusAddress: *dbusAddr,
+		RuntimeDir:  *runtimeDir,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "no usage source: %v\n", err)

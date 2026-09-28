@@ -36,6 +36,7 @@ func TestNewSourceWaylandUnreachableBusDegrades(t *testing.T) {
 	t.Setenv("XDG_SESSION_TYPE", "wayland")
 	t.Setenv("WAYLAND_DISPLAY", "wayland-0")
 	t.Setenv("DISPLAY", "")
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir()) // no real Hyprland/Wayland sockets
 	// A Wayland session whose bus can't be reached must degrade gracefully rather
 	// than fail hard (host-independent, unlike asserting Wayland is unsupported).
 	_, _, err := NewSource(Options{DBusAddress: "unix:path=/nonexistent/glocker-test-bus"})
@@ -48,6 +49,7 @@ func TestNewSourceNoSessionIsUnsupported(t *testing.T) {
 	t.Setenv("XDG_SESSION_TYPE", "")
 	t.Setenv("WAYLAND_DISPLAY", "")
 	t.Setenv("DISPLAY", "")
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	if _, _, err := NewSource(Options{}); !errors.Is(err, ErrUnsupportedSession) {
 		t.Errorf("no-session NewSource err = %v, want ErrUnsupportedSession", err)
 	}

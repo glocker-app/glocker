@@ -2,12 +2,12 @@ package lock
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
+
+	"glocker/internal/utils"
 )
 
 // AdoptSessionEnv fills in the display environment when glocklock is started
@@ -33,7 +33,7 @@ func AdoptSessionEnv() {
 	}
 
 	if os.Getenv("WAYLAND_DISPLAY") == "" && runtimeDir != "" {
-		if name := liveWaylandSocket(runtimeDir); name != "" {
+		if name := utils.LiveWaylandSocket(runtimeDir); name != "" {
 			os.Setenv("WAYLAND_DISPLAY", name)
 			return
 		}
@@ -44,26 +44,6 @@ func AdoptSessionEnv() {
 			os.Setenv("DISPLAY", d)
 		}
 	}
-}
-
-// liveWaylandSocket returns the name of the first wayland-N socket in dir that
-// accepts a connection. Dialing weeds out stale sockets left by a compositor
-// that has exited.
-func liveWaylandSocket(dir string) string {
-	matches, _ := filepath.Glob(filepath.Join(dir, "wayland-*"))
-	sort.Strings(matches)
-	for _, path := range matches {
-		if strings.HasSuffix(path, ".lock") {
-			continue
-		}
-		conn, err := net.DialTimeout("unix", path, time.Second)
-		if err != nil {
-			continue
-		}
-		conn.Close()
-		return filepath.Base(path)
-	}
-	return ""
 }
 
 // localXDisplay returns ":N" for the first X server socket in dir (by name).

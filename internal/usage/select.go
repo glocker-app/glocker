@@ -7,6 +7,8 @@ import (
 	"runtime"
 
 	"github.com/godbus/dbus/v5"
+
+	"glocker/internal/utils"
 )
 
 // ErrUnsupportedSession means no usage backend fits the current session — a
@@ -21,6 +23,10 @@ type Options struct {
 	Display     string // X11 DISPLAY override (empty = $DISPLAY)
 	XAuthority  string // X11 XAUTHORITY override (empty = inherit)
 	DBusAddress string // Wayland session-bus address (empty = $DBUS_SESSION_BUS_ADDRESS)
+	// RuntimeDir is the desktop user's runtime dir (/run/user/<uid>), where the
+	// Wayland and Hyprland sockets live. Empty = $XDG_RUNTIME_DIR. The root
+	// daemon sets it, since it has none of the session's environment.
+	RuntimeDir string
 }
 
 // NewSource picks a Source for the current desktop session and returns it with a
@@ -28,10 +34,9 @@ type Options struct {
 // maps an environment to a backend, hiding the OS and compositor behind the
 // Source interface.
 //
-// Today: Linux/X11 is implemented. A Wayland session is detected but returns
-// ErrUnsupportedSession until its backend lands (and other OSes are future work
-// — add a case to the switch). Detecting the specific Wayland compositor
-// (wlroots/GNOME/KDE) will live inside the Wayland source, not here.
+// Today on Linux: X11, Hyprland (IPC + ext-idle-notify) and GNOME/Wayland (via
+// the glocker Shell extension). Other Wayland compositors return
+// ErrUnsupportedSession; other OSes are future work — add a case to the switch.
 func NewSource(opts Options) (Source, string, error) {
 	switch runtime.GOOS {
 	case "linux":
@@ -64,7 +69,21 @@ func newLinuxSource(opts Options) (Source, string, error) {
 	if opts.XAuthority != "" {
 		os.Setenv("XAUTHORITY", opts.XAuthority)
 	}
-	switch detectLinuxSession(opts) {
+	runtimeDir := opts.RuntimeDir
+	if runtimeDir == "" {
+		runtimeDir = os.Getenv("XDG_RUNTIME_DIR")
+	}
+	// A live Hyprland instance is the most specific signal and needs no
+	// environment, so check it first — before a configured X display, which on
+	// Hyprland would only reach XWayland.
+	if inst, ok := findHyprland(runtimeDir); ok {
+		return newHyprlandSource(runtimeDir, inst), "linux/wayland/hyprland", nil
+	}
+	session := detectLinuxSession(opts)
+	if session != "wayland" && utils.LiveWaylandSocket(runtimeDir) != "" {
+		session = "wayland" // the root daemon sees no WAYLAND_DISPLAY; the socket is the proof
+	}
+	switch session {
 	case "x11":
 		src, err := NewX11SourceDisplay(opts.Display)
 		return src, "linux/x11", err
@@ -78,7 +97,8 @@ func newLinuxSource(opts Options) (Source, string, error) {
 // newWaylandSource sub-selects a Wayland backend by compositor, using the
 // session bus (opts.DBusAddress, or the environment). GNOME is detected by
 // GNOME Shell being on the bus — more reliable than XDG_CURRENT_DESKTOP, which a
-// nested session inherits from its parent. wlroots/KDE come later.
+// nested session inherits from its parent. (Hyprland is picked earlier, in
+// newLinuxSource.) Other wlroots compositors and KDE come later.
 func newWaylandSource(opts Options) (Source, string, error) {
 	conn, err := connectBus(opts.DBusAddress)
 	if err != nil {
@@ -120,4 +140,65 @@ func envOr(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// AutoSource is a Source that selects its backend lazily and re-selects after a
+// failure. The daemon starts at boot, usually before anyone has logged in, and a
+// session can end or its compositor restart at any time, so a backend chosen
+// once at startup would go stale. Each Capture (re)selects if needed. Errors
+// are still returned, but logged only when they change, so a machine with no
+// session doesn't log every interval.
+type AutoSource struct {
+	opts      Options
+	logf      func(string, ...any)
+	newSource func(Options) (Source, string, error) // NewSource; swapped in tests
+
+	cur     Source
+	name    string
+	lastErr string
+}
+
+// NewAutoSource returns an AutoSource; logf receives backend changes/failures.
+func NewAutoSource(opts Options, logf func(string, ...any)) *AutoSource {
+	return &AutoSource{opts: opts, logf: logf, newSource: NewSource}
+}
+
+func (a *AutoSource) Capture() (Sample, error) {
+	if a.cur == nil {
+		src, name, err := a.newSource(a.opts)
+		if err != nil {
+			a.note("usage monitor: no usable backend yet (%v); retrying each interval", err)
+			return Sample{}, err
+		}
+		a.cur, a.name, a.lastErr = src, name, ""
+		a.logf("usage monitor: using %s backend", name)
+	}
+	sample, err := a.cur.Capture()
+	if err != nil {
+		a.note("usage monitor: %s backend failed (%v); re-selecting", a.name, err)
+		a.cur.Close()
+		a.cur = nil
+		return sample, err
+	}
+	a.lastErr = ""
+	return sample, nil
+}
+
+// note logs msg unless it's the same as the previous one.
+func (a *AutoSource) note(format string, args ...any) {
+	msg := fmt.Sprintf(format, args...)
+	if msg != a.lastErr {
+		a.logf("%s", msg)
+		a.lastErr = msg
+	}
+}
+
+// Close releases the current backend, if any.
+func (a *AutoSource) Close() error {
+	if a.cur != nil {
+		err := a.cur.Close()
+		a.cur = nil
+		return err
+	}
+	return nil
 }

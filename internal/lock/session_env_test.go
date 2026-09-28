@@ -2,6 +2,8 @@ package lock
 
 import (
 	"net"
+
+	"glocker/internal/utils"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,10 +30,10 @@ func TestLiveWaylandSocketSkipsStaleAndLock(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "wayland-1.lock"), nil, 0o600)
 	listen(t, filepath.Join(dir, "wayland-1"))
 
-	if got := liveWaylandSocket(dir); got != "wayland-1" {
+	if got := utils.LiveWaylandSocket(dir); got != "wayland-1" {
 		t.Fatalf("liveWaylandSocket = %q, want wayland-1", got)
 	}
-	if got := liveWaylandSocket(t.TempDir()); got != "" {
+	if got := utils.LiveWaylandSocket(t.TempDir()); got != "" {
 		t.Fatalf("empty dir: got %q", got)
 	}
 }

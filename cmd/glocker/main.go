@@ -779,8 +779,8 @@ func main() {
 
 // startUsageMonitor runs the arbtt-style usage tracker for the daemon's
 // lifetime, sampling the focused window + idle time into the configured JSONL
-// log. Failures (e.g. no X access as root) are logged and disable the tracker
-// without bringing down the daemon.
+// log. A missing or unreachable session is logged and retried each interval
+// (see usage.AutoSource); it never brings down the daemon.
 func startUsageMonitor(cfg *config.Config) {
 	um := cfg.UsageMonitor
 
@@ -792,26 +792,27 @@ func startUsageMonitor(cfg *config.Config) {
 	if interval <= 0 {
 		interval = time.Duration(config.DefaultUsageInterval) * time.Second
 	}
-	// Pick a backend for the current session (X11 or GNOME/Wayland; others
-	// degrade gracefully). The daemon runs as root, so it must be pointed at the
-	// user's session: X11 via Display/XAuthority, Wayland via the D-Bus address —
-	// taken from DBusAddress, else derived from the desktop user's uid.
+	// Pick a backend for the user's session (Hyprland, GNOME/Wayland or X11;
+	// others degrade gracefully). The daemon runs as root with none of the
+	// session's environment, so point it at the desktop user's runtime dir
+	// (Wayland/Hyprland sockets) and session bus; X11 uses Display/XAuthority.
+	// The source re-selects on its own: the daemon usually starts before anyone
+	// logs in, and sessions come and go.
+	var runtimeDir string
 	dbusAddr := um.DBusAddress
-	if dbusAddr == "" && cfg.User != "" {
+	if cfg.User != "" {
 		if u, err := user.Lookup(cfg.User); err == nil {
-			dbusAddr = "unix:path=/run/user/" + u.Uid + "/bus"
+			runtimeDir = "/run/user/" + u.Uid
+			if dbusAddr == "" {
+				dbusAddr = "unix:path=" + runtimeDir + "/bus"
+			}
 		} else {
-			log.Printf("usage monitor: cannot resolve user %q for D-Bus (%v)", cfg.User, err)
+			log.Printf("usage monitor: cannot resolve user %q (%v)", cfg.User, err)
 		}
 	}
-	source, backend, err := usage.NewSource(usage.Options{
-		Display: um.Display, XAuthority: um.XAuthority, DBusAddress: dbusAddr,
-	})
-	if err != nil {
-		log.Printf("usage monitor: no usable backend (%v); tracking disabled", err)
-		return
-	}
-	log.Printf("usage monitor: using %s backend", backend)
+	source := usage.NewAutoSource(usage.Options{
+		Display: um.Display, XAuthority: um.XAuthority, DBusAddress: dbusAddr, RuntimeDir: runtimeDir,
+	}, log.Printf)
 	defer source.Close()
 
 	sink, err := usage.NewJSONLFileSink(logFile)
