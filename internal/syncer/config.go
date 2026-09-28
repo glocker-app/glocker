@@ -126,6 +126,10 @@ type accountabilityUpload struct {
 	DigestWhenQuiet  bool     `json:"digestWhenQuiet"`
 	WentDark         bool     `json:"wentDark"`
 	HighViolations   int      `json:"highViolations"`
+	// HeartbeatMinutes is glockdoc's heartbeat cadence, sent so glockpeek can size
+	// its went-dark threshold to the real interval instead of guessing (a fixed
+	// guess shorter than the interval false-alarms on every healthy gap).
+	HeartbeatMinutes int `json:"heartbeatMinutes"`
 }
 
 func accountabilityFromConfig(cfg *config.Config) *accountabilityUpload {
@@ -137,6 +141,7 @@ func accountabilityFromConfig(cfg *config.Config) *accountabilityUpload {
 		DigestWhenQuiet:  n.DigestWhenQuiet,
 		WentDark:         n.Alerts.WentDark,
 		HighViolations:   n.Alerts.HighViolations,
+		HeartbeatMinutes: int(cfg.Heartbeat.Interval() / time.Minute),
 	}
 }
 

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"glocker/internal/config"
 	"glocker/internal/report"
 	"glocker/internal/store"
 )
@@ -25,9 +26,6 @@ type Mailer interface {
 }
 
 const (
-	// darkAfter: an account counts as "dark" once its newest heartbeat is older
-	// than this (a few missed heartbeats, not a single blip).
-	darkAfter = 15 * time.Minute
 	// tickEvery: how often the scheduler wakes to check due digests + alerts.
 	tickEvery = 5 * time.Minute
 	// schedulerLease: how long a node holds fleet leadership. Longer than tickEvery
@@ -35,6 +33,19 @@ const (
 	// within this and another node takes over.
 	schedulerLease = 3 * tickEvery
 )
+
+// darkThreshold is how long since the last heartbeat before an account counts as
+// dark. glockdoc emits a heartbeat every HeartbeatMinutes (reported by the agent;
+// default when unreported), so we allow two missed beats plus one scheduler tick
+// of slack. A fixed threshold shorter than the interval would mark a healthy agent
+// dark for most of every interval and re-alert on each beat.
+func darkThreshold(c store.AccountabilityConfig) time.Duration {
+	m := c.HeartbeatMinutes
+	if m <= 0 {
+		m = config.DefaultHeartbeatIntervalMinutes
+	}
+	return 2*time.Duration(m)*time.Minute + tickEvery
+}
 
 // Scheduler sends the digests and alerts.
 type Scheduler struct {
@@ -125,7 +136,7 @@ func (n *Scheduler) process(c store.AccountabilityConfig, now time.Time) {
 	// recent heartbeat; a fresh heartbeat re-arms it.
 	if c.WentDark {
 		if last, ok := n.db.LatestHeartbeatTS(c.UserID); ok {
-			dark := now.Sub(time.UnixMilli(last)) > darkAfter
+			dark := now.Sub(time.UnixMilli(last)) > darkThreshold(c)
 			if dark && c.LastWentDarkAt <= last {
 				subj, text, html := wentDarkEmail(time.UnixMilli(last), now, who)
 				if n.send(to, subj, text, html) {

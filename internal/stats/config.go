@@ -59,6 +59,7 @@ type accountabilityUpload struct {
 	DigestWhenQuiet  bool     `json:"digestWhenQuiet"`
 	WentDark         bool     `json:"wentDark"`
 	HighViolations   int      `json:"highViolations"`
+	HeartbeatMinutes int      `json:"heartbeatMinutes"`
 }
 
 func handleConfigPost(w http.ResponseWriter, r *http.Request) {
@@ -114,7 +115,7 @@ func handleConfigPost(w http.ResponseWriter, r *http.Request) {
 		if err := db.SaveAccountabilityConfig(uid, store.AccountabilityConfig{
 			Enabled: n.Enabled, BuddyEmails: store.EncodeBuddies(n.BuddyEmails),
 			DigestEveryHours: n.DigestEveryHours, DigestWhenQuiet: n.DigestWhenQuiet,
-			WentDark: n.WentDark, HighViolations: n.HighViolations,
+			WentDark: n.WentDark, HighViolations: n.HighViolations, HeartbeatMinutes: n.HeartbeatMinutes,
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

@@ -336,3 +336,17 @@ func TestRunSyncsConfig(t *testing.T) {
 		t.Fatal("Run() never uploaded a config snapshot — the syncConfig call is missing from Run")
 	}
 }
+
+// Bug 4: the agent must report glockdoc's heartbeat cadence so glockpeek sizes its
+// went-dark threshold to the real interval instead of a fixed guess.
+func TestAccountabilityUploadCarriesHeartbeatInterval(t *testing.T) {
+	c := &config.Config{}
+	c.Heartbeat.IntervalMinutes = 45
+	if got := accountabilityFromConfig(c).HeartbeatMinutes; got != 45 {
+		t.Fatalf("want 45, got %d", got)
+	}
+	// Unset falls back to the single default (never 0, which glockpeek reads as "unreported").
+	if got := accountabilityFromConfig(&config.Config{}).HeartbeatMinutes; got != config.DefaultHeartbeatIntervalMinutes {
+		t.Fatalf("want default %d, got %d", config.DefaultHeartbeatIntervalMinutes, got)
+	}
+}

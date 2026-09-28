@@ -133,12 +133,41 @@ func TestDigestHighViolationsFlag(t *testing.T) {
 }
 
 // went_dark fires once per dark episode and re-arms after a fresh heartbeat.
+// A healthy agent whose heartbeat is younger than a couple of its own intervals
+// must NOT be marked dark — the bug was a fixed 15m threshold firing on every
+// gap of a 30m-interval agent.
+func TestWentDarkRespectsHeartbeatInterval(t *testing.T) {
+	db := newDB(t)
+	const uid = 1
+	now := time.Now().UTC()
+	// 30-min interval → threshold 65m. A 20-min-old beat is healthy.
+	set := func(c *store.AccountabilityConfig) { c.WentDark = true; c.HeartbeatMinutes = 30 }
+
+	_ = db.IngestHeartbeats(uid, 0, []store.Heartbeat{{TS: now.Add(-20 * time.Minute).UnixMilli(), Alive: true}})
+	_ = db.SaveAccountabilityConfig(uid, cfg(uid, set))
+	fm := &fakeMailer{}
+	n := fixedNotifier(db, fm, now)
+	n.tick(now)
+	if len(fm.sent) != 0 {
+		t.Fatalf("healthy agent (20m < 65m threshold) must not alert, got %+v", fm.sent)
+	}
+
+	// No fresh heartbeat; advance the clock past two intervals → genuinely dark.
+	later := now.Add(50 * time.Minute) // the 20m-old beat is now 70m old (> 65m)
+	n.now = func() time.Time { return later }
+	n.tick(later)
+	if len(fm.sent) != 1 {
+		t.Fatalf("70m > 65m threshold should alert once, got %d", len(fm.sent))
+	}
+}
+
 func TestWentDarkOncePerEpisode(t *testing.T) {
 	db := newDB(t)
 	const uid = 1
 	now := time.Now().UTC()
 	_ = db.IngestHeartbeats(uid, 0, []store.Heartbeat{{TS: now.Add(-30 * time.Minute).UnixMilli(), Alive: true}})
-	_ = db.SaveAccountabilityConfig(uid, cfg(uid, func(c *store.AccountabilityConfig) { c.WentDark = true }))
+	// 5-min heartbeat interval → dark threshold 2*5+5 = 15m, so 30m of silence is dark.
+	_ = db.SaveAccountabilityConfig(uid, cfg(uid, func(c *store.AccountabilityConfig) { c.WentDark = true; c.HeartbeatMinutes = 5 }))
 
 	fm := &fakeMailer{}
 	n := fixedNotifier(db, fm, now)

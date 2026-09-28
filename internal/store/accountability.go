@@ -22,6 +22,9 @@ type AccountabilityConfig struct {
 	DigestWhenQuiet  bool   `json:"digestWhenQuiet"`
 	WentDark         bool   `json:"wentDark"`
 	HighViolations   int    `json:"highViolations"`
+	// HeartbeatMinutes is glockdoc's heartbeat cadence (from the agent's config),
+	// used to size the went-dark threshold. 0 = not reported (older agent).
+	HeartbeatMinutes int `json:"heartbeatMinutes"`
 	UpdatedAt        time.Time
 
 	// Scheduler bookkeeping (throttle / dedupe) — written by glockpeek, never by
@@ -50,7 +53,8 @@ func (db *DB) SaveAccountabilityConfig(userID uint, n AccountabilityConfig) erro
 		Columns: []clause.Column{{Name: "user_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"enabled", "buddy_emails", "digest_every_hours",
-			"digest_when_quiet", "went_dark", "high_violations", "updated_at",
+			"digest_when_quiet", "went_dark", "high_violations",
+			"heartbeat_minutes", "updated_at",
 		}),
 	}).Create(&n).Error
 }
