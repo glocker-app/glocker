@@ -198,14 +198,27 @@ func handleUsage(w http.ResponseWriter, r *http.Request) {
 func dataWindow(r *http.Request, now time.Time) (from, to int64) {
 	q := r.URL.Query()
 	if q.Has("from") {
-		from, _ = strconv.ParseInt(q.Get("from"), 10, 64)
+		from = parseMillis(q.Get("from"))
 	} else {
 		from = now.AddDate(0, 0, -statsWindowDays).UnixMilli()
 	}
-	if v := q.Get("to"); v != "" {
-		to, _ = strconv.ParseInt(v, 10, 64)
-	}
+	to = parseMillis(q.Get("to"))
 	return from, to
+}
+
+// parseMillis reads a millisecond timestamp that may arrive fractional (the
+// dashboard's brush maps pixels→ms). Integer-only parsing would fail on the
+// decimal and silently fall back to 0 (= unbounded), collapsing every window to
+// all-history — so parse as a float and truncate. Blank/invalid → 0.
+func parseMillis(s string) int64 {
+	if s == "" {
+		return 0
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0
+	}
+	return int64(f)
 }
 
 func handleHealth(w http.ResponseWriter, r *http.Request) {

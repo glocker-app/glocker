@@ -1673,7 +1673,9 @@ async function reloadData() {
 async function loadUsage() {
   if (state.winStart == null) return;
   try {
-    const res = await fetch(`api/usage?from=${state.winStart}&to=${state.winEnd}`);
+    // Round: brush positions map pixels→ms and can be fractional; the API expects
+    // integer millisecond bounds.
+    const res = await fetch(`api/usage?from=${Math.floor(state.winStart)}&to=${Math.ceil(state.winEnd)}`);
     if (!res.ok) return;
     const u = await res.json();
     await decryptData(u); // decrypts u.usage in place (same job collector as the initial data)
