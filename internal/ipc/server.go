@@ -371,7 +371,7 @@ func processUninstallRequest(cfg *config.Config, reason, note string, conn net.C
 	}
 
 	// Restore system changes
-	if err := install.RestoreSystemChanges(cfg); err != nil {
+	if err := uninstallRestore(cfg); err != nil {
 		log.Printf("ERROR: Failed to restore system changes: %v", err)
 		conn.Write([]byte(fmt.Sprintf("ERROR: Failed to restore system: %v\n", err)))
 		return
@@ -386,5 +386,12 @@ func processUninstallRequest(cfg *config.Config, reason, note string, conn net.C
 	log.Println("Uninstall complete. Exiting daemon.")
 
 	// Exit daemon
-	os.Exit(0)
+	uninstallExit(0)
 }
+
+// Injection points so the uninstall handshake can be exercised in a test without
+// restoring the real system or terminating the test process.
+var (
+	uninstallRestore = install.RestoreSystemChanges
+	uninstallExit    = os.Exit
+)
