@@ -145,6 +145,49 @@ paths:
                     type: object
                     additionalProperties:
                       type: string
+  /api/admin/metrics:
+    get:
+      summary: Live server and database health (admin-only)
+      description: >
+        JSON operational snapshot for the admin dashboard: process uptime/build and
+        the database connection-pool stats + a live ping. Admin-gated (the configured
+        admin account only). The same numbers are exposed as Prometheus text at /metrics.
+      operationId: getAdminMetrics
+      responses:
+        "200":
+          description: Metrics snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uptimeSeconds:
+                    type: integer
+                    format: int64
+                  version:
+                    type: string
+                  db:
+                    type: object
+                    properties:
+                      up:
+                        type: boolean
+                      pingSeconds:
+                        type: number
+                      open:
+                        type: integer
+                      inUse:
+                        type: integer
+                      idle:
+                        type: integer
+                      max:
+                        type: integer
+                      waitCount:
+                        type: integer
+                        format: int64
+                      waitSeconds:
+                        type: number
+        "403":
+          description: Not an admin account
   /api/tags:
     get:
       summary: The account's tag registry

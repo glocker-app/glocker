@@ -22,7 +22,7 @@ const VIEW_TITLES = {
   insights: "Insights",
   config: "Config",
   devices: "Devices",
-  users: "Admin",
+  admin: "Admin",
 };
 
 // Cookie key for the persisted time window. Declared here (before init runs) so
@@ -703,7 +703,7 @@ function setView(view) {
   if (view === "config") renderConfig();
   if (view === "insights") renderInsights();
   if (view === "devices") renderDevices();
-  if (view === "users") renderUsers();
+  if (view === "admin") { renderAdminMetrics(); renderUsers(); }
   // Charts built while their view was display:none have zero size; fix on reveal.
   requestAnimationFrame(() => {
     for (const c of Object.values(state.charts)) {
@@ -3351,6 +3351,40 @@ function fmtDur(ms) {
 }
 
 // ── Admin: accounts panel (only mounted for the configured admin) ───────
+// Admin-only live server/DB health, from /api/admin/metrics (the JSON twin of the
+// scraper's /metrics). Rendered on each visit to the Admin view.
+async function renderAdminMetrics() {
+  const el = document.getElementById("admin-metrics");
+  const errEl = document.getElementById("admin-metrics-error");
+  if (!el) return;
+  if (errEl) errEl.hidden = true;
+  let m;
+  try {
+    const res = await fetch("api/admin/metrics");
+    if (!res.ok) throw new Error(res.status);
+    m = await res.json();
+  } catch (e) {
+    el.innerHTML = "";
+    if (errEl) { errEl.textContent = `Could not load metrics (${e.message})`; errEl.hidden = false; }
+    return;
+  }
+  const d = m.db || {};
+  const ms = (s) => `${Math.round((s || 0) * 1000)} ms`;
+  const cards = [
+    { k: "Database", v: d.up ? "up" : "down", sub: `ping ${ms(d.pingSeconds)}`, cls: d.up ? "safe" : "alarm" },
+    { k: "Connections", v: `${d.inUse ?? 0} / ${d.max ?? 0}`, sub: `${d.open ?? 0} open · ${d.idle ?? 0} idle` },
+    { k: "Pool waits", v: (d.waitCount ?? 0).toLocaleString(), sub: `${(d.waitSeconds ?? 0).toFixed(1)}s waited`, cls: d.waitCount > 0 ? "peak" : "" },
+    { k: "Uptime", v: fmtDur((m.uptimeSeconds || 0) * 1000), sub: `build ${m.version || "?"}` },
+  ];
+  el.innerHTML = cards
+    .map((c) => `<div class="stat ${c.cls || ""}">
+      <div class="k">${c.k}</div>
+      <div class="v" style="font-size:22px">${esc(String(c.v))}</div>
+      <div class="sub">${esc(c.sub)}</div>
+    </div>`)
+    .join("");
+}
+
 async function renderUsers() {
   const listEl = document.getElementById("user-list");
   const countEl = document.getElementById("user-count");

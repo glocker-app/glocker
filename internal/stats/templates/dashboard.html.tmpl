@@ -52,7 +52,7 @@
 
         <!-- Admin (only when the account is an admin) -->
         <ul class="nav">
-          <li id="nav-users" class="nav-admin" hidden><button data-view="users">Admin</button></li>
+          <li id="nav-users" class="nav-admin" hidden><button data-view="admin">Admin</button></li>
         </ul>
       </div>
 
@@ -399,7 +399,15 @@
           </div>
         </section>
 
-        <section class="view" data-view="users">
+        <section class="view" data-view="admin">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>System</h2>
+              <p class="panel-sub">Live server and database health. Admin-only.</p>
+            </div>
+            <div id="admin-metrics" class="readout"></div>
+            <p id="admin-metrics-error" class="login-error" hidden></p>
+          </section>
           <section class="panel">
             <div class="panel-head">
               <h2>Accounts</h2>

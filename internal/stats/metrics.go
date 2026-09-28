@@ -1,6 +1,7 @@
 package stats
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -45,4 +46,46 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Fprintf(w, "glockpeek_db_up %d\n", up)
 	fmt.Fprintf(w, "glockpeek_db_ping_seconds %f\n", time.Since(t0).Seconds())
+}
+
+// adminMetricsJSON is the same operational snapshot as handleMetrics, but as JSON
+// for the admin dashboard panel. The text form (handleMetrics) stays for scrapers.
+type adminMetricsJSON struct {
+	UptimeSeconds int64  `json:"uptimeSeconds"`
+	Version       string `json:"version"`
+	DB            struct {
+		Up          bool    `json:"up"`
+		PingSeconds float64 `json:"pingSeconds"`
+		Open        int     `json:"open"`
+		InUse       int     `json:"inUse"`
+		Idle        int     `json:"idle"`
+		Max         int     `json:"max"`
+		WaitCount   int64   `json:"waitCount"`
+		WaitSeconds float64 `json:"waitSeconds"`
+	} `json:"db"`
+}
+
+// handleAdminMetricsJSON renders the same snapshot as /metrics in JSON, for the
+// /admin panel. Admin-gated (mounted behind requireAdmin).
+func handleAdminMetricsJSON(w http.ResponseWriter, r *http.Request) {
+	var m adminMetricsJSON
+	m.UptimeSeconds = int64(time.Since(startTime).Seconds())
+	m.Version = buildVersion
+	if db != nil {
+		if sqlDB, err := db.DB.DB(); err == nil {
+			s := sqlDB.Stats()
+			m.DB.Open = s.OpenConnections
+			m.DB.InUse = s.InUse
+			m.DB.Idle = s.Idle
+			m.DB.Max = s.MaxOpenConnections
+			m.DB.WaitCount = s.WaitCount
+			m.DB.WaitSeconds = s.WaitDuration.Seconds()
+			t0 := time.Now()
+			m.DB.Up = sqlDB.PingContext(r.Context()) == nil
+			m.DB.PingSeconds = time.Since(t0).Seconds()
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(m)
 }

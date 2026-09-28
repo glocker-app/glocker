@@ -122,9 +122,13 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 		}
 		serveShell(w, r)
 	})
-	for _, p := range []string{"/overview", "/analytics", "/analytics/", "/insights", "/config", "/devices", "/users"} {
+	for _, p := range []string{"/overview", "/analytics", "/analytics/", "/insights", "/config", "/devices", "/admin"} {
 		mux.HandleFunc(p, serveShell)
 	}
+	// The admin view moved from /users to /admin; keep the old deep link working.
+	mux.HandleFunc("/users", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/admin", http.StatusFound)
+	})
 	// Fleet-shared per-IP limits (DB-backed). Login: 10/min (blunt guessing, room
 	// for typos). Register: 3 per 10 min (unauthenticated + sends real mail).
 	mux.HandleFunc("/api/login", rateLimited("login", 10, time.Minute, handleLogin))
@@ -155,8 +159,10 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 
 	// Admin-gated: account management (only the configured admin account).
 	mux.HandleFunc("/api/admin/users", requireAdmin(handleAdminUsers))
-	// Admin-gated operational metrics (DB pool saturation, ping, uptime).
+	// Admin-gated operational metrics (DB pool saturation, ping, uptime): the text
+	// form for scrapers, the JSON form for the /admin dashboard panel.
 	mux.HandleFunc("/metrics", requireAdmin(handleMetrics))
+	mux.HandleFunc("/api/admin/metrics", requireAdmin(handleAdminMetricsJSON))
 
 	// Session-gated: start a checkout for the paid tier. Only when billing is on.
 	if billingEnabled {
