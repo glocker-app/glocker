@@ -143,6 +143,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	mux.HandleFunc("/api/me", requireUser(handleMe))
 	mux.HandleFunc("/api/logout", requireUser(handleLogout))
 	mux.HandleFunc("/api/data", requireUser(handleData))
+	mux.HandleFunc("/api/usage", requireUser(handleUsage))
 	mux.HandleFunc("/api/health", requireUser(handleHealth))
 	mux.HandleFunc("/api/rules", requireUser(handleRules))
 	mux.HandleFunc("/api/tags", requireUser(handleTags))
@@ -170,15 +171,25 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	mux.HandleFunc("/api/test-email", requireToken(handleTestEmail))
 }
 
-// statsWindowDays bounds /api/data by default so a single account's whole
-// history isn't materialised in memory per request on a small node. A client can
-// widen it with ?from=<ms>&to=<ms> (from=0 = all history).
+// handleData serves the all-history overview payload (violations, unblocks,
+// lifecycle, exposure) — everything except the high-volume usage table, which is
+// lazy-loaded and windowed via /api/usage. This keeps the first-paint payload
+// small on accounts with a lot of usage telemetry.
+func handleData(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, buildData(db, userFrom(r).ID, time.Now()))
+}
+
+// statsWindowDays bounds /api/usage by default so a burst of dashboards can't each
+// materialise an account's whole usage history on a small node. The client passes
+// ?from=<ms>&to=<ms> for the range it's showing; absent `from` defaults to
+// now-statsWindowDays, and from=0 means all history.
 const statsWindowDays = 400
 
-func handleData(w http.ResponseWriter, r *http.Request) {
+// handleUsage serves usage samples for the requested window (?from&to, millis).
+func handleUsage(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	from, to := dataWindow(r, now)
-	writeJSON(w, buildData(db, userFrom(r).ID, now, from, to))
+	writeJSON(w, buildUsage(db, userFrom(r).ID, now, from, to))
 }
 
 // dataWindow reads the [from,to] millisecond window from the query. Absent `from`

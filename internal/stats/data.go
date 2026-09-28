@@ -78,11 +78,15 @@ type dataResponse struct {
 
 // buildData assembles the dashboard payload from the glockpeek DB (populated by
 // the syncer). Times are epoch milliseconds; every slice is sorted ascending;
-// Sources reflect whether each table has rows. from/to (millis, 0 = unbounded)
-// window the high-volume rows (violations, unblocks, usage) so the whole history
-// isn't materialised per request; lifecycle stays full because an uninstall
-// before the window can still be an open unmanaged span.
-func buildData(db *store.DB, userID uint, now time.Time, from, to int64) dataResponse {
+// Sources reflect whether each table has rows.
+//
+// Usage is NOT included here — it's the high-volume table (a row per window
+// change, all fields encrypted), so it's fetched separately and windowed via
+// /api/usage (buildUsage). This keeps the first-paint payload small: the
+// all-history overview (violations, unblocks, lifecycle, exposure) loads without
+// dragging the whole usage history along. Sources.Usage still reports whether any
+// usage exists, so the client knows to lazy-load it.
+func buildData(db *store.DB, userID uint, now time.Time) dataResponse {
 	resp := dataResponse{
 		Now:        now.UnixMilli(),
 		Violations: []violationJSON{},
@@ -101,7 +105,7 @@ func buildData(db *store.DB, userID uint, now time.Time, from, to int64) dataRes
 	// applied in the browser now — so this endpoint never reads violation
 	// content. That's the prerequisite for serving ciphertext blobs here under
 	// E2E (see docs/e2e-design.md): the server stays content-blind.
-	if rows, err := db.ViolationsRange(userID, from, to); err == nil {
+	if rows, err := db.Violations(userID); err == nil {
 		resp.Sources.Reports = len(rows) > 0
 		for _, e := range rows {
 			resp.Violations = append(resp.Violations, violationJSON{
@@ -110,7 +114,7 @@ func buildData(db *store.DB, userID uint, now time.Time, from, to int64) dataRes
 		}
 	}
 
-	if rows, err := db.UnblocksRange(userID, from, to); err == nil {
+	if rows, err := db.Unblocks(userID); err == nil {
 		resp.Sources.Unblocks = len(rows) > 0
 		for _, e := range rows {
 			resp.Unblocks = append(resp.Unblocks, unblockJSON{
@@ -159,27 +163,48 @@ func buildData(db *store.DB, userID uint, now time.Time, from, to int64) dataRes
 		}
 	}
 
-	if rows, err := db.UsageSamplesRange(userID, from, to); err == nil {
-		resp.Sources.Usage = len(rows) > 0
-		for _, s := range rows {
-			us := usageSample{TS: s.TS, DeviceID: s.DeviceID, IdleMS: s.IdleMS, WindowCount: s.WindowCount}
-			if s.ActiveClass != "" || s.ActiveInstance != "" || s.ActiveTitle != "" {
-				us.Active = &usageActive{Class: s.ActiveClass, Instance: s.ActiveInstance, Title: s.ActiveTitle}
-			}
-			resp.Usage = append(resp.Usage, us)
-		}
+	// Usage isn't loaded here (see the doc comment) — just report whether any
+	// exists, so the client knows to lazy-load it via /api/usage.
+	if has, err := db.UsageExists(userID); err == nil {
+		resp.Sources.Usage = has
 	}
 
 	// Rows come back TS-ascending from the store, but keep the guarantee explicit.
 	sort.Slice(resp.Violations, func(i, j int) bool { return resp.Violations[i].TS < resp.Violations[j].TS })
 	sort.Slice(resp.Unblocks, func(i, j int) bool { return resp.Unblocks[i].TS < resp.Unblocks[j].TS })
 	sort.Slice(resp.Lifecycle, func(i, j int) bool { return resp.Lifecycle[i].TS < resp.Lifecycle[j].TS })
-	sort.Slice(resp.Usage, func(i, j int) bool { return resp.Usage[i].TS < resp.Usage[j].TS })
 	// Per-device grouping above used maps (non-deterministic order); sort by start.
 	sort.Slice(resp.Unmanaged, func(i, j int) bool { return resp.Unmanaged[i].Start < resp.Unmanaged[j].Start })
 	sort.Slice(resp.Downtime, func(i, j int) bool { return resp.Downtime[i].Start < resp.Downtime[j].Start })
 
 	return resp
+}
+
+// usageResponse is the lazy-loaded, windowed usage payload (/api/usage). It's
+// split from /api/data because usage is the high-volume, fully-encrypted table;
+// the dashboard fetches only the window it's showing.
+type usageResponse struct {
+	Now   int64         `json:"now"`
+	Usage []usageSample `json:"usage"`
+}
+
+// buildUsage returns usage samples within [from,to] (millis; 0 = unbounded).
+func buildUsage(db *store.DB, userID uint, now time.Time, from, to int64) usageResponse {
+	out := usageResponse{Now: now.UnixMilli(), Usage: []usageSample{}}
+	if db == nil {
+		return out
+	}
+	if rows, err := db.UsageSamplesRange(userID, from, to); err == nil {
+		for _, s := range rows {
+			us := usageSample{TS: s.TS, DeviceID: s.DeviceID, IdleMS: s.IdleMS, WindowCount: s.WindowCount}
+			if s.ActiveClass != "" || s.ActiveInstance != "" || s.ActiveTitle != "" {
+				us.Active = &usageActive{Class: s.ActiveClass, Instance: s.ActiveInstance, Title: s.ActiveTitle}
+			}
+			out.Usage = append(out.Usage, us)
+		}
+		sort.Slice(out.Usage, func(i, j int) bool { return out.Usage[i].TS < out.Usage[j].TS })
+	}
+	return out
 }
 
 // unmanagedPeriods pairs each uninstall with the next install; an open span

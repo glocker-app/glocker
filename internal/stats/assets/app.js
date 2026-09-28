@@ -649,6 +649,7 @@ async function bootDashboard(me) {
   setupRules();
   renderFooter();
   render();
+  loadUsage();             // usage is lazy-loaded + windowed (see loadUsage); fills in behind the first paint
   migrateLegacyHash();     // turn an old #usage-style bookmark into the clean URL
   setView(viewFromPath()); // honour a deep-linked path like /analytics/usage on load
 }
@@ -779,6 +780,7 @@ function setWindow(start, end) {
   state.winEnd = e;
   saveWindow();
   render();
+  loadUsage(); // window changed → fetch that window's usage (all usage views filter by it)
 }
 
 // ── Persisted window (cookie): remember the selection across reloads. ────────
@@ -1652,12 +1654,33 @@ async function reloadData() {
     } catch { /* keep current ignore list */ }
     const res = await fetch("api/data");
     if (!res.ok) return;
+    const savedUsage = state.data.usage || []; // /api/data no longer carries usage
     state.data = await res.json();
-    await decryptData(state.data); // same in-browser decrypt as the initial load
+    await decryptData(state.data); // decrypt the small stuff (usage is empty here → no jobs)
+    state.data.usage = savedUsage; // keep the already-decrypted usage we lazy-loaded
     applyOverlay();                // hide ignored + domain fallback, like initial load
     render();
     if (state.openDay != null) showDay(state.openDay);
+    loadUsage();                   // refresh the window's usage too
   } catch { /* keep current view */ }
+}
+
+// loadUsage fetches the CURRENT window's usage samples, decrypts them, and
+// re-renders. Usage is the high-volume, fully-encrypted table, so it's split out
+// of /api/data (which serves the small all-history overview) and windowed here —
+// keeping the first paint light. Every usage view already filters by the window,
+// so loading just the window's rows is correct.
+async function loadUsage() {
+  if (state.winStart == null) return;
+  try {
+    const res = await fetch(`api/usage?from=${state.winStart}&to=${state.winEnd}`);
+    if (!res.ok) return;
+    const u = await res.json();
+    await decryptData(u); // decrypts u.usage in place (same job collector as the initial data)
+    state.data.usage = u.usage || [];
+    render();
+    if (state.openDay != null) showDay(state.openDay);
+  } catch { /* keep current usage */ }
 }
 
 async function ignoreViolation(entry) {

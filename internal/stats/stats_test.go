@@ -284,14 +284,34 @@ func TestIngestThenData(t *testing.T) {
 	if len(d.Violations) != 1 || d.Violations[0].Keyword != "porn" {
 		t.Errorf("violations = %+v", d.Violations)
 	}
-	if len(d.Usage) != 1 || d.Usage[0].Active == nil || d.Usage[0].Active.Class != "kitty" {
-		t.Errorf("usage = %+v", d.Usage)
+	// Usage is no longer in /api/data (it's lazy-loaded, windowed, via /api/usage);
+	// /api/data only reports that it exists.
+	if len(d.Usage) != 0 {
+		t.Errorf("/api/data should not carry usage rows, got %+v", d.Usage)
+	}
+	if !d.Sources.Usage {
+		t.Errorf("sources.usage should be true when usage exists")
 	}
 	if len(d.Unmanaged) != 1 || d.Unmanaged[0].Reason != "temp" {
 		t.Errorf("unmanaged = %+v", d.Unmanaged)
 	}
 	if !strings.Contains(rec.Body.String(), `"unblocks":[]`) {
 		t.Errorf("empty unblocks should be [] not null")
+	}
+
+	// Usage comes from /api/usage, windowed.
+	ureq := httptest.NewRequest("GET", "/api/usage?from=0", nil)
+	ureq.AddCookie(cookie)
+	urec := do(mux, ureq)
+	if urec.Code != http.StatusOK {
+		t.Fatalf("usage: %d", urec.Code)
+	}
+	var u usageResponse
+	if err := json.Unmarshal(urec.Body.Bytes(), &u); err != nil {
+		t.Fatal(err)
+	}
+	if len(u.Usage) != 1 || u.Usage[0].Active == nil || u.Usage[0].Active.Class != "kitty" {
+		t.Errorf("usage = %+v", u.Usage)
 	}
 }
 
@@ -404,11 +424,11 @@ func TestSyncStatus(t *testing.T) {
 }
 
 type apiRule struct {
-	ID      uint   `json:"id"`
-	Position int   `json:"position"`
-	Program string `json:"program"`
-	Title   string `json:"title"`
-	TagIDs  []uint `json:"tagIds"`
+	ID       uint   `json:"id"`
+	Position int    `json:"position"`
+	Program  string `json:"program"`
+	Title    string `json:"title"`
+	TagIDs   []uint `json:"tagIds"`
 }
 
 func TestRulesGetPut(t *testing.T) {

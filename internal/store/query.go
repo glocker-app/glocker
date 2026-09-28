@@ -96,6 +96,14 @@ func (db *DB) UsageSamplesRange(userID uint, from, to int64) ([]UsageSample, err
 	return out, err
 }
 
+// UsageExists reports whether the account has any usage rows, without loading
+// them — for the sources flag on /api/data (usage itself is lazy-loaded).
+func (db *DB) UsageExists(userID uint) (bool, error) {
+	var n int64
+	err := db.Model(&UsageSample{}).Where("user_id = ?", userID).Limit(1).Count(&n).Error
+	return n > 0, err
+}
+
 func (db *DB) Heartbeats(userID uint) ([]Heartbeat, error) {
 	var out []Heartbeat
 	err := db.Where("user_id = ?", userID).Order("ts asc").Find(&out).Error
