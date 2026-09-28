@@ -57,7 +57,10 @@ func main() {
 		backgroundImage = *background
 	}
 
-	// Pick the backend for the current session (X11 or Wayland) and lock.
+	// Pick the backend for the current session (X11 or Wayland) and lock. When
+	// launched via `sudo -u <user>` the session env is stripped, so recover it
+	// first — otherwise a Wayland desktop gets a bypassable X11 lock.
+	lock.AdoptSessionEnv()
 	locker, err := lock.Select(lock.Config{
 		Duration:        effectiveDuration,
 		Message:         *message,
