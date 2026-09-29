@@ -67,13 +67,13 @@ deploy-full: deploy deploy-extension ## Full deploy: dashboard binary + extensio
 # /etc/glocker/glockpeek.yaml), without touching the running service. Migrations
 # are additive/backward-compatible, so the old code keeps serving on the new schema
 # until `deploy` rolls the binary.
-migrate: ## Apply DB migrations on the box (run before deploy; server no longer migrates on boot)
+migrate: ## Apply DB migrations on the box (runs automatically before deploy; server no longer migrates on boot)
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make migrate DEPLOY_HOST=my.example.com"; exit 1; }
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o dist/glockpeek ./cmd/glockpeek
 	scp dist/glockpeek $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.migrate
 	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo -u glockpeek /tmp/glockpeek.migrate -migrate && rm -f /tmp/glockpeek.migrate'
 
-deploy: ## Deploy the glockpeek dashboard binary + server config to the VPS
+deploy: migrate ## Migrate the DB (idempotent), then deploy the glockpeek binary + server config to the VPS
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy DEPLOY_HOST=my.example.com"; exit 1; }
 	@test -f $(GLOCKPEEK_CONF) || { echo "$(GLOCKPEEK_CONF) not found (gitignored server config with secrets) — create it from conf/glockpeek.yaml.sample"; exit 1; }
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o dist/glockpeek ./cmd/glockpeek
