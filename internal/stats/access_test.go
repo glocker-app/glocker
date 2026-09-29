@@ -65,6 +65,18 @@ func TestAccessGate_ReadOnlyWhenLapsed(t *testing.T) {
 	if c := post("/api/tokens", `{"name":"dev"}`); c != http.StatusPaymentRequired {
 		t.Errorf("lapsed token mint: got %d, want 402", c)
 	}
+	if c := put("/api/ignored", `{"ignored":[]}`); c != http.StatusPaymentRequired {
+		t.Errorf("lapsed ignored PUT: got %d, want 402", c)
+	}
+	// Config upload is token-authed (the syncer's path), so present the bearer token.
+	postToken := func(path, body string) int {
+		r := httptest.NewRequest("POST", path, strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer "+token)
+		return do(mux, r).Code
+	}
+	if c := postToken("/api/config", `{"device":"laptop","config":{}}`); c != http.StatusPaymentRequired {
+		t.Errorf("lapsed config POST: got %d, want 402", c)
+	}
 	// Reads stay open.
 	rg := httptest.NewRequest("GET", "/api/data?from=0", nil)
 	rg.AddCookie(cookie)
@@ -249,5 +261,27 @@ func TestBillingReconcileOnLoad(t *testing.T) {
 	do(mux, r2)
 	if gets != 1 {
 		t.Errorf("Polar GETs = %d, want 1 (second load should be throttled)", gets)
+	}
+}
+
+// TestMapPolarStatus locks the on-load reconcile's status mapping — the same
+// transitions the webhook applies, but derived from a fetched subscription.
+func TestMapPolarStatus(t *testing.T) {
+	cases := []struct {
+		name string
+		sub  polarSubscription
+		want string
+	}{
+		{"ended-canceled", polarSubscription{Status: "canceled"}, store.SubStatusExpired},
+		{"ended-unpaid", polarSubscription{Status: "unpaid"}, store.SubStatusExpired},
+		{"scheduled-cancel", polarSubscription{Status: "active", CancelAtPeriodEnd: true}, store.SubStatusCanceled},
+		{"trialing", polarSubscription{Status: "trialing"}, store.SubStatusTrialing},
+		{"active", polarSubscription{Status: "active"}, store.SubStatusActive},
+		{"past_due-grace", polarSubscription{Status: "past_due"}, ""}, // leave stored state
+	}
+	for _, c := range cases {
+		if got, _, _ := mapPolarStatus(&c.sub); got != c.want {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
 	}
 }
