@@ -1,4 +1,4 @@
-.PHONY: build-all install full-install update-blocklists test release migrate deploy deploy-full deploy-rules sign-extension release-extension deploy-extension db-backup help
+.PHONY: build-all init install full-install update-blocklists test release migrate deploy deploy-full deploy-rules sign-extension release-extension deploy-extension db-backup help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -33,6 +33,9 @@ build-all:
 	go build $(GOLDFLAGS) -o glockpeek ./cmd/glockpeek
 	go build $(GOLDFLAGS) -o glockdoc ./cmd/glockdoc
 
+
+init: ## Generate conf/conf.yaml from the sample (fills in your login; keeps comments; won't overwrite)
+	go run ./cmd/glocker -init
 
 install: build-all ## Rebuild and reinstall (in-place; stops+swaps+restarts the daemon)
 	sudo ./glocker -install

@@ -95,6 +95,7 @@ func hasControlChar(s string) bool {
 func main() {
 	// Parse command-line flags
 	installFlag := flag.Bool("install", false, "Install glocker as a system service")
+	initFlag := flag.Bool("init", false, "Generate a starting config from the sample: fills in your login (and optional hosted dashboard + buddy email), keeping the sample's comments. Won't overwrite an existing config. Run as a normal user, before -install.")
 	confFlag := flag.String("conf", "conf/conf.yaml", "source config for -install (its dir also holds conf.d/); lets the config live outside the source tree")
 	uninstallReason := flag.String("uninstall", "", "Uninstall Glocker and revert all changes (provide reason)")
 	uninstallNote := flag.String("note", "", "Optional free-form note to attach to -uninstall (e.g. context for the reason)")
@@ -127,6 +128,15 @@ func main() {
 	// Handle version flag
 	if *versionFlag {
 		fmt.Println("glocker " + version)
+		return
+	}
+
+	// Generate a starting config from the commented sample (normal user, pre-install).
+	if *initFlag {
+		if err := runInit(*confFlag); err != nil {
+			log.Fatalf("init failed: %v", err)
+		}
+		fmt.Printf("Wrote %s. Review the schedules and blocklists, then run: sudo ./glocker -install  (or `make full-install`).\n", *confFlag)
 		return
 	}
 
