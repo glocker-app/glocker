@@ -160,3 +160,43 @@ func TestBillingCancel(t *testing.T) {
 		t.Errorf("free-account cancel: got %d, want 409", c)
 	}
 }
+
+// TestBillingCancelAlreadyCanceling: if Polar says the sub is already scheduled to
+// cancel (403 AlreadyCanceledSubscription), the endpoint self-heals — it reads the
+// current state and records canceled, instead of 502ing. This is the case that bit
+// in prod when the webhook that should have marked it canceled never arrived.
+func TestBillingCancelAlreadyCanceling(t *testing.T) {
+	polar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPatch:
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":"AlreadyCanceledSubscription","detail":"already"}`))
+		case http.MethodGet:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"status":"trialing","cancel_at_period_end":true,"current_period_end":"2027-01-01T00:00:00Z","modified_at":"2026-06-01T00:00:00Z"}`))
+		default:
+			http.Error(w, "unexpected", http.StatusBadRequest)
+		}
+	}))
+	defer polar.Close()
+
+	sdb, err := store.Open(store.Options{Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "test.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sdb.Close() })
+	mux := http.NewServeMux()
+	Register(mux, sdb, Options{Auth: true, Billing: BillingOptions{Enabled: true, APIBase: polar.URL, APIToken: "tok", ProductID: "p", PaidDeviceLimit: -1}})
+	uid, cookie, _ := account(t, sdb, "already@x.com")
+	if err := sdb.SetSubscription(uid, store.SubStatusTrialing, "sub_x", time.Now().Add(240*time.Hour), -1, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest("POST", "/api/billing/cancel", nil)
+	r.AddCookie(cookie)
+	if rec := do(mux, r); rec.Code != http.StatusOK {
+		t.Fatalf("already-canceling: code %d (%s), want 200", rec.Code, rec.Body.String())
+	}
+	if u, _ := sdb.UserByID(uid); u.SubStatus != store.SubStatusCanceled {
+		t.Errorf("status %q, want canceled", u.SubStatus)
+	}
+}

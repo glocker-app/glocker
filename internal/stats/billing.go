@@ -288,8 +288,38 @@ func cancelPolarSubscription(ctx context.Context, subID string) (*polarSubscript
 	}
 	defer resp.Body.Close()
 	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode/100 == 2 {
+		var sub polarSubscription
+		if err := json.Unmarshal(rb, &sub); err != nil {
+			return nil, err
+		}
+		return &sub, nil
+	}
+	// Already scheduled to cancel (a prior cancel, or via the Polar portal) — not
+	// an error from our side: fetch the current state and report it as canceled so
+	// the dashboard catches up (this is also the self-heal when the webhook that
+	// should have marked it canceled never reached us).
+	if bytes.Contains(rb, []byte("AlreadyCanceledSubscription")) {
+		return getPolarSubscription(ctx, subID)
+	}
+	return nil, fmt.Errorf("polar cancel status %d: %s", resp.StatusCode, string(rb))
+}
+
+// getPolarSubscription reads a subscription's current state.
+func getPolarSubscription(ctx context.Context, subID string) (*polarSubscription, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, billing.APIBase+"/v1/subscriptions/"+subID, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+billing.APIToken)
+	resp, err := billingHTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("polar cancel status %d: %s", resp.StatusCode, string(rb))
+		return nil, fmt.Errorf("polar get subscription status %d: %s", resp.StatusCode, string(rb))
 	}
 	var sub polarSubscription
 	if err := json.Unmarshal(rb, &sub); err != nil {
