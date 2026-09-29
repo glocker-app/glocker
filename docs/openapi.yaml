@@ -419,6 +419,37 @@ paths:
           description: Not authenticated
         "502":
           description: Upstream (Polar) error creating the checkout
+  /api/billing/cancel:
+    post:
+      summary: Cancel the subscription at period end (no portal round trip)
+      description: >
+        Cancels the authenticated account's subscription via the Polar API
+        (PATCH /v1/subscriptions/{id} with cancel_at_period_end), keeping full
+        access until the current period ends. Records the canceled state from the
+        API response immediately (the webhook reconciles idempotently). Only
+        mounted when billing is enabled; session-gated.
+      operationId: cancelBillingSubscription
+      responses:
+        "200":
+          description: Cancellation scheduled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    description: New subscription status ("canceled").
+                  subCurrentEnd:
+                    type: string
+                    format: date-time
+                    description: Access is retained until this time.
+        "401":
+          description: Not authenticated
+        "409":
+          description: No cancelable subscription (not trialing/active)
+        "502":
+          description: Upstream (Polar) error canceling
   /api/billing/webhook:
     post:
       summary: Merchant-of-Record subscription webhook (Polar)

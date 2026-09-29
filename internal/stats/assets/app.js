@@ -3611,6 +3611,8 @@ function setupDevices() {
 
   const manage = document.getElementById("manage-billing");
   if (manage) manage.onclick = () => openBillingPortal(manage);
+  const cancel = document.getElementById("cancel-sub");
+  if (cancel) cancel.onclick = () => cancelSubscription(cancel);
 }
 
 // openBillingPortal redirects to the Polar customer portal (manage/cancel).
@@ -3625,6 +3627,28 @@ async function openBillingPortal(btn) {
   } catch {
     if (btn) btn.disabled = false;
     alert("Could not open the billing portal. Please try again in a moment.");
+  }
+}
+
+// cancelSubscription cancels at period end via the Polar API directly (no portal
+// redirect). The server records the canceled state from the API response, so we
+// reflect it immediately from the response and re-render.
+async function cancelSubscription(btn) {
+  if (!confirm("Cancel your subscription? You'll keep full access until the end of the current period, then it won't renew.")) return;
+  if (btn) { btn.disabled = true; btn.textContent = "Canceling…"; }
+  try {
+    const res = await fetch("api/billing/cancel", { method: "POST" });
+    if (!res.ok) throw new Error(res.status);
+    const j = await res.json(); // { status, subCurrentEnd }
+    if (state.me) {
+      state.me.subStatus = j.status;
+      if (j.subCurrentEnd) state.me.subCurrentEnd = j.subCurrentEnd;
+    }
+    renderAccessBanner();
+    if (state.view === "devices") renderDevices();
+  } catch {
+    if (btn) { btn.disabled = false; btn.textContent = "Cancel subscription"; }
+    alert("Could not cancel the subscription. Please try again in a moment.");
   }
 }
 
@@ -3661,6 +3685,9 @@ function renderAccessBanner() {
       ? `Free trial — ${days} day${days === 1 ? "" : "s"} left, then your subscription begins. `
       : "Free trial active. "));
     el.append(btn("Manage billing", openBillingPortal));
+    const cancel = btn("Cancel", cancelSubscription);
+    cancel.className = "btn-ghost";
+    el.append(cancel);
     el.hidden = false;
     return;
   }
@@ -3791,6 +3818,9 @@ async function renderDevices() {
   // down); an expired/free account sees the upgrade CTA instead.
   const manage = document.getElementById("manage-billing");
   if (manage) manage.hidden = !(state.me && state.me.billing && (sub === "active" || sub === "canceled"));
+  // Cancel is offered while active; a canceled sub is already winding down.
+  const cancelBtn = document.getElementById("cancel-sub");
+  if (cancelBtn) cancelBtn.hidden = !(state.me && state.me.billing && sub === "active");
 
   listEl.textContent = "";
   if (!data.tokens.length) {

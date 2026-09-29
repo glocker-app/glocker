@@ -224,6 +224,80 @@ func createPolarPortal(ctx context.Context, userID uint) (string, error) {
 
 var errNoCustomer = errors.New("billing: account has no Polar customer")
 
+// handleBillingCancel cancels the logged-in account's subscription at the end of
+// the current period (access kept until then) via the Polar API directly — no
+// hosted-portal round trip. It records the canceled state immediately from the API
+// response so the dashboard updates even if the webhook is delayed; the
+// subscription.updated webhook reconciles idempotently (same modified_at).
+func handleBillingCancel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	u := userFrom(r)
+	if u.SubID == "" || (u.SubStatus != store.SubStatusTrialing && u.SubStatus != store.SubStatusActive) {
+		http.Error(w, "no cancelable subscription", http.StatusConflict)
+		return
+	}
+	sub, err := cancelPolarSubscription(r.Context(), u.SubID)
+	if err != nil {
+		log.Printf("billing: cancel failed for user %d: %v", u.ID, err)
+		http.Error(w, "could not cancel subscription", http.StatusBadGateway)
+		return
+	}
+	end := sub.CurrentPeriodEnd
+	if sub.EndsAt != nil {
+		end = *sub.EndsAt
+	}
+	eventAt := time.Time{}
+	if sub.ModifiedAt != nil {
+		eventAt = *sub.ModifiedAt
+	}
+	if err := db.SetSubscription(u.ID, store.SubStatusCanceled, u.SubID, end, billing.PaidDeviceLimit, eventAt); err != nil {
+		log.Printf("billing: recording cancel for user %d: %v", u.ID, err)
+		http.Error(w, "could not record cancellation", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"status": store.SubStatusCanceled, "subCurrentEnd": end})
+}
+
+// polarSubscription is the subset of the PATCH /v1/subscriptions/{id} response we
+// read back after a cancel.
+type polarSubscription struct {
+	CancelAtPeriodEnd bool       `json:"cancel_at_period_end"`
+	CurrentPeriodEnd  time.Time  `json:"current_period_end"`
+	EndsAt            *time.Time `json:"ends_at"`
+	ModifiedAt        *time.Time `json:"modified_at"`
+}
+
+// cancelPolarSubscription PATCHes the subscription to cancel at period end.
+func cancelPolarSubscription(ctx context.Context, subID string) (*polarSubscription, error) {
+	body, err := json.Marshal(map[string]any{"cancel_at_period_end": true})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, billing.APIBase+"/v1/subscriptions/"+subID, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+billing.APIToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := billingHTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("polar cancel status %d: %s", resp.StatusCode, string(rb))
+	}
+	var sub polarSubscription
+	if err := json.Unmarshal(rb, &sub); err != nil {
+		return nil, err
+	}
+	return &sub, nil
+}
+
 // polarSubscriptionEvent is the subset of a Polar webhook we act on.
 type polarSubscriptionEvent struct {
 	Type string `json:"type"`
