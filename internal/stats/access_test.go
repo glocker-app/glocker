@@ -277,7 +277,8 @@ func TestMapPolarStatus(t *testing.T) {
 		{"scheduled-cancel", polarSubscription{Status: "active", CancelAtPeriodEnd: true}, store.SubStatusCanceled},
 		{"trialing", polarSubscription{Status: "trialing"}, store.SubStatusTrialing},
 		{"active", polarSubscription{Status: "active"}, store.SubStatusActive},
-		{"past_due-grace", polarSubscription{Status: "past_due"}, ""}, // leave stored state
+		{"past_due-grace", polarSubscription{Status: "past_due"}, store.SubStatusPastDue},
+		{"incomplete-nochange", polarSubscription{Status: "incomplete"}, ""}, // leave stored state
 	}
 	for _, c := range cases {
 		if got, _, _ := mapPolarStatus(&c.sub); got != c.want {

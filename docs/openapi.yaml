@@ -494,8 +494,9 @@ paths:
         against the Standard Webhooks HMAC signature before anything is trusted;
         the event is then mapped onto the account's device limit —
         active/uncanceled grant the paid cap, revoked drops back to free, canceled
-        keeps access until the period end. Not session-gated (the caller is Polar,
-        authenticated by the signature, not a browser). Idempotent.
+        keeps access until the period end, and past_due (failed renewal) holds
+        access through a grace window before revoked→expired. Not session-gated (the
+        caller is Polar, authenticated by the signature, not a browser). Idempotent.
       operationId: billingWebhook
       parameters:
         - in: header

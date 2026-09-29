@@ -3668,7 +3668,7 @@ function renderAccessBanner() {
   if (!me.billing) { el.hidden = true; state.readOnly = false; return; }
 
   const s = me.subStatus;
-  const hasAccess = s === "trialing" || s === "active" || s === "canceled";
+  const hasAccess = s === "trialing" || s === "active" || s === "canceled" || s === "past_due";
   state.readOnly = !hasAccess;
 
   el.className = "access-banner";
@@ -3705,6 +3705,18 @@ function renderAccessBanner() {
       ? `Subscription ends ${end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} — full access until then. `
       : "Subscription set to cancel — full access until the period ends. "));
     el.append(btn("Manage billing", openBillingPortal));
+    el.hidden = false;
+    return;
+  }
+  if (s === "past_due") {
+    // Renewal payment failed. Access is held through a grace window; the customer
+    // needs to fix their card at the portal before it lapses.
+    const end = me.subCurrentEnd ? new Date(me.subCurrentEnd) : null;
+    el.classList.add("access-banner--warn");
+    el.append(document.createTextNode(end
+      ? `Payment failed — update your card by ${end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} to keep access. `
+      : "Payment failed — update your card to keep access. "));
+    el.append(btn("Update payment", openBillingPortal));
     el.hidden = false;
     return;
   }

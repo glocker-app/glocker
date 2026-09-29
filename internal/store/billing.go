@@ -12,6 +12,7 @@ const (
 	SubStatusTrialing = "trialing" // in the free trial window; full access, auto-converts to active
 	SubStatusActive   = "active"   // paying; access granted
 	SubStatusCanceled = "canceled" // cancellation scheduled — access remains until SubCurrentEnd
+	SubStatusPastDue  = "past_due" // renewal payment failed; access held through a grace window (SubCurrentEnd), then revoked
 	SubStatusExpired  = "expired"  // access revoked: cancellation took effect, or payment lapsed
 )
 
@@ -22,7 +23,7 @@ const (
 // gated on this; enforcement (ingest/write refusal) is elsewhere.
 func (u *User) HasAccess() bool {
 	switch u.SubStatus {
-	case SubStatusTrialing, SubStatusActive, SubStatusCanceled:
+	case SubStatusTrialing, SubStatusActive, SubStatusCanceled, SubStatusPastDue:
 		// A set period-end bounds access. Without this, a lost `revoke`/`canceled`
 		// webhook leaves the status granting access forever; with it, access still
 		// lapses when the paid/trial period actually ends. (A missed renewal can

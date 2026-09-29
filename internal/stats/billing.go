@@ -371,6 +371,12 @@ func getPolarSubscription(ctx context.Context, subID string) (*polarSubscription
 	return &sub, nil
 }
 
+// pastDueGrace is how long access is held after a failed renewal (Polar dunning)
+// before revoked→expired takes over. Polar emails the customer to update their card
+// during this window; keeping the dashboard usable means a transient card problem
+// doesn't lock a paying customer out.
+const pastDueGrace = 14 * 24 * time.Hour
+
 // subReconcileEvery throttles the on-load reconcile so /api/me doesn't call Polar
 // on every poll. A few minutes is fine: the webhook is the fast path, this is the
 // safety net that self-heals a dropped one.
@@ -417,6 +423,15 @@ func refreshUser(u *store.User) *store.User {
 	return u
 }
 
+// pastDueEnd is the grace deadline for a failed renewal: the period end plus the
+// grace window (or now + grace if the provider sent no period end).
+func pastDueEnd(periodEnd time.Time) time.Time {
+	if periodEnd.IsZero() {
+		periodEnd = time.Now()
+	}
+	return periodEnd.Add(pastDueGrace)
+}
+
 // mapPolarStatus maps a live Polar subscription onto our local status/end/cap,
 // mirroring applyBillingEvent. An empty status means "leave the stored state
 // alone" (e.g. past_due dunning — access is held through Polar's grace).
@@ -436,6 +451,9 @@ func mapPolarStatus(sub *polarSubscription) (status string, end time.Time, devic
 		return store.SubStatusTrialing, sub.CurrentPeriodEnd, billing.PaidDeviceLimit
 	case sub.Status == store.SubStatusActive:
 		return store.SubStatusActive, sub.CurrentPeriodEnd, billing.PaidDeviceLimit
+	case sub.Status == store.SubStatusPastDue:
+		// Failed renewal: keep access through the grace window, then revoke takes over.
+		return store.SubStatusPastDue, pastDueEnd(sub.CurrentPeriodEnd), billing.PaidDeviceLimit
 	default:
 		return "", time.Time{}, 0
 	}
@@ -543,7 +561,7 @@ func applyBillingEvent(evt polarSubscriptionEvent) error {
 	}
 
 	switch evt.Type {
-	case "subscription.created", "subscription.active", "subscription.uncanceled", "subscription.updated":
+	case "subscription.created", "subscription.active", "subscription.uncanceled", "subscription.updated", "subscription.past_due":
 		// A scheduled cancellation arrives as an updated/active event with
 		// cancel_at_period_end set — treat that as canceled, not a fresh grant, so a
 		// re-delivered or reordered updated can't flip a cancel back to active. The
@@ -552,13 +570,16 @@ func applyBillingEvent(evt polarSubscriptionEvent) error {
 			return db.SetSubscription(userID, store.SubStatusCanceled, subID, periodEnd(), billing.PaidDeviceLimit, eventAt)
 		}
 		// Otherwise grant by status: a card-up-front trial arrives as "trialing"
-		// (subscription.created) and auto-converts to "active". Any other status
-		// (e.g. past_due) is left to the explicit canceled/revoked events below.
+		// (subscription.created) and auto-converts to "active".
 		switch evt.Data.Status {
 		case store.SubStatusTrialing:
 			return db.SetSubscription(userID, store.SubStatusTrialing, subID, evt.Data.CurrentPeriodEnd, billing.PaidDeviceLimit, eventAt)
 		case store.SubStatusActive:
 			return db.SetSubscription(userID, store.SubStatusActive, subID, evt.Data.CurrentPeriodEnd, billing.PaidDeviceLimit, eventAt)
+		case store.SubStatusPastDue:
+			// Renewal failed: hold access through a grace window (Polar's dunning keeps
+			// retrying the card + emailing the customer), then revoked→expired takes over.
+			return db.SetSubscription(userID, store.SubStatusPastDue, subID, pastDueEnd(evt.Data.CurrentPeriodEnd), billing.PaidDeviceLimit, eventAt)
 		default:
 			return errIgnoredEvent
 		}

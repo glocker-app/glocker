@@ -91,6 +91,52 @@ func TestBillingWebhook_GrantAndRevoke(t *testing.T) {
 	}
 }
 
+// TestBillingWebhook_PastDueGrace: a failed renewal holds access through a grace
+// window (period end + pastDueGrace), then either recovers to active or, if dunning
+// fails, revoked → expired.
+func TestBillingWebhook_PastDueGrace(t *testing.T) {
+	mux, sdb, wh := billingMux(t)
+	u, _ := sdb.CreateUser("late@x.com", "longenough1")
+	ext := strconv.FormatUint(uint64(u.ID), 10)
+
+	// Renewal failed → past_due: access held, cap unchanged, end pushed out by grace.
+	periodEnd := "2027-01-01T00:00:00Z"
+	payload := fmt.Sprintf(`{"type":"subscription.past_due","data":{"id":"sub_pd","status":"past_due","current_period_end":%q,"customer":{"external_id":%q}}}`, periodEnd, ext)
+	if rec := do(mux, signedWebhook(t, wh, payload)); rec.Code != http.StatusOK {
+		t.Fatalf("past_due webhook: %d %s", rec.Code, rec.Body.String())
+	}
+	got, _ := sdb.UserByEmail("late@x.com")
+	if got.SubStatus != store.SubStatusPastDue || !got.HasAccess() || store.EffectiveDeviceLimit(got) != -1 {
+		t.Errorf("past_due: status=%q access=%v cap=%d, want past_due/true/-1", got.SubStatus, got.HasAccess(), store.EffectiveDeviceLimit(got))
+	}
+	base, _ := time.Parse(time.RFC3339, periodEnd)
+	if want := base.Add(pastDueGrace); !got.SubCurrentEnd.Equal(want) {
+		t.Errorf("grace end = %v, want %v (period end + grace)", got.SubCurrentEnd, want)
+	}
+
+	// Recovery: payment goes through → subscription.active → back to active.
+	if rec := do(mux, signedWebhook(t, wh, subPayload("subscription.active", u.ID))); rec.Code != http.StatusOK {
+		t.Fatalf("recovery webhook: %d", rec.Code)
+	}
+	if got, _ = sdb.UserByEmail("late@x.com"); got.SubStatus != store.SubStatusActive {
+		t.Errorf("after recovery: status %q, want active", got.SubStatus)
+	}
+
+	// Dunning ultimately fails → revoked → expired, no access.
+	if rec := do(mux, signedWebhook(t, wh, subPayload("subscription.revoked", u.ID))); rec.Code != http.StatusOK {
+		t.Fatalf("revoke webhook: %d", rec.Code)
+	}
+	if got, _ = sdb.UserByEmail("late@x.com"); got.SubStatus != store.SubStatusExpired || got.HasAccess() {
+		t.Errorf("after revoke: status %q access %v, want expired/no-access", got.SubStatus, got.HasAccess())
+	}
+
+	// past_due past the grace deadline → the period-end bound denies access.
+	_ = sdb.SetSubscription(u.ID, store.SubStatusPastDue, "sub_pd", time.Now().Add(-time.Hour), -1, time.Time{})
+	if got, _ = sdb.UserByEmail("late@x.com"); got.HasAccess() {
+		t.Error("past_due past grace should not have access")
+	}
+}
+
 func TestBillingWebhook_RejectsBadSignature(t *testing.T) {
 	mux, sdb, wh := billingMux(t)
 	u, err := sdb.CreateUser("payer2@x.com", "longenough1")
