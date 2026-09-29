@@ -3508,6 +3508,21 @@ function userRow(u) {
   };
   actions.append(limInput, saveBtn);
 
+  // Cancel subscription — revoke the user's LIVE subscription at Polar now (no
+  // merchant dashboard). Only when there's an active sub to revoke.
+  if (u.subStatus === "trialing" || u.subStatus === "active" || u.subStatus === "canceled") {
+    const cancelSub = document.createElement("button");
+    cancelSub.className = "btn-ghost";
+    cancelSub.type = "button";
+    cancelSub.textContent = "Cancel subscription";
+    cancelSub.onclick = async () => {
+      if (!confirm(`Revoke ${u.email}'s subscription at Polar now? They lose access immediately and drop to the free tier.`)) return;
+      try { await fetch(`api/admin/cancel-subscription?id=${u.id}`, { method: "POST" }); } catch { /* re-render reflects state */ }
+      renderUsers();
+    };
+    actions.append(cancelSub);
+  }
+
   // Clear subscription — reset to free tier (for when Polar and glockpeek drift).
   if (u.subStatus) {
     const clearSub = document.createElement("button");

@@ -145,6 +145,45 @@ paths:
                     type: object
                     additionalProperties:
                       type: string
+  /api/admin/cancel-subscription:
+    post:
+      summary: Revoke a user's live subscription at the provider (admin-only)
+      description: >
+        Immediately revokes the target account's live subscription at Polar and records
+        it expired here (device cap back to the free tier) — the in-app replacement for
+        canceling from the Polar merchant dashboard. Differs from clearing a subscription
+        (PATCH /api/admin/users), which only resets glockpeek's record for a subscription
+        already gone at the provider. Admin-gated. An already-canceled or already-gone
+        subscription is treated as success.
+      operationId: adminCancelSubscription
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Target account id.
+      responses:
+        "200":
+          description: Revoked and recorded expired
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  status:
+                    type: string
+                    example: expired
+        "400":
+          description: Invalid id, or billing not enabled
+        "403":
+          description: Not the admin account
+        "409":
+          description: Account has no live subscription (use clear instead)
+        "502":
+          description: Could not revoke at the provider
   /api/admin/metrics:
     get:
       summary: Live server and database health (admin-only)

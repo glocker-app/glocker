@@ -306,6 +306,48 @@ func cancelPolarSubscription(ctx context.Context, subID string) (*polarSubscript
 	return nil, fmt.Errorf("polar cancel status %d: %s", resp.StatusCode, string(rb))
 }
 
+// revokePolarSubscription immediately revokes a subscription at Polar — the admin
+// "get this user off their plan now" action, not the user's schedule-at-period-end
+// cancel. An already-canceled or already-gone (404) subscription is treated as
+// success (that's the end state we want), so an admin can always land the account
+// on expired without touching the Polar dashboard.
+func revokePolarSubscription(ctx context.Context, subID string) (*polarSubscription, error) {
+	body, err := json.Marshal(map[string]any{"revoke": true})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, billing.APIBase+"/v1/subscriptions/"+subID, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+billing.APIToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := billingHTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode/100 == 2 {
+		var sub polarSubscription
+		if err := json.Unmarshal(rb, &sub); err != nil {
+			return nil, err
+		}
+		return &sub, nil
+	}
+	// Already revoked/canceled, or gone at Polar — the end state we want anyway.
+	if resp.StatusCode == http.StatusNotFound {
+		return &polarSubscription{Status: "canceled"}, nil
+	}
+	if bytes.Contains(rb, []byte("AlreadyCanceledSubscription")) {
+		if sub, err := getPolarSubscription(ctx, subID); err == nil {
+			return sub, nil
+		}
+		return &polarSubscription{Status: "canceled"}, nil
+	}
+	return nil, fmt.Errorf("polar revoke status %d: %s", resp.StatusCode, string(rb))
+}
+
 // getPolarSubscription reads a subscription's current state.
 func getPolarSubscription(ctx context.Context, subID string) (*polarSubscription, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, billing.APIBase+"/v1/subscriptions/"+subID, nil)

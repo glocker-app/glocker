@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"glocker/internal/store"
 
@@ -122,6 +124,53 @@ func adminClearSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+// adminCancelSubscription revokes an account's LIVE subscription at Polar
+// immediately and records it expired here — the admin "get this user off their
+// plan now" action, so an operator never needs the Polar merchant dashboard for
+// it. This differs from adminClearSubscription, which only resets glockpeek's
+// record (drift repair for a sub already gone at Polar). The subscription.revoked
+// webhook reconciles idempotently afterward.
+func adminCancelSubscription(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !billingEnabled {
+		http.Error(w, "billing not enabled", http.StatusBadRequest)
+		return
+	}
+	id, err := strconv.ParseUint(r.URL.Query().Get("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid user id", http.StatusBadRequest)
+		return
+	}
+	u, err := db.UserByID(uint(id))
+	if err != nil {
+		http.Error(w, "no such user", http.StatusNotFound)
+		return
+	}
+	if u.SubID == "" {
+		http.Error(w, "account has no live subscription — use Clear to reset a drifted account", http.StatusConflict)
+		return
+	}
+	sub, err := revokePolarSubscription(r.Context(), u.SubID)
+	if err != nil {
+		log.Printf("billing: admin revoke failed for user %d: %v", u.ID, err)
+		http.Error(w, "could not revoke subscription at Polar", http.StatusBadGateway)
+		return
+	}
+	eventAt := time.Now()
+	if sub.ModifiedAt != nil {
+		eventAt = *sub.ModifiedAt
+	}
+	if err := db.SetSubscription(u.ID, store.SubStatusExpired, u.SubID, sub.CurrentPeriodEnd, 0, eventAt); err != nil {
+		log.Printf("billing: recording admin revoke for user %d: %v", u.ID, err)
+		http.Error(w, "revoked at Polar but could not record it here", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "status": store.SubStatusExpired})
 }
 
 func adminSetDeviceLimit(w http.ResponseWriter, r *http.Request) {

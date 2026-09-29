@@ -159,6 +159,8 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 
 	// Admin-gated: account management (only the configured admin account).
 	mux.HandleFunc("/api/admin/users", requireAdmin(handleAdminUsers))
+	// Admin-gated: revoke a user's live subscription at the provider (no dashboard).
+	mux.HandleFunc("/api/admin/cancel-subscription", requireAdmin(adminCancelSubscription))
 	// Admin-gated operational metrics (DB pool saturation, ping, uptime): the text
 	// form for scrapers, the JSON form for the /admin dashboard panel.
 	mux.HandleFunc("/metrics", requireAdmin(handleMetrics))
