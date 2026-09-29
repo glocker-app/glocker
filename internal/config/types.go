@@ -120,6 +120,11 @@ const (
 // DefaultUsageInterval is the usage-monitor sampling cadence (seconds).
 const DefaultUsageInterval = 60
 
+// PlaceholderUser is the stub value shipped in conf.yaml.sample for the top-level
+// `user` field. ValidateConfig rejects it (installing unchanged would target a
+// nonexistent user) and `glocker -init` substitutes the real login for it.
+const PlaceholderUser = "yourusername"
+
 // UsageMonitorConfig controls the arbtt-style desktop usage tracker: it samples
 // the focused window (class + title) and idle time to a JSONL log, which the
 // /stats dashboard reads and categorizes. Runs only when Enabled.

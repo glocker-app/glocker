@@ -45,6 +45,17 @@ func TestSyncConfigKeyFileAndEncryption(t *testing.T) {
 	}
 }
 
+func TestValidateConfig_RejectsPlaceholderUser(t *testing.T) {
+	// The unedited sample stub must not install (it would target a nonexistent user).
+	if err := ValidateConfig(&Config{User: PlaceholderUser}); err == nil {
+		t.Fatal("expected validation error for the placeholder user")
+	}
+	// A real username passes this guard.
+	if err := ValidateConfig(&Config{User: "noufal"}); err != nil {
+		t.Errorf("real username should pass the placeholder guard, got: %v", err)
+	}
+}
+
 func TestValidateConfig_EmptyDomainName(t *testing.T) {
 	cfg := &Config{
 		Domains: DomainsConfig{List: []Domain{

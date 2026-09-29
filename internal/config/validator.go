@@ -17,6 +17,13 @@ var (
 // ValidateConfig validates the entire configuration structure.
 // Returns an error if any configuration field is invalid or missing required values.
 func ValidateConfig(config *Config) error {
+	// The sample ships `user: "yourusername"` as a stub. Installing with it
+	// unchanged would point sudoers restriction and desktop/usage tracking at a
+	// user that doesn't exist — the single most-missed edit — so refuse it outright.
+	if config.User == PlaceholderUser {
+		return fmt.Errorf("the top-level `user` is still the sample placeholder %q — set it to your Linux login name (try `glocker -init`)", config.User)
+	}
+
 	// Validate domains
 	for _, domain := range config.Domains.List {
 		if domain.Name == "" {
