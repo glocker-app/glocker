@@ -136,7 +136,11 @@ func main() {
 		if err := runInit(*confFlag); err != nil {
 			log.Fatalf("init failed: %v", err)
 		}
-		fmt.Printf("Wrote %s. Review the schedules and blocklists, then run: sudo ./glocker -install  (or `make full-install`).\n", *confFlag)
+		fmt.Printf("\nWrote %s.\n\n", *confFlag)
+		fmt.Println("Next steps:")
+		fmt.Printf("  1. Review %s — set your block schedules, forbidden programs, and keywords.\n", *confFlag)
+		fmt.Println("  2. Run 'make full-install' to fetch the standard blocklists and install glocker.")
+		fmt.Println("     (A bare 'glocker -install' skips the blocklist download and won't have any domains to block.)")
 		return
 	}
 
