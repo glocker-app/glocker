@@ -3664,7 +3664,19 @@ function renderAccessBanner() {
     el.hidden = false;
     return;
   }
-  if (hasAccess) { el.hidden = true; return; } // active / canceled: no banner
+  if (s === "canceled") {
+    // Cancellation is scheduled: access holds until the period end. Say so, so it
+    // isn't mistaken for a live subscription — with a way back in via the portal.
+    const end = me.subCurrentEnd ? new Date(me.subCurrentEnd) : null;
+    el.classList.add("access-banner--info");
+    el.append(document.createTextNode(end
+      ? `Subscription ends ${end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} — full access until then. `
+      : "Subscription set to cancel — full access until the period ends. "));
+    el.append(btn("Manage billing", openBillingPortal));
+    el.hidden = false;
+    return;
+  }
+  if (hasAccess) { el.hidden = true; return; } // active: no banner
 
   el.classList.add("access-banner--warn");
   if (s === "expired") {
