@@ -36,6 +36,9 @@ func InstallGlocker(confPath string) error {
 	// Step 1: Validate config file before installation. LoadFile resolves any
 	// !include directives (conf.d/ list files) relative to the config's dir first.
 	log.Println("Validating configuration file...")
+	if _, statErr := os.Stat(confPath); os.IsNotExist(statErr) {
+		return fmt.Errorf("%s not found — run `glocker -init` (or `make init`) to create one from the sample", confPath)
+	}
 	cfgPtr, err := config.LoadFile(confPath)
 	if err != nil {
 		return fmt.Errorf("reading/parsing %s: %w", confPath, err)
