@@ -147,14 +147,14 @@ paths:
                       type: string
   /api/admin/cancel-subscription:
     post:
-      summary: Revoke a user's live subscription at the provider (admin-only)
+      summary: Cancel a user's subscription and reset to free (admin-only)
       description: >
-        Immediately revokes the target account's live subscription at Polar and records
-        it expired here (device cap back to the free tier) — the in-app replacement for
-        canceling from the Polar merchant dashboard. Differs from clearing a subscription
-        (PATCH /api/admin/users), which only resets glockpeek's record for a subscription
-        already gone at the provider. Admin-gated. An already-canceled or already-gone
-        subscription is treated as success.
+        One admin action: if the account has a live subscription it is revoked at Polar
+        first (so nothing is left billing), then glockpeek's record is reset to the free
+        tier (blank status, free device cap, no stored subscription id). The in-app
+        replacement for the Polar merchant dashboard. Admin-gated. An already-canceled or
+        already-gone subscription is treated as success, so this also repairs drift; a
+        free account is an idempotent no-op.
       operationId: adminCancelSubscription
       parameters:
         - name: id
@@ -165,7 +165,7 @@ paths:
           description: Target account id.
       responses:
         "200":
-          description: Revoked and recorded expired
+          description: Canceled at the provider (if any) and reset to free
           content:
             application/json:
               schema:
@@ -173,15 +173,12 @@ paths:
                 properties:
                   ok:
                     type: boolean
-                  status:
-                    type: string
-                    example: expired
         "400":
-          description: Invalid id, or billing not enabled
+          description: Invalid id
         "403":
           description: Not the admin account
-        "409":
-          description: Account has no live subscription (use clear instead)
+        "404":
+          description: No such user
         "502":
           description: Could not revoke at the provider
   /api/admin/metrics:

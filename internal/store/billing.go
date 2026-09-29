@@ -70,12 +70,13 @@ func (db *DB) StampSubSynced(userID uint) error {
 }
 
 // ClearSubscription resets an account to the free tier: no subscription status,
-// no stored subscription id, and the free device cap. Used by the admin panel to
-// undo a subscription when the MoR and glockpeek have drifted (e.g. a sandbox sub
-// deleted at Polar whose revoke webhook never reached here). Returns
+// no stored subscription id, and the free device cap. Used by the admin "cancel
+// subscription" action after revoking at the provider. Returns
 // gorm.ErrRecordNotFound if userID matches no account.
 func (db *DB) ClearSubscription(userID uint) error {
-	// Zero eventAt so any later webhook (which carries a real modified_at) applies
-	// — an admin clear is a manual reset, not part of the provider event stream.
-	return db.SetSubscription(userID, "", "", time.Time{}, 0, time.Time{})
+	// Stamp the event high-water mark to now so an in-flight provider webhook from
+	// the revoke we just triggered (its modified_at is earlier) is dropped by the
+	// ordering guard instead of re-expiring the account we just reset. A genuinely
+	// new subscription later carries a later modified_at and still applies.
+	return db.SetSubscription(userID, "", "", time.Time{}, 0, time.Now())
 }

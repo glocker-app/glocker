@@ -3486,11 +3486,15 @@ function userRow(u) {
   const actions = document.createElement("div");
   actions.className = "user-actions";
 
-  // Device-limit editor.
+  // Device-limit editor (how many devices this account may connect; −1 = unlimited).
+  const limLabel = document.createElement("label");
+  limLabel.className = "user-devlimit";
+  limLabel.textContent = "Device limit ";
   const limInput = document.createElement("input");
   limInput.type = "number";
-  limInput.title = "Device limit (−1 = unlimited)";
+  limInput.title = "How many devices this account may connect (−1 = unlimited)";
   limInput.value = String(u.deviceLimit);
+  limLabel.append(limInput);
   const saveBtn = document.createElement("button");
   saveBtn.className = "btn-ghost";
   saveBtn.type = "button";
@@ -3506,35 +3510,21 @@ function userRow(u) {
     } catch { /* re-render reflects state */ }
     renderUsers();
   };
-  actions.append(limInput, saveBtn);
+  actions.append(limLabel, saveBtn);
 
-  // Cancel subscription — revoke the user's LIVE subscription at Polar now (no
-  // merchant dashboard). Only when there's an active sub to revoke.
-  if (u.subStatus === "trialing" || u.subStatus === "active" || u.subStatus === "canceled") {
+  // Cancel subscription — one action: revoke the live subscription at Polar (if
+  // any) and reset the account to the free tier. Shown for any subscribed state.
+  if (u.subStatus) {
     const cancelSub = document.createElement("button");
     cancelSub.className = "btn-ghost";
     cancelSub.type = "button";
     cancelSub.textContent = "Cancel subscription";
     cancelSub.onclick = async () => {
-      if (!confirm(`Revoke ${u.email}'s subscription at Polar now? They lose access immediately and drop to the free tier.`)) return;
+      if (!confirm(`Cancel ${u.email}'s subscription? Revokes it at Polar and returns the account to the free tier.`)) return;
       try { await fetch(`api/admin/cancel-subscription?id=${u.id}`, { method: "POST" }); } catch { /* re-render reflects state */ }
       renderUsers();
     };
     actions.append(cancelSub);
-  }
-
-  // Clear subscription — reset to free tier (for when Polar and glockpeek drift).
-  if (u.subStatus) {
-    const clearSub = document.createElement("button");
-    clearSub.className = "btn-ghost";
-    clearSub.type = "button";
-    clearSub.textContent = "Clear subscription";
-    clearSub.onclick = async () => {
-      if (!confirm(`Reset ${u.email} to the free tier? Clears the subscription status and drops the device cap back to free.`)) return;
-      try { await fetch(`api/admin/users?id=${u.id}`, { method: "PATCH" }); } catch { /* re-render reflects state */ }
-      renderUsers();
-    };
-    actions.append(clearSub);
   }
 
   // Delete (never your own admin account).

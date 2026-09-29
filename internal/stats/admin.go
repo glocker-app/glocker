@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"time"
 
 	"glocker/internal/store"
 
@@ -50,8 +49,6 @@ func handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		adminDeleteUser(w, r, me)
 	case http.MethodPut:
 		adminSetDeviceLimit(w, r)
-	case http.MethodPatch:
-		adminClearSubscription(w, r)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -106,39 +103,15 @@ func adminDeleteUser(w http.ResponseWriter, r *http.Request, me *store.User) {
 	writeJSON(w, map[string]any{"ok": true})
 }
 
-// adminClearSubscription resets an account to the free tier, for when Polar and
-// glockpeek have drifted (e.g. a subscription deleted at Polar whose revoke
-// webhook never landed here).
-func adminClearSubscription(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.ParseUint(r.URL.Query().Get("id"), 10, 64)
-	if err != nil {
-		http.Error(w, "invalid user id", http.StatusBadRequest)
-		return
-	}
-	if err := db.ClearSubscription(uint(id)); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			http.Error(w, "no such user", http.StatusNotFound)
-			return
-		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, map[string]any{"ok": true})
-}
-
-// adminCancelSubscription revokes an account's LIVE subscription at Polar
-// immediately and records it expired here — the admin "get this user off their
-// plan now" action, so an operator never needs the Polar merchant dashboard for
-// it. This differs from adminClearSubscription, which only resets glockpeek's
-// record (drift repair for a sub already gone at Polar). The subscription.revoked
-// webhook reconciles idempotently afterward.
+// adminCancelSubscription removes an account's subscription and returns it to the
+// free tier — one admin action covering the whole job, so an operator never needs
+// the Polar merchant dashboard. If the account has a live provider subscription it
+// is revoked at Polar first (so nothing is left billing), then glockpeek's record
+// is reset to free. An already-canceled or already-gone subscription is treated as
+// success, so this doubles as the drift-repair path too.
 func adminCancelSubscription(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if !billingEnabled {
-		http.Error(w, "billing not enabled", http.StatusBadRequest)
 		return
 	}
 	id, err := strconv.ParseUint(r.URL.Query().Get("id"), 10, 64)
@@ -151,26 +124,22 @@ func adminCancelSubscription(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such user", http.StatusNotFound)
 		return
 	}
-	if u.SubID == "" {
-		http.Error(w, "account has no live subscription — use Clear to reset a drifted account", http.StatusConflict)
+	// Revoke the live provider subscription first so we don't orphan it at Polar.
+	if billingEnabled && u.SubID != "" {
+		if _, err := revokePolarSubscription(r.Context(), u.SubID); err != nil {
+			log.Printf("billing: admin revoke failed for user %d: %v", u.ID, err)
+			http.Error(w, "could not revoke subscription at Polar", http.StatusBadGateway)
+			return
+		}
+	}
+	// Reset to the free tier (blank status, free cap, no stored sub id). The
+	// high-water stamp inside ClearSubscription drops the revoke's own late webhook.
+	if err := db.ClearSubscription(u.ID); err != nil {
+		log.Printf("billing: recording admin cancel for user %d: %v", u.ID, err)
+		http.Error(w, "revoked at Polar but could not reset the record here", http.StatusInternalServerError)
 		return
 	}
-	sub, err := revokePolarSubscription(r.Context(), u.SubID)
-	if err != nil {
-		log.Printf("billing: admin revoke failed for user %d: %v", u.ID, err)
-		http.Error(w, "could not revoke subscription at Polar", http.StatusBadGateway)
-		return
-	}
-	eventAt := time.Now()
-	if sub.ModifiedAt != nil {
-		eventAt = *sub.ModifiedAt
-	}
-	if err := db.SetSubscription(u.ID, store.SubStatusExpired, u.SubID, sub.CurrentPeriodEnd, 0, eventAt); err != nil {
-		log.Printf("billing: recording admin revoke for user %d: %v", u.ID, err)
-		http.Error(w, "revoked at Polar but could not record it here", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, map[string]any{"ok": true, "status": store.SubStatusExpired})
+	writeJSON(w, map[string]any{"ok": true})
 }
 
 func adminSetDeviceLimit(w http.ResponseWriter, r *http.Request) {
