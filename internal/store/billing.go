@@ -62,6 +62,13 @@ func (db *DB) SetSubscription(userID uint, status, subID string, currentEnd time
 	return nil
 }
 
+// StampSubSynced records that the account's subscription was just reconciled
+// against the provider, so the on-load reconcile stays throttled. Best-effort:
+// a no-op on an unknown id.
+func (db *DB) StampSubSynced(userID uint) error {
+	return db.Model(&User{}).Where("id = ?", userID).Update("sub_synced_at", time.Now()).Error
+}
+
 // ClearSubscription resets an account to the free tier: no subscription status,
 // no stored subscription id, and the free device cap. Used by the admin panel to
 // undo a subscription when the MoR and glockpeek have drifted (e.g. a sandbox sub

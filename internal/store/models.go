@@ -55,6 +55,10 @@ type User struct {
 	// webhook handler drops any event older than this so an out-of-order or
 	// re-delivered subscription.updated can't undo a newer cancel/revoke.
 	SubEventAt time.Time `json:"-"`
+	// SubSyncedAt is when we last reconciled this subscription against the provider
+	// (on dashboard load). The reconcile is throttled off this so it doesn't fire on
+	// every /api/me, and it self-heals a missed or reordered webhook.
+	SubSyncedAt time.Time `json:"-"`
 }
 
 // VerificationToken is a single-use, expiring token emailed to a new account so

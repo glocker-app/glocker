@@ -261,9 +261,10 @@ func handleBillingCancel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"status": store.SubStatusCanceled, "subCurrentEnd": end})
 }
 
-// polarSubscription is the subset of the PATCH /v1/subscriptions/{id} response we
-// read back after a cancel.
+// polarSubscription is the subset of the PATCH/GET /v1/subscriptions/{id}
+// response we read back (after a cancel, and during the on-load reconcile).
 type polarSubscription struct {
+	Status            string     `json:"status"` // trialing|active|canceled|past_due|...
 	CancelAtPeriodEnd bool       `json:"cancel_at_period_end"`
 	CurrentPeriodEnd  time.Time  `json:"current_period_end"`
 	EndsAt            *time.Time `json:"ends_at"`
@@ -326,6 +327,76 @@ func getPolarSubscription(ctx context.Context, subID string) (*polarSubscription
 		return nil, err
 	}
 	return &sub, nil
+}
+
+// subReconcileEvery throttles the on-load reconcile so /api/me doesn't call Polar
+// on every poll. A few minutes is fine: the webhook is the fast path, this is the
+// safety net that self-heals a dropped one.
+const subReconcileEvery = 3 * time.Minute
+
+// maybeReconcileSubscription refreshes the account's subscription from Polar (the
+// source of truth) at most once per subReconcileEvery, so the dashboard self-heals
+// from a missed or reordered webhook — a cancel that didn't stick, a revoke that
+// didn't lock. Best-effort: a Polar error leaves the stored state untouched.
+// Returns the (possibly refreshed) user so the caller renders the current state.
+func maybeReconcileSubscription(ctx context.Context, u *store.User) *store.User {
+	if !billingEnabled || u == nil || u.SubID == "" {
+		return u
+	}
+	if !u.SubSyncedAt.IsZero() && time.Since(u.SubSyncedAt) < subReconcileEvery {
+		return u
+	}
+	sub, err := getPolarSubscription(ctx, u.SubID)
+	if err != nil {
+		log.Printf("billing: reconcile fetch failed for user %d: %v", u.ID, err)
+		// Stamp anyway so a persistent Polar error doesn't retry on every /api/me.
+		_ = db.StampSubSynced(u.ID)
+		return refreshUser(u)
+	}
+	if status, end, cap := mapPolarStatus(sub); status != "" && (status != u.SubStatus || !end.Equal(u.SubCurrentEnd)) {
+		eventAt := time.Time{}
+		if sub.ModifiedAt != nil {
+			eventAt = *sub.ModifiedAt
+		}
+		if err := db.SetSubscription(u.ID, status, u.SubID, end, cap, eventAt); err != nil {
+			log.Printf("billing: reconcile write failed for user %d: %v", u.ID, err)
+		}
+	}
+	_ = db.StampSubSynced(u.ID)
+	return refreshUser(u)
+}
+
+// refreshUser re-reads the account so callers see the reconciled row; falls back
+// to the original on error.
+func refreshUser(u *store.User) *store.User {
+	if fresh, err := db.UserByID(u.ID); err == nil {
+		return fresh
+	}
+	return u
+}
+
+// mapPolarStatus maps a live Polar subscription onto our local status/end/cap,
+// mirroring applyBillingEvent. An empty status means "leave the stored state
+// alone" (e.g. past_due dunning — access is held through Polar's grace).
+func mapPolarStatus(sub *polarSubscription) (status string, end time.Time, deviceLimit int) {
+	switch {
+	case sub.Status == "canceled" || sub.Status == "unpaid" || sub.Status == "incomplete_expired":
+		// Ended at Polar: revoke to the free tier.
+		return store.SubStatusExpired, sub.CurrentPeriodEnd, 0
+	case sub.CancelAtPeriodEnd:
+		// Scheduled to cancel: keep the paid cap until the period actually ends.
+		end = sub.CurrentPeriodEnd
+		if sub.EndsAt != nil {
+			end = *sub.EndsAt
+		}
+		return store.SubStatusCanceled, end, billing.PaidDeviceLimit
+	case sub.Status == store.SubStatusTrialing:
+		return store.SubStatusTrialing, sub.CurrentPeriodEnd, billing.PaidDeviceLimit
+	case sub.Status == store.SubStatusActive:
+		return store.SubStatusActive, sub.CurrentPeriodEnd, billing.PaidDeviceLimit
+	default:
+		return "", time.Time{}, 0
+	}
 }
 
 // polarSubscriptionEvent is the subset of a Polar webhook we act on.

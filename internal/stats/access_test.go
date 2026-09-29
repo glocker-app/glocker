@@ -200,3 +200,54 @@ func TestBillingCancelAlreadyCanceling(t *testing.T) {
 		t.Errorf("status %q, want canceled", u.SubStatus)
 	}
 }
+
+// TestBillingReconcileOnLoad proves /api/me self-heals a drifted account: the DB
+// says trialing, but Polar (the source of truth) shows the subscription is
+// scheduled to cancel. Loading the dashboard reconciles it to canceled without a
+// webhook.
+func TestBillingReconcileOnLoad(t *testing.T) {
+	var gets int
+	polar := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "unexpected", http.StatusBadRequest)
+			return
+		}
+		gets++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"trialing","cancel_at_period_end":true,"current_period_end":"2027-01-01T00:00:00Z","ends_at":"2027-01-01T00:00:00Z","modified_at":"2026-06-01T00:00:00Z"}`))
+	}))
+	defer polar.Close()
+
+	sdb, err := store.Open(store.Options{Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "test.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sdb.Close() })
+	mux := http.NewServeMux()
+	Register(mux, sdb, Options{Auth: true, Billing: BillingOptions{Enabled: true, APIBase: polar.URL, APIToken: "tok", ProductID: "p", PaidDeviceLimit: -1}})
+	uid, cookie, _ := account(t, sdb, "drift@x.com")
+	if err := sdb.SetSubscription(uid, store.SubStatusTrialing, "sub_d", time.Now().Add(240*time.Hour), -1, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+
+	r := httptest.NewRequest("GET", "/api/me", nil)
+	r.AddCookie(cookie)
+	rec := do(mux, r)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("/api/me code %d (%s), want 200", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"subStatus":"canceled"`) {
+		t.Errorf("/api/me body %s, want subStatus canceled", rec.Body.String())
+	}
+	if u, _ := sdb.UserByID(uid); u.SubStatus != store.SubStatusCanceled {
+		t.Errorf("DB status %q, want canceled", u.SubStatus)
+	}
+
+	// A second immediate load is throttled — no extra Polar call.
+	r2 := httptest.NewRequest("GET", "/api/me", nil)
+	r2.AddCookie(cookie)
+	do(mux, r2)
+	if gets != 1 {
+		t.Errorf("Polar GETs = %d, want 1 (second load should be throttled)", gets)
+	}
+}
