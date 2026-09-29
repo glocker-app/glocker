@@ -6,23 +6,18 @@
 #     - !include conf.d/personal-domains.yaml
 # `glocker -init` copies this sample to conf.d/personal-domains.yaml for you.
 #
-# The file is a YAML sequence of domain entries. Replace the empty list below with
-# your sites. Examples:
+# It's a YAML list of domains — one entry per site. More elaborate examples:
 #
-#   # always blocked:
-#   - {name: "reddit.com"}
-#
-#   # blocked only during set windows (else reachable):
+#   # blocked only during set windows (reachable otherwise):
 #   - name: "news.ycombinator.com"
 #     block_windows:
-#       - {start: "09:00", end: "17:00", days: ["Mon", "Tue", "Wed", "Thu", "Fri"]}
+#       - start: "09:00"
+#         end: "17:00"
+#         days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
 #
 #   # always blocked, but allow a timed `glocker -unblock`:
-#   - {name: "youtube.com", unblockable: true}
+#   - name: "youtube.com"
+#     unblockable: true
 #
-#   # log each block hit for this domain:
-#   - {name: "x.com", log_blocking: true}
-#
-# An empty list (below) blocks nothing extra — add entries and reinstall
-# (`make full-install`) to apply.
-[]
+# Replace the example below with the sites you want blocked (or delete it).
+- name: "example.com"
