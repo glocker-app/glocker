@@ -66,6 +66,11 @@ domains:
   # update_domains.py all`, then they're pulled in via !include. Comment a line
   # out to disable that source. These files must exist before install.
   list:
+    # Your own blocked sites go here — edit conf.d/personal-domains.yaml. It's
+    # yours: update_domains.py never touches it, and it's gitignored. `glocker
+    # -init` creates it from conf.d/personal-domains.yaml.sample.
+    - !include conf.d/personal-domains.yaml
+
     - !include conf.d/domains-bon-appetit.yaml
     - !include conf.d/domains-stevenblack.yaml
     - !include conf.d/domains-hagezi.yaml

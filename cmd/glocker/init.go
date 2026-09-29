@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/user"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -55,7 +56,28 @@ func initConfig(confPath string, in io.Reader, interactive bool) error {
 	if err := os.WriteFile(confPath, []byte(out), 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", confPath, err)
 	}
+
+	// Seed the personal blocklist from its sample so the !include resolves at
+	// install and the user has a clear place for their own sites. Best-effort:
+	// skipped when there's no sample (e.g. a minimal/standalone config layout).
+	seedPersonalDomains(filepath.Dir(confPath))
 	return nil
+}
+
+// seedPersonalDomains copies conf.d/personal-domains.yaml.sample to
+// conf.d/personal-domains.yaml when the latter is absent, so the user has an
+// editable, update_domains.py-safe file for their own blocked sites.
+func seedPersonalDomains(confDir string) {
+	live := filepath.Join(confDir, "conf.d", "personal-domains.yaml")
+	if _, err := os.Stat(live); err == nil {
+		return // keep the user's existing file
+	}
+	data, err := os.ReadFile(filepath.Join(confDir, "conf.d", "personal-domains.yaml.sample"))
+	if err != nil {
+		return // no sample to seed from
+	}
+	_ = os.MkdirAll(filepath.Dir(live), 0o755)
+	_ = os.WriteFile(live, data, 0o644)
 }
 
 // detectLogin picks the human user to restrict/track: SUDO_USER when run under

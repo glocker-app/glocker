@@ -139,7 +139,8 @@ func main() {
 		fmt.Printf("\nWrote %s.\n\n", *confFlag)
 		fmt.Println("Next steps:")
 		fmt.Printf("  1. Review %s — set your block schedules, forbidden programs, and keywords.\n", *confFlag)
-		fmt.Println("  2. Run 'make full-install' to fetch the standard blocklists and install glocker.")
+		fmt.Printf("  2. Add your own sites to %s.\n", filepath.Join(filepath.Dir(*confFlag), "conf.d", "personal-domains.yaml"))
+		fmt.Println("  3. Run 'make full-install' to fetch the standard blocklists and install glocker.")
 		fmt.Println("     (A bare 'glocker -install' skips the blocklist download and won't have any domains to block.)")
 		return
 	}
