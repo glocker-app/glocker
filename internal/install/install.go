@@ -329,7 +329,9 @@ func InstallGlocker(confPath string) error {
 
 	log.Println()
 	log.Println("🎉 Installation complete!")
-	log.Println("   Run 'glocker -status' to check the current status")
+	log.Println("   Run 'glocker -status' to check the current status.")
+	log.Println("   Run 'sudo glocker -check' to audit for bypasses (e.g. wheel/sudo")
+	log.Println("   membership that sidesteps the sudo window) and missing capabilities.")
 
 	if !firefoxExtensionOK {
 		log.Println()

@@ -510,6 +510,17 @@ config file and restart glocker.
    daemon is actually running.
 2. `-info` - Shows configuration information which is static. 
 3. `-version` - Shows what version of Glocker is running
+4. `-check` - (added 2026-09-30) One unified read-only audit, run as
+   `sudo glocker -check`. It reports two things: the **capabilities**
+   glocker needs to run (systemd, visudo, an immutable filesystem, a
+   watchdog scheduler), and the **bypass and recovery routes** on the
+   machine — extra sudo grants, `wheel`/`sudo` group membership, an
+   unlocked root account, root SSH login, autologin. The second half is
+   the important one: if you're in `wheel` or have a blanket `NOPASSWD`
+   grant, you can still `sudo` past the sudo window, so the restriction
+   won't really hold until you remove it. Run this after install to see
+   exactly what's left open and how to close each one. (`-security-check`
+   is the older, security-only subset of this.)
 
 ### Cloud sync
 1. `-connect` - This is used to connect with the glocker cloud platform

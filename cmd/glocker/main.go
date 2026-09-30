@@ -114,6 +114,7 @@ func main() {
 	resyncSince := flag.String("resync-since", "", "With -resync: only re-push records on/after this local date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM). Empty = full history.")
 	testEmailFlag := flag.Bool("test-email", false, "Send a test accountability email via glockpeek to your configured buddy_emails, to confirm mail delivery works.")
 	securityCheckFlag := flag.Bool("security-check", false, "Report bypass/recovery routes (root login, recovery mode, extra sudoers, SSH root, autologin); read-only")
+	checkFlag := flag.Bool("check", false, "Unified preflight + audit: required capabilities (systemd, visudo, …) AND bypass/recovery routes (extra sudo grants, wheel/sudo membership, root login, SSH root, autologin). Read-only; run as root.")
 	connectFlag := flag.Bool("connect", false, "Connect this machine to your dashboard's encryption: fetch your key vault, unlock it with your passphrase, and install the key so synced data is end-to-end encrypted")
 	connectForce := flag.Bool("force", false, "With -connect: replace an existing key even if it differs from your vault (WARNING: makes data encrypted under the old key unreadable)")
 	purgeFlag := flag.Bool("purge", false, "With -uninstall: also remove the glockdoc watchdog + its schedule (timer/cron). Alone: clean up a leftover watchdog from an earlier uninstall.")
@@ -164,6 +165,33 @@ func main() {
 		if cfg, err := config.LoadConfig(); err == nil {
 			managedUser = cfg.User
 		}
+		fmt.Print(precheck.Run(precheck.Options{ManagedUser: managedUser}).String())
+		return
+	}
+
+	// Unified check: capabilities (envcheck) + bypass/recovery routes (precheck) in
+	// one report. This is the "is my glocker install both able to run and actually
+	// enforceable?" command referenced in the docs.
+	if *checkFlag {
+		if !install.RunningAsRoot(true) {
+			log.Fatal("glocker -check must run as root (use sudo) — it reads /etc/shadow and sudoers")
+		}
+		managedUser, needSudoers := "", false
+		if cfg, err := config.LoadConfig(); err == nil {
+			managedUser, needSudoers = cfg.User, cfg.Sudoers.Enabled
+		}
+		fmt.Println("── Capabilities ──")
+		for _, r := range envcheck.Check(needSudoers) {
+			switch {
+			case r.OK:
+				fmt.Printf("  ✓ %s\n", r.Name)
+			case r.Required:
+				fmt.Printf("  ✗ %s — REQUIRED: %s\n", r.Name, r.Detail)
+			default:
+				fmt.Printf("  ⚠ %s — %s\n", r.Name, r.Detail)
+			}
+		}
+		fmt.Println("\n── Bypass & recovery routes ──")
 		fmt.Print(precheck.Run(precheck.Options{ManagedUser: managedUser}).String())
 		return
 	}
