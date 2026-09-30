@@ -12,6 +12,7 @@
 package precheck
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -106,6 +107,7 @@ func Run(opts Options) Report {
 		checkRecoveryMode(o.GrubCfgPaths),
 		checkSSHRoot(o.SSHDConfig, o.SSHDConfigDir),
 	)
+	r.Findings = append(r.Findings, checkManagedUserSudoGroup(o.SudoersPath, o.SudoersDir, o.GroupPath, o.ManagedUser))
 	r.Findings = append(r.Findings, checkSudoers(o.SudoersPath, o.SudoersDir, o.ManagedUser))
 	r.Findings = append(r.Findings, checkSudoGroup(o.GroupPath, o.ManagedUser))
 	r.Findings = append(r.Findings, checkAutologin(o.AutologinPaths))
@@ -249,7 +251,7 @@ func checkSSHRoot(mainCfg, dir string) Finding {
 // checkSudoers surfaces sudo grants other than glocker's own managed line —
 // especially NOPASSWD, which sidesteps the whole sudo-window mechanism.
 func checkSudoers(mainPath, dir, managedUser string) Finding {
-	f := Finding{ID: "sudoers-extra", Title: "Other sudo grants"}
+	f := Finding{ID: "sudoers-extra", Title: "Other blanket sudo grants"}
 	files := []string{mainPath}
 	if entries, err := os.ReadDir(dir); err == nil {
 		for _, e := range entries {
@@ -271,10 +273,19 @@ func checkSudoers(mainPath, dir, managedUser string) Finding {
 				continue
 			}
 			if strings.Contains(t, "GLOCKER-MANAGED") {
-				continue
+				continue // glocker's own managed line
+			}
+			if strings.HasPrefix(t, "root ") || strings.HasPrefix(t, "root\t") {
+				continue // root is inherently root — not an escalation route
+			}
+			if strings.HasPrefix(t, "%") {
+				continue // group grants are covered by the per-user + group-member checks
 			}
 			if managedUser != "" && strings.HasPrefix(t, managedUser+" ") {
-				continue
+				continue // glocker manages this user's own line
+			}
+			if !grantIsBlanket(t) {
+				continue // command-scoped grants can't open a root shell or remove glocker
 			}
 			if strings.Contains(strings.ToUpper(t), "NOPASSWD") {
 				nopasswd = true
@@ -285,7 +296,7 @@ func checkSudoers(mainPath, dir, managedUser string) Finding {
 	f.Enables = "run commands as root without glocker's window restriction"
 	if len(grants) == 0 {
 		f.Status = StatusClosed
-		f.Detail = "no sudo grants outside glocker's managed line"
+		f.Detail = "no other user has a blanket sudo grant outside glocker's line"
 		return f
 	}
 	f.Status = StatusOpen
@@ -298,6 +309,107 @@ func checkSudoers(mainPath, dir, managedUser string) Finding {
 	f.Detail = "grants found:\n           " + strings.Join(grants, "\n           ")
 	f.ManualFix = "review /etc/sudoers and /etc/sudoers.d; remove grants you don't want"
 	return f
+}
+
+// checkManagedUserSudoGroup is the specific, actionable version of the generic
+// sudo-grant list: it reports whether THE MANAGED USER is a member of a group that
+// has a blanket sudo grant (`%group … = … ALL`) — which lets them sudo past the
+// window regardless of glocker's line — and gives the one command to fix it.
+func checkManagedUserSudoGroup(sudoersMain, sudoersDir, groupPath, managedUser string) Finding {
+	f := Finding{ID: "user-sudo-group", Title: "Your account can sudo past the window"}
+	if managedUser == "" {
+		f.Status = StatusUnknown
+		f.Detail = "no managed user configured (set the top-level `user`)"
+		return f
+	}
+	f.Enables = "you can sudo to root at any time, ignoring glocker's sudo window"
+
+	blanket := blanketSudoGroups(sudoersMain, sudoersDir)
+	var hits []string
+	if data, err := os.ReadFile(groupPath); err == nil {
+		for _, line := range strings.Split(string(data), "\n") {
+			fields := strings.Split(line, ":")
+			if len(fields) < 4 || !blanket[fields[0]] {
+				continue
+			}
+			for _, m := range strings.Split(fields[3], ",") {
+				if strings.TrimSpace(m) == managedUser {
+					hits = append(hits, fields[0])
+				}
+			}
+		}
+	}
+	if len(hits) == 0 {
+		f.Status = StatusClosed
+		f.Detail = managedUser + " is not in any group with a blanket sudo grant"
+		return f
+	}
+	sort.Strings(hits)
+	f.Status = StatusOpen
+	f.Detail = fmt.Sprintf("%s is in %s, which grant%s blanket sudo (e.g. %%%s ALL=(ALL) ALL)",
+		managedUser, strings.Join(hits, ", "), plural(hits), hits[0])
+	fixes := make([]string, len(hits))
+	for i, g := range hits {
+		fixes[i] = "sudo gpasswd -d " + managedUser + " " + g
+	}
+	f.ManualFix = strings.Join(fixes, "  ;  ") + "   (then glocker's window is your only sudo path)"
+	return f
+}
+
+func plural(s []string) string {
+	if len(s) == 1 {
+		return "s"
+	}
+	return ""
+}
+
+// blanketSudoGroups returns the groups that have an UNRESTRICTED sudo grant
+// (`%group … = … ALL`) in sudoers — the ones that fully bypass the window. A
+// command-scoped grant (`%group … = … /usr/bin/foo`) is not blanket and is ignored.
+func blanketSudoGroups(mainPath, dir string) map[string]bool {
+	out := map[string]bool{}
+	files := []string{mainPath}
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() {
+				files = append(files, filepath.Join(dir, e.Name()))
+			}
+		}
+	}
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			t := strings.TrimSpace(line)
+			if !strings.HasPrefix(t, "%") || !strings.Contains(t, "ALL=") || !grantIsBlanket(t) {
+				continue
+			}
+			name := t[1:]
+			if i := strings.IndexAny(name, " \t"); i >= 0 {
+				name = name[:i]
+			}
+			// %group and %:nonunix, and #gid forms — normalise a leading ':' away.
+			out[strings.TrimPrefix(name, ":")] = true
+		}
+	}
+	return out
+}
+
+// grantIsBlanket reports whether a sudoers line's command spec is exactly ALL
+// (optionally behind NOPASSWD:/PASSWD:), i.e. it grants every command.
+func grantIsBlanket(line string) bool {
+	tail := line
+	if i := strings.LastIndex(line, ")"); i >= 0 {
+		tail = line[i+1:] // after the (runas) spec, if any
+	} else if i := strings.Index(line, "="); i >= 0 {
+		tail = line[i+1:]
+	}
+	tail = strings.TrimSpace(tail)
+	tail = strings.TrimSpace(strings.TrimPrefix(tail, "NOPASSWD:"))
+	tail = strings.TrimSpace(strings.TrimPrefix(tail, "PASSWD:"))
+	return tail == "ALL"
 }
 
 // checkSudoGroup lists other members of sudo/wheel (users who can escalate).

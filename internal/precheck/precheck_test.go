@@ -100,26 +100,58 @@ func TestCheckSudoers(t *testing.T) {
 	main := filepath.Join(dir, "sudoers")
 	sudoersD := filepath.Join(dir, "sudoers.d")
 
-	writeFile(t, main, "root ALL=(ALL) ALL\nalice ALL=(ALL) ALL # GLOCKER-MANAGED\n")
-	writeFile(t, filepath.Join(sudoersD, "extra"), "bob ALL=(ALL) NOPASSWD:ALL\n")
+	// root's own line, the glocker-managed line, a group grant, and a command-scoped
+	// grant are all NOT bypasses to flag here; only bob's blanket NOPASSWD user grant is.
+	writeFile(t, main, "root ALL=(ALL) ALL\nalice ALL=(ALL) ALL # GLOCKER-MANAGED\n%sudo ALL=(ALL:ALL) ALL\n")
+	writeFile(t, filepath.Join(sudoersD, "extra"), "bob ALL=(ALL) NOPASSWD:ALL\ncarol ALL=(root) NOPASSWD: /usr/bin/foo\n")
 
 	f := checkSudoers(main, sudoersD, "alice")
 	if f.Status != StatusOpen {
 		t.Fatalf("status = %q, want OPEN", f.Status)
 	}
-	// root's own line and the glocker-managed line must not be flagged as extras;
-	// bob's NOPASSWD grant must be.
 	if want := "bob ALL=(ALL) NOPASSWD:ALL"; !strings.Contains(f.Detail, want) {
 		t.Fatalf("detail missing %q: %q", want, f.Detail)
+	}
+	for _, notWant := range []string{"root ALL", "%sudo", "carol"} {
+		if strings.Contains(f.Detail, notWant) {
+			t.Errorf("detail should not flag %q: %q", notWant, f.Detail)
+		}
 	}
 	if !strings.Contains(f.Title, "NOPASSWD") {
 		t.Fatalf("title should flag NOPASSWD: %q", f.Title)
 	}
 
-	// Clean system: only the managed line.
-	writeFile(t, main, "alice ALL=(ALL) ALL # GLOCKER-MANAGED\n")
+	// Clean system: only root, the managed line, and a command-scoped grant.
+	writeFile(t, main, "root ALL=(ALL) ALL\nalice ALL=(ALL) ALL # GLOCKER-MANAGED\n")
 	if got := checkSudoers(main, filepath.Join(dir, "empty"), "alice").Status; got != StatusClosed {
 		t.Fatalf("clean: status = %q, want CLOSED", got)
+	}
+}
+
+func TestCheckManagedUserSudoGroup(t *testing.T) {
+	dir := t.TempDir()
+	sudoers := filepath.Join(dir, "sudoers")
+	group := filepath.Join(dir, "group")
+	// %sudo grants blanket root; %scoped only a specific command.
+	writeFile(t, sudoers, "%sudo ALL=(ALL:ALL) ALL\n%scoped ALL=(root) NOPASSWD: /usr/bin/foo\n")
+
+	// alice is in sudo (blanket) → OPEN, with a gpasswd fix naming her + the group.
+	writeFile(t, group, "sudo:x:27:alice\nscoped:x:900:alice\n")
+	f := checkManagedUserSudoGroup(sudoers, filepath.Join(dir, "none"), group, "alice")
+	if f.Status != StatusOpen {
+		t.Fatalf("status = %q, want OPEN", f.Status)
+	}
+	if !strings.Contains(f.Detail, "alice is in sudo") {
+		t.Errorf("detail should name the user + group: %q", f.Detail)
+	}
+	if !strings.Contains(f.ManualFix, "gpasswd -d alice sudo") {
+		t.Errorf("fix should be the gpasswd command: %q", f.ManualFix)
+	}
+
+	// bob is only in the command-scoped group → not a blanket bypass → CLOSED.
+	writeFile(t, group, "sudo:x:27:alice\nscoped:x:900:bob\n")
+	if got := checkManagedUserSudoGroup(sudoers, filepath.Join(dir, "none"), group, "bob").Status; got != StatusClosed {
+		t.Errorf("bob (command-scoped only): status = %q, want CLOSED", got)
 	}
 }
 
