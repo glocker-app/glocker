@@ -82,6 +82,41 @@ func hasControlChar(s string) bool {
 	return false
 }
 
+// printGroupedUsage renders `glocker -h` in labelled sections instead of one flat
+// alphabetical list. Descriptions come from the flag definitions (so they stay in
+// one place); -daemon and -conf are internal and intentionally omitted.
+func printGroupedUsage() {
+	out := flag.CommandLine.Output()
+	fmt.Fprintln(out, "glocker — a Linux distraction blocker.")
+	fmt.Fprint(out, "\nUsage: glocker [flag]   (no flag: show status, or help if the daemon isn't running)\n\n")
+
+	groups := []struct {
+		title string
+		names []string
+	}{
+		{"Status & info", []string{"status", "info", "version"}},
+		{"Setup & lifecycle", []string{"init", "install", "uninstall", "note", "purge", "connect", "force"}},
+		{"Runtime controls", []string{"block", "block-app", "unblock", "add-keyword", "extend", "panic", "lock"}},
+		{"Sync", []string{"resync"}},
+		{"Diagnostics", []string{"check", "security-check"}},
+	}
+	for _, g := range groups {
+		fmt.Fprintf(out, "%s:\n", g.title)
+		for _, name := range g.names {
+			f := flag.Lookup(name)
+			if f == nil {
+				continue
+			}
+			left := "-" + name
+			if bf, ok := f.Value.(interface{ IsBoolFlag() bool }); !ok || !bf.IsBoolFlag() {
+				left += " <value>"
+			}
+			fmt.Fprintf(out, "  %-20s %s\n", left, f.Usage)
+		}
+		fmt.Fprintln(out)
+	}
+}
+
 func main() {
 	// Parse command-line flags
 	installFlag := flag.Bool("install", false, "Install glocker as a system service")
@@ -107,6 +142,7 @@ func main() {
 	purgeFlag := flag.Bool("purge", false, "With -uninstall: also remove the glockdoc watchdog + its schedule (timer/cron). Alone: clean up a leftover watchdog from an earlier uninstall.")
 	versionFlag := flag.Bool("version", false, "Show version information")
 
+	flag.Usage = printGroupedUsage
 	flag.Parse()
 
 	// Surface the build version in -status (rendered both here and, for the live
