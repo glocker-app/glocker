@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -32,7 +33,9 @@ func TestUninstallDeliversCompletionBeforeClose(t *testing.T) {
 	uninstallRestore = func(*config.Config) error { return nil } // don't touch the real system
 	exited := make(chan int, 1)
 	uninstallExit = func(code int) { exited <- code } // observe exit, don't kill the test
-	t.Cleanup(func() { uninstallRestore, uninstallExit = origRestore, origExit })
+	origPeer := peerUIDFn
+	peerUIDFn = func(net.Conn) (uint32, error) { return 0, nil } // net.Pipe has no SO_PEERCRED; act as root
+	t.Cleanup(func() { uninstallRestore, uninstallExit, peerUIDFn = origRestore, origExit, origPeer })
 
 	cfg := &config.Config{}
 	cfg.Lifecycle.Reasons = []string{"work"} // make "work" a valid uninstall reason
@@ -60,5 +63,70 @@ func TestUninstallDeliversCompletionBeforeClose(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("uninstall never reached exit")
+	}
+}
+
+// peerUID over a real Unix socket returns the connecting process's uid (here, the
+// test process itself) — the basis for gating privileged commands.
+func TestPeerUID_Self(t *testing.T) {
+	dir := t.TempDir()
+	sock := dir + "/peer.sock"
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		c, err := l.Accept()
+		if err == nil {
+			accepted <- c
+		}
+	}()
+	client, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	srv := <-accepted
+	defer srv.Close()
+
+	uid, err := peerUID(srv)
+	if err != nil {
+		t.Fatalf("peerUID: %v", err)
+	}
+	if uid != uint32(os.Getuid()) {
+		t.Errorf("peerUID = %d, want %d (this process)", uid, os.Getuid())
+	}
+}
+
+// A privileged command from a non-root peer is refused before it runs.
+func TestPrivilegedCommandRejectedFromNonRoot(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("running as root — the peer uid would be 0 and the command would execute")
+	}
+	dir := t.TempDir()
+	sock := dir + "/gate.sock"
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	go func() {
+		if c, err := l.Accept(); err == nil {
+			HandleConnection(&config.Config{}, c)
+		}
+	}()
+	client, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+	_, _ = client.Write([]byte("uninstall:testing\n"))
+	_ = client.SetReadDeadline(time.Now().Add(2 * time.Second))
+	buf := make([]byte, 128)
+	n, _ := client.Read(buf)
+	if !strings.Contains(string(buf[:n]), "requires root") {
+		t.Errorf("expected a root-required rejection, got %q", string(buf[:n]))
 	}
 }

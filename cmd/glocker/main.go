@@ -714,6 +714,14 @@ func main() {
 		log.Fatal("No matching command. Use -h for help, or -daemon to start the daemon.")
 	}
 
+	// The daemon must be real root (systemd starts it as root). With the binary no
+	// longer setuid, a plain user running `glocker -daemon` would fail to bind the
+	// root paths anyway — refuse up front so they can't try to stand up a rival
+	// daemon and hijack the socket.
+	if os.Geteuid() != 0 {
+		log.Fatal("the glocker daemon must run as root (it's started by systemd; not for direct use)")
+	}
+
 	// Load configuration
 	cfg, err := config.LoadConfig()
 	if err != nil {

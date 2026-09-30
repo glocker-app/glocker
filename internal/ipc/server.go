@@ -7,9 +7,11 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"glocker/internal/cli"
@@ -28,25 +30,36 @@ const SocketPath = config.GlockerSock
 
 // SetupCommunication creates and starts listening on the Unix domain socket.
 func SetupCommunication(cfg *config.Config) error {
-	// Ensure the parent directory exists and is root-only (0700). This is the
-	// primary access control: only root can traverse into it to reach the socket.
+	// Access control on the socket. The binary is NOT setuid (dropped 2026-09-30),
+	// so a client runs as the invoking user. To let the managed user reach the
+	// daemon without setuid or sudo, the socket dir + socket are owned root:glocker
+	// (0750 / 0660) and `glocker -install` puts the user in the glocker group.
+	// Privileged commands are still gated by the peer's real uid (see HandleConnection),
+	// so group access only grants the safe, self-management commands. If the group
+	// doesn't exist (e.g. an old install), fall back to root-only 0700/0600.
+	gid := glockerGID()
+	dirMode, sockMode := os.FileMode(0700), os.FileMode(0600)
+	chownGID := 0
+	if gid >= 0 {
+		dirMode, sockMode, chownGID = 0750, 0660, gid
+	}
 	dir := filepath.Dir(SocketPath)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := os.MkdirAll(dir, dirMode); err != nil {
 		return fmt.Errorf("failed to create socket directory %s: %w", dir, err)
 	}
-	if err := os.Chown(dir, 0, 0); err != nil {
-		log.Printf("Warning: couldn't chown socket directory to root: %v", err)
+	if err := os.Chown(dir, 0, chownGID); err != nil {
+		log.Printf("Warning: couldn't chown socket directory: %v", err)
 	}
-	// MkdirAll won't tighten an existing dir's mode, so enforce 0700 explicitly.
-	if err := os.Chmod(dir, 0700); err != nil {
+	// MkdirAll won't tighten an existing dir's mode, so enforce it explicitly.
+	if err := os.Chmod(dir, dirMode); err != nil {
 		log.Printf("Warning: couldn't set socket directory permissions: %v", err)
 	}
 
 	// Refuse to start if a daemon is already listening: removing the socket below
 	// would otherwise hijack the running (systemd) daemon — the old one becomes
 	// unreachable while both keep enforcing. A stale socket (nothing answering) is
-	// safe to replace. Since the binary is setuid, this also stops a local user
-	// from displacing the real daemon with `glocker -daemon`.
+	// safe to replace. `glocker -daemon` also refuses to run unless real root now
+	// that the binary is not setuid, so a plain user can't start a rival daemon.
 	if daemonAlive(SocketPath) {
 		return fmt.Errorf("a glocker daemon is already running (socket %s is live); refusing to start a second one", SocketPath)
 	}
@@ -59,13 +72,69 @@ func SetupCommunication(cfg *config.Config) error {
 		return fmt.Errorf("failed to create socket: %w", err)
 	}
 
-	// Set permissions
-	if err := os.Chmod(SocketPath, 0600); err != nil {
+	// Set permissions (0660 root:glocker when the group exists, else 0600 root).
+	if err := os.Chmod(SocketPath, sockMode); err != nil {
 		log.Printf("Warning: couldn't set socket permissions: %v", err)
+	}
+	if chownGID != 0 {
+		if err := os.Chown(SocketPath, 0, chownGID); err != nil {
+			log.Printf("Warning: couldn't chown socket to the glocker group: %v", err)
+		}
 	}
 
 	go handleConnections(cfg, listener)
 	return nil
+}
+
+// glockerGID returns the numeric gid of the "glocker" group, or -1 if it doesn't
+// exist (an old, pre-group install → the socket stays root-only).
+func glockerGID() int {
+	g, err := user.LookupGroup("glocker")
+	if err != nil {
+		return -1
+	}
+	gid, err := strconv.Atoi(g.Gid)
+	if err != nil {
+		return -1
+	}
+	return gid
+}
+
+// privilegedActions are socket commands that tamper with enforcement, re-push data,
+// or send mail — they require the caller's REAL uid to be root (i.e. invoked via
+// sudo), not merely membership in the glocker group. Everything else is
+// self-management the managed user may run directly.
+var privilegedActions = map[string]bool{
+	"uninstall": true, "resync": true, "test-email": true,
+}
+
+// peerUIDFn resolves the connecting peer's real uid; a package var so tests can
+// stub it (a net.Pipe has no SO_PEERCRED). Production uses peerUID.
+var peerUIDFn = peerUID
+
+// peerUID returns the real uid of the process on the other end of a Unix socket
+// (SO_PEERCRED). It's how the daemon tells a sudo caller (uid 0) from a plain
+// group-member client now that the binary is no longer setuid.
+func peerUID(conn net.Conn) (uint32, error) {
+	uc, ok := conn.(*net.UnixConn)
+	if !ok {
+		return 0, fmt.Errorf("connection is not a unix socket")
+	}
+	raw, err := uc.SyscallConn()
+	if err != nil {
+		return 0, err
+	}
+	var cred *syscall.Ucred
+	var credErr error
+	if err := raw.Control(func(fd uintptr) {
+		cred, credErr = syscall.GetsockoptUcred(int(fd), syscall.SOL_SOCKET, syscall.SO_PEERCRED)
+	}); err != nil {
+		return 0, err
+	}
+	if credErr != nil {
+		return 0, credErr
+	}
+	return cred.Uid, nil
 }
 
 // handleConnections accepts incoming socket connections.
@@ -124,6 +193,18 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 
 		action := strings.TrimSpace(parts[0])
 		slog.Debug("Socket command received", "action", action)
+
+		// Privileged commands require the caller's real uid to be root (sudo). Group
+		// membership alone (which reaches the socket) is not enough — it only grants
+		// the safe self-management commands. This replaces the old setuid model, where
+		// any local user connected as root.
+		if privilegedActions[action] {
+			if uid, err := peerUIDFn(conn); err != nil || uid != 0 {
+				slog.Warn("rejecting privileged command from non-root peer", "action", action, "uid", uid, "err", err)
+				conn.Write([]byte("ERROR: this command requires root — run it with sudo\n"))
+				return
+			}
+		}
 
 		switch action {
 		case "ping":

@@ -147,16 +147,38 @@ func InstallGlocker(confPath string) error {
 		log.Printf("Warning: couldn't set ownership to root: %v", err)
 	}
 
-	// Set setuid bit (4755 = rwsr-xr-x)
-	if err := os.Chmod(config.InstallPath, 0o755|os.ModeSetuid|os.ModeSetgid); err != nil {
-		return fmt.Errorf("failed to set setuid bit: %w", err)
+	// Plain 0755 — NOT setuid (dropped 2026-09-30). A setuid binary let ANY local
+	// user run client commands as root via the socket. Instead the daemon (started
+	// by systemd as root) owns the socket root:glocker 0660, the managed user joins
+	// the glocker group below, and privileged commands are gated by the caller's real
+	// uid (SO_PEERCRED) — so a group member gets self-management commands, and
+	// uninstall/resync/test-email still require sudo.
+	if err := os.Chmod(config.InstallPath, 0o755); err != nil {
+		return fmt.Errorf("failed to set binary permissions: %w", err)
 	}
 
 	// Set immutable on the installed binary
 	if err := exec.Command("chattr", "+i", config.InstallPath).Run(); err != nil {
 		log.Printf("Warning: couldn't set immutable flag: %v", err)
 	}
-	log.Println("✓ Binary installed with setuid permissions")
+	log.Println("✓ Binary installed (0755, not setuid)")
+
+	// Step 4a: The glocker group gates socket access now that the binary isn't
+	// setuid. The daemon owns the socket root:glocker 0660; a member can run the
+	// self-management commands (status, unblock, extend, …) without sudo, while
+	// uninstall/resync/test-email still need real root. Create the group and add the
+	// managed user. NOTE: group membership only takes effect on the user's NEXT
+	// login — until then they must use sudo or `newgrp glocker`.
+	if err := exec.Command("groupadd", "-f", "glocker").Run(); err != nil {
+		log.Printf("Warning: couldn't create the glocker group: %v", err)
+	}
+	if cfg.User != "" {
+		if err := exec.Command("gpasswd", "-a", cfg.User, "glocker").Run(); err != nil {
+			log.Printf("Warning: couldn't add %s to the glocker group: %v", cfg.User, err)
+		} else {
+			log.Printf("✓ Added %s to the glocker group (log out/in for it to take effect)", cfg.User)
+		}
+	}
 
 	// Step 4b: Install glocklock binary
 	glocklockSource := filepath.Join(filepath.Dir(exePath), "glocklock")

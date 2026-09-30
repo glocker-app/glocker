@@ -518,8 +518,9 @@ config file and restart glocker.
 
 Glocker is installed through the `Makefile` in the source directory. Run
 `make` on its own to see the list of available targets. Before your first
-install, remember to copy `conf/conf.yaml.sample` to `conf/conf.yaml` and
-edit it as described above.
+install, run `make init` — it writes `conf/conf.yaml` from the sample and fills
+in your login and desktop session (or copy `conf/conf.yaml.sample` to
+`conf/conf.yaml` by hand) — then edit it as described above.
 
 `make install` is what you'll use most of the time. It rebuilds all four
 binaries and reinstalls glocker in place. If glocker is already running, it
@@ -530,6 +531,16 @@ This is also how you apply changes after editing `conf/conf.yaml`.
 (see below). Use it for a first install or when you want the public lists
 pulled in fresh; for everyday config edits, `make install` is enough since
 it skips the (slow) blocklist download.
+
+A note on privileges (changed 2026-09-30). Glocker's binary is a normal,
+non-setuid program; the enforcement daemon runs as root under systemd. Everyday
+commands — `glocker -status`, `-unblock`, `-extend`, `-panic` and the like — reach
+the daemon over a socket owned by the `glocker` group, and the installer adds your
+user to that group. **Group membership only takes effect on your next login**, so
+log out and back in (or run `newgrp glocker`) once after your first install,
+otherwise those commands are refused until you do. The few commands that can
+disable enforcement or send mail — `-uninstall`, `-resync`, `-test-email` — still
+require real root, so run them with `sudo`.
 
 The blocklists are handled by `update_domains.py`, run for you by `make
 update-blocklists` (which `full-install` calls). It downloads several large
