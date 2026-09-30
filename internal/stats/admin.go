@@ -28,6 +28,7 @@ type adminUserView struct {
 	IsAdmin     bool   `json:"isAdmin"`
 	Self        bool   `json:"self"`
 	SubStatus   string `json:"subStatus"` // "" free, "active", "canceled", "expired"
+	HasAccess   bool   `json:"hasAccess"` // entitled to the paid tier right now (drives grant vs cancel)
 }
 
 // recordCount sums the actual synced data sources (not rules/ignored config).
@@ -78,7 +79,7 @@ func adminListUsers(w http.ResponseWriter, me *store.User) {
 			DeviceLimit: store.EffectiveDeviceLimit(&u), Devices: devices,
 			Records: records, LastSyncAt: lastSync,
 			CreatedAt: u.CreatedAt.UnixMilli(), IsAdmin: isAdmin(&u), Self: u.ID == me.ID,
-			SubStatus: u.SubStatus,
+			SubStatus: u.SubStatus, HasAccess: u.HasAccess(),
 		})
 	}
 	writeJSON(w, map[string]any{
@@ -149,8 +150,10 @@ func adminCancelSubscription(w http.ResponseWriter, r *http.Request) {
 // an EMPTY provider sub id: the on-load reconcile skips accounts with no SubID, so
 // a comp is never fetched from Polar and never clobbered. Optional {"untilMillis":N}
 // time-boxes access (HasAccess lapses after SubCurrentEnd); absent/0 = permanent.
-// Refuses an account that already has a provider subscription — cancel it first —
-// so a comp can't silently orphan a live Polar sub by blanking its id.
+// Refuses an account that already HAS access (active/trialing, or a cancel still
+// within its paid period) — there is nothing to grant, and blanking a live sub id
+// would orphan it at Polar. An expired/lapsed account (no access, dead sub) IS
+// comp-able even if it still carries a stale sub id, which this clears.
 func adminGrantSubscription(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -170,8 +173,8 @@ func adminGrantSubscription(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such user", http.StatusNotFound)
 		return
 	}
-	if u.SubID != "" {
-		http.Error(w, "account has a provider subscription — cancel it first, then grant", http.StatusConflict)
+	if u.HasAccess() {
+		http.Error(w, "account already has access — nothing to grant", http.StatusConflict)
 		return
 	}
 	var in struct {

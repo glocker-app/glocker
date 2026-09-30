@@ -3512,10 +3512,12 @@ function userRow(u) {
   };
   actions.append(limLabel, saveBtn);
 
-  // Subscription lever (billing instances only). Cancel for a subscribed account:
-  // revoke the live sub at Polar (if any) and reset to free. Grant for an
-  // unsubscribed one: comp the paid tier directly (no payment), permanent unless
-  // you set an expiry date.
+  // Subscription levers (billing instances only), keyed on ACCESS not status.
+  // Cancel: shown whenever there's a subscription record to unwind — revoke the
+  // live sub at Polar (if any) and reset to free. Grant: shown whenever the account
+  // lacks access (free, expired, or a lapsed cancel) — comp the paid tier directly
+  // (no payment), permanent unless you set an expiry date. An expired account shows
+  // both: grant to comp it, or cancel to fully reset it to free.
   const billingOn = state.me && state.me.billing;
   if (billingOn && u.subStatus) {
     const cancelSub = document.createElement("button");
@@ -3528,7 +3530,8 @@ function userRow(u) {
       renderUsers();
     };
     actions.append(cancelSub);
-  } else if (billingOn && !u.subStatus) {
+  }
+  if (billingOn && !u.hasAccess) {
     const grantSub = document.createElement("button");
     grantSub.className = "btn-ghost";
     grantSub.type = "button";

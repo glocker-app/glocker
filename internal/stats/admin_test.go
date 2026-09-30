@@ -214,15 +214,33 @@ func TestAdminGrantSubscription(t *testing.T) {
 	if !after.HasAccess() {
 		t.Error("comped account should have access")
 	}
-	// Re-granting an account that now has a subscription is refused (409) — but this
-	// one has an empty sub id, so it's still comp-able. Give carol a real provider sub.
+	// An account that currently HAS access is refused (409) — nothing to grant, and
+	// blanking a live sub id would orphan it at Polar. carol is active with a future
+	// period end.
 	carol, _ := sdb.CreateUser("carol@x.com", "longenough1")
 	if err := sdb.SetSubscription(carol.ID, store.SubStatusActive, "sub_live", time.Now().Add(720*time.Hour), 7, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	carolID := strconv.FormatUint(uint64(carol.ID), 10)
 	if rec := req("/api/admin/grant-subscription?id="+carolID, adminTok, ""); rec.Code != http.StatusConflict {
-		t.Errorf("grant over a provider sub: got %d, want 409", rec.Code)
+		t.Errorf("grant to an account with access: got %d, want 409", rec.Code)
+	}
+
+	// An EXPIRED account still carrying a stale provider sub id (no access) IS
+	// comp-able — the previous status/sub-id guard wrongly blocked exactly this. The
+	// grant clears the dead sub id so the reconcile leaves the comp alone.
+	erin, _ := sdb.CreateUser("erin@x.com", "longenough1")
+	if err := sdb.SetSubscription(erin.ID, store.SubStatusExpired, "sub_dead", time.Now().Add(-time.Hour), 0, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	erinID := strconv.FormatUint(uint64(erin.ID), 10)
+	if rec := req("/api/admin/grant-subscription?id="+erinID, adminTok, ""); rec.Code != http.StatusOK {
+		t.Fatalf("grant to expired account: %d %s", rec.Code, rec.Body.String())
+	}
+	afterErin, _ := sdb.UserByEmail("erin@x.com")
+	if afterErin.SubStatus != store.SubStatusActive || afterErin.SubID != "" || !afterErin.HasAccess() {
+		t.Errorf("expired account not comped: status=%q id=%q access=%v",
+			afterErin.SubStatus, afterErin.SubID, afterErin.HasAccess())
 	}
 	// Time-boxed comp: an expiry in the past means no access.
 	dave, _ := sdb.CreateUser("dave@x.com", "longenough1")

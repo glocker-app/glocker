@@ -190,8 +190,9 @@ paths:
         empty provider subscription id (so the on-load Polar reconcile skips it and never
         clobbers the comp). Permanent by default; an optional untilMillis time-boxes it
         (access lapses after that instant). Admin-gated. Refuses an account that already
-        has a provider subscription (cancel it first) and refuses when billing is disabled
-        (every account already has access).
+        has access (active/trialing, or a cancel still within its paid period) and refuses
+        when billing is disabled (every account already has access). An expired or lapsed
+        account is comp-able even if it still carries a stale sub id, which the grant clears.
       operationId: adminGrantSubscription
       parameters:
         - name: id
@@ -233,7 +234,7 @@ paths:
         "404":
           description: No such user
         "409":
-          description: Account already has a provider subscription — cancel it first
+          description: Account already has access — nothing to grant
   /api/admin/metrics:
     get:
       summary: Live server and database health (admin-only)
