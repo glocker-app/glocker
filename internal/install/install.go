@@ -11,6 +11,7 @@ import (
 
 	"glocker/internal/config"
 	"glocker/internal/envcheck"
+	"glocker/internal/precheck"
 	"glocker/internal/utils"
 	"glocker/internal/web"
 )
@@ -23,6 +24,31 @@ const (
 	LockBackgroundFile = "extras/lock-background.png"
 	GlockpeekServicePath = "/etc/systemd/system/glockpeek.service"
 )
+
+// logOpenBypassRoutes runs the bypass/recovery-route audit and logs the OPEN ones
+// as warnings, so `glocker -install` surfaces enforcement gaps (wheel/NOPASSWD
+// sudo, root login, root SSH, autologin) itself. Full report + fixes come from
+// `glocker -check`. Read-only.
+func logOpenBypassRoutes(managedUser string) {
+	var open []precheck.Finding
+	for _, f := range precheck.Run(precheck.Options{ManagedUser: managedUser}).Findings {
+		if f.Status == precheck.StatusOpen {
+			open = append(open, f)
+		}
+	}
+	if len(open) == 0 {
+		log.Println("✓ Bypass audit: no open routes — enforcement can't be trivially sidestepped.")
+		return
+	}
+	log.Printf("⚠ Bypass audit: %d route(s) can defeat enforcement until closed:", len(open))
+	for _, f := range open {
+		log.Printf("   • %s — %s", f.Title, f.Enables)
+		if f.ManualFix != "" {
+			log.Printf("     fix: %s", f.ManualFix)
+		}
+	}
+	log.Println("   (full audit incl. recovery routes: sudo glocker -check)")
+}
 
 // InstallGlocker performs the complete installation of Glocker on the system.
 // This includes copying the binary, config file, setting up systemd service,
@@ -57,13 +83,18 @@ func InstallGlocker(confPath string) error {
 	// required one is missing (no systemd to run the service, or no visudo while
 	// sudoers management is on) — installing something that won't work is worse
 	// than refusing. Merely-degrading gaps (no watchdog scheduler, no immutable-flag
-	// support) are warnings. (The separate bypass-routes security audit,
-	// `glocker -security-check`, is not part of install.)
+	// support) are warnings.
 	envResults := envcheck.Check(cfg.Sudoers.Enabled)
 	if err := envcheck.Verify(envResults); err != nil {
 		return fmt.Errorf("cannot install: %w", err)
 	}
 	envcheck.LogAdvisories(envResults, log.Printf)
+
+	// Then the bypass/recovery-route audit (the second half of `glocker -check`),
+	// up front so enforcement gaps are visible BEFORE we finish — not left for the
+	// user to discover by running the audit later. Read-only; never blocks install
+	// (some routes, like recovery mode, you WANT open as break-glass).
+	logOpenBypassRoutes(cfg.User)
 
 	// Ensure the log directory exists (and migrate any logs from the old flat
 	// /var/log/glocker-* names into it).
@@ -330,8 +361,7 @@ func InstallGlocker(confPath string) error {
 	log.Println()
 	log.Println("🎉 Installation complete!")
 	log.Println("   Run 'glocker -status' to check the current status.")
-	log.Println("   Run 'sudo glocker -check' to audit for bypasses (e.g. wheel/sudo")
-	log.Println("   membership that sidesteps the sudo window) and missing capabilities.")
+	log.Println("   Re-run 'sudo glocker -check' anytime to re-audit bypass routes + capabilities.")
 
 	if !firefoxExtensionOK {
 		log.Println()
