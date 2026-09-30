@@ -6,6 +6,9 @@ const (
 	GlocklockInstallPath = "/usr/local/bin/glocklock"
 	GlockpeekInstallPath = "/usr/local/bin/glockpeek"
 	GlockdocInstallPath  = "/usr/local/bin/glockdoc"
+	// LockBackgroundInstallPath is where the default glocklock background image is
+	// installed; conf.yaml.sample's violation_tracking.background points here.
+	LockBackgroundInstallPath = "/usr/local/share/glocker/lock-background.png"
 	HeartbeatCronPath    = "/etc/cron.d/glocker-doc"
 	// The glockdoc watchdog's systemd scheduler (preferred over the cron file).
 	GlockdocServicePath = "/etc/systemd/system/glockdoc.service"

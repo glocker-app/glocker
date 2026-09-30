@@ -43,15 +43,15 @@ domains:
     - chrome
     - brave
 
-  # Command run when you actually load a blocked domain (an audible/visual nudge).
-  # Empty = none. It runs as ROOT from the glocker daemon — no desktop session,
-  # no D-Bus, no display — and is split on whitespace with no shell (quotes are
-  # NOT honoured). So a bare `notify-send ...` fails; point this at a script that
-  # re-enters your session, e.g. /usr/local/bin/glocker-nudge containing:
-  #   #!/bin/sh
-  #   exec sudo -u yourusername DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus \
-  #        notify-send glocker "Blocked: $GLOCKER_BLOCKED_HOST"
-  # (1000 = your uid, `id -u`). GLOCKER_BLOCKED_HOST/_URL/_TIME are set for it.
+  # Optional nudge run when you load a blocked domain. Empty = none (the default).
+  # It runs as ROOT from the daemon — no desktop session, and split on whitespace
+  # with no shell — so a bare `notify-send`/`paplay` can't reach your desktop. To
+  # reach it, re-enter your session inline (no script needed). Examples — swap in
+  # your login + uid (`id -u`), failures are non-fatal:
+  #   sound:        sudo -u yourusername env XDG_RUNTIME_DIR=/run/user/1000 paplay /usr/share/sounds/freedesktop/stereo/complete.oga
+  #   notification: sudo -u yourusername env XDG_RUNTIME_DIR=/run/user/1000 notify-send glocker Blocked
+  # (dynamic detail like the blocked host needs a wrapper script — env vars aren't
+  # expanded without a shell.)
   blocked_access_command: ""
 
   # Temporary unblocking: `glocker -unblock "domain:reason"`.
@@ -66,64 +66,17 @@ domains:
   # update_domains.py all`, then they're pulled in via !include. Comment a line
   # out to disable that source. These files must exist before install.
   list:
-    # Your own blocked sites go here — edit conf.d/personal-domains.yaml. It's
-    # yours: update_domains.py never touches it, and it's gitignored. `glocker
-    # -init` creates it from conf.d/personal-domains.yaml.sample.
+    # Your own blocked sites live in conf.d/personal-domains.yaml — `glocker -init`
+    # seeds it with a starter set (social media, YouTube, Hacker News). It's yours:
+    # update_domains.py never touches it, and it's gitignored. Edit it any time.
     - !include conf.d/personal-domains.yaml
 
+    # Curated blocklists (adult content, ads, malware, proxy-bypass), generated
+    # into conf.d/ by update_domains.py. Comment a line to drop that source.
     - !include conf.d/domains-bon-appetit.yaml
     - !include conf.d/domains-stevenblack.yaml
     - !include conf.d/domains-hagezi.yaml
     - !include conf.d/domains-shadowwhisperer.yaml
-
-    # ---------------------------------------------------------------------
-    # Always blocked, but can be temporarily unblocked (glocker -unblock)
-    # ---------------------------------------------------------------------
-    - {name: "reddit.com", unblockable: true}
-    - {name: "twitter.com", unblockable: true}
-    - {name: "facebook.com", unblockable: true}
-    - {name: "instagram.com", unblockable: true}
-    - {name: "tiktok.com", unblockable: true}
-
-    # ---------------------------------------------------------------------
-    # Always blocked, permanent (cannot be unblocked) — this is the DEFAULT
-    # ---------------------------------------------------------------------
-    - {name: "pornhub.com"}
-    - {name: "xvideos.com"}
-    - {name: "gambling-site.com"}
-    # Proxy/VPN sites that would bypass the filter:
-    - {name: "croxyproxy.com"}
-    - {name: "proxysite.com"}
-    - {name: "hide.me"}
-
-    # ---------------------------------------------------------------------
-    # Time-based — blocked ONLY during the listed windows
-    # ---------------------------------------------------------------------
-    - name: "youtube.com"
-      block_windows:
-        - start: "09:00"
-          end: "17:00"
-          days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-        - start: "22:00"
-          end: "23:59"
-          days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-    - name: "news.ycombinator.com"
-      block_windows:
-        - start: "09:00"
-          end: "17:00"
-          days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-
-    # ---------------------------------------------------------------------
-    # Add your own below. Templates:
-    #   - {name: "example.com"}                     # permanent block
-    #   - {name: "example.com", unblockable: true}  # blocked, but unblockable
-    #   - name: "example.com"                       # time-based
-    #     block_windows:
-    #       - start: "09:00"
-    #         end: "17:00"
-    #         days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-    # ---------------------------------------------------------------------
 
 # ── Blocking: programs ────────────────────────────────────────────────────────
 # Programs killed on sight during their windows (matched on process name). Use
@@ -134,24 +87,17 @@ programs:
   enabled: true
   check_interval_seconds: 5
   list:
-    # Killed during the listed hours
-    - name: "chrome"
-      kill_windows:
-        - start: "20:00"
-          end: "05:00"
-          days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    # No windows → killed 24/7. A game platform is a common always-off pick.
+    - name: "steam"
 
-    # Extendible example
-    - name: "firefox-esr"
+    # Killed during work hours, but grant a one-hour pass on demand with
+    # `glocker -extend hexchat "quick question"` (capped to once per 24h).
+    - name: "hexchat"
       extendible: true
       kill_windows:
-        - start: "23:00"
-          end: "05:00"
-          days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-    # No windows → killed 24/7
-    - name: "brave"
-    - name: "some-game"
+        - start: "09:00"
+          end: "17:00"
+          days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
 # ── Blocking: web content (browser extension) ─────────────────────────────────
 content:
@@ -163,8 +109,8 @@ content:
   # content_keywords match page text; whitelist pages are never scanned or
   # reported. Replace these placeholders with your own terms and trusted sites.
   keywords:
-    url_keywords: ["keyword-in-url", "another-keyword"]
-    content_keywords: ["a phrase to flag", "another phrase"]
+    url_keywords: []        # e.g. ["casino", "betting"] — matched against the address
+    content_keywords: []    # e.g. ["buy now"] — matched against visible page text
     whitelist:
       - "mail.google.com"
       - "calendar.google.com"
@@ -182,13 +128,13 @@ sudoers:
   enabled: true
   allowed_sudoers_line: "yourusername ALL=(ALL) NOPASSWD:ALL"
   blocked_sudoers_line: "yourusername ALL=(ALL) NOPASSWD: /usr/sbin/pm-suspend, /usr/bin/journalctl"
+  # Default: full sudo only 07:00–08:00 daily; outside it, only the blocked line
+  # above. Widen these windows to taste — but note you can only edit + reinstall
+  # DURING a window (that's the point). `glocker -init` sets `user` throughout.
   allow_windows:
-    - start: "10:00"
-      end: "23:30"
-      days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-    - start: "11:00"
-      end: "15:00"
-      days: ["Sat", "Sun"]
+    - start: "07:00"
+      end: "08:00"
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 # ── Uninstall ─────────────────────────────────────────────────────────────────
 # Mindful uninstall gate. When enabled, `glocker -uninstall` must first pass a
@@ -227,7 +173,9 @@ violation_tracking:
   time_window_minutes: 60
   command: "sudo -u yourusername /usr/local/bin/glocklock"
   lock_duration: 5m
-  background: "/path/to/background.jpg"   # optional lock-screen background (PNG/JPG)
+  # Lock-screen background (PNG/JPG). glocker ships one (logo + quote) installed
+  # to the path below; point it anywhere, or "" for a plain colour.
+  background: "/usr/local/share/glocker/lock-background.png"
 
 # Usage monitor: samples the focused window + idle time to a JSONL log that the
 # syncer ships to glockpeek. It runs as root, so it finds your session through
@@ -285,11 +233,13 @@ accountability:
     high_violations: 0          # email once a window crosses N violations (0 = off)
 
 # ── Panic mode ────────────────────────────────────────────────────────────────
-# `glocker -panic N`: emergency offline enforcement. pm-suspend suspends until you
-# wake it; use rtcwake to auto-wake after the duration. Disable to refuse -panic.
+# `glocker -panic N`: emergency offline enforcement — suspends the machine and
+# re-suspends on any early wake until the duration elapses. `systemctl suspend`
+# works on any systemd system; older setups can use "pm-suspend". Disable to
+# refuse -panic. (`glocker -init` picks whichever your system has.)
 panic:
   enabled: true
-  command: "pm-suspend"
+  command: "systemctl suspend"
   duration: 30              # minutes to stay suspended
 
 # ============================================================================

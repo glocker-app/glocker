@@ -18,6 +18,9 @@ import (
 const (
 	SystemdServiceFile   = "extras/glocker.service"
 	GlockpeekServiceFile = "extras/glockpeek.service"
+	// LockBackgroundFile is the source (repo-relative) for the default glocklock
+	// background, installed to config.LockBackgroundInstallPath.
+	LockBackgroundFile = "extras/lock-background.png"
 	GlockpeekServicePath = "/etc/systemd/system/glockpeek.service"
 )
 
@@ -181,6 +184,19 @@ func InstallGlocker(confPath string) error {
 		}
 	} else {
 		log.Printf("Note: glocklock binary not found at %s, skipping", glocklockSource)
+	}
+
+	// Step 4b-ii: Install the default lock-screen background (cosmetic; the sample
+	// config's violation_tracking.background points at it). Best-effort.
+	if _, err := os.Stat(LockBackgroundFile); err == nil {
+		if err := os.MkdirAll(filepath.Dir(config.LockBackgroundInstallPath), 0o755); err != nil {
+			log.Printf("Warning: couldn't create %s: %v", filepath.Dir(config.LockBackgroundInstallPath), err)
+		} else if err := utils.CopyFile(LockBackgroundFile, config.LockBackgroundInstallPath); err != nil {
+			log.Printf("Warning: failed to install lock background: %v", err)
+		} else {
+			_ = os.Chmod(config.LockBackgroundInstallPath, 0o644)
+			log.Println("✓ Lock-screen background installed")
+		}
 	}
 
 	// Step 4c: Install glockpeek binary (no tamper protection - just a log parser)

@@ -1,23 +1,41 @@
-# Your own blocked domains.
+# Your own blocked domains — a starter set. Edit freely.
 #
-# This file is yours to edit: update_domains.py never touches it (it only manages
-# the domains-<source>.yaml curated lists), and it's gitignored so it won't be
-# committed. It's pulled into conf.yaml via:
-#     - !include conf.d/personal-domains.yaml
-# `glocker -init` copies this sample to conf.d/personal-domains.yaml for you.
+# This file is yours: update_domains.py never touches it (it only manages the
+# curated domains-<source>.yaml lists), and it's gitignored so it won't be
+# committed. `glocker -init` copies it to conf.d/personal-domains.yaml, pulled into
+# conf.yaml via `- !include conf.d/personal-domains.yaml`.
 #
-# It's a YAML list of domains — one entry per site. More elaborate examples:
-#
-#   # blocked only during set windows (reachable otherwise):
-#   - name: "news.ycombinator.com"
+# Each entry is one domain. Forms:
+#   - name: "x.com"                     # always blocked, permanent
+#   - name: "x.com"                     # always blocked, but you can grant a
+#     unblockable: true                 #   timed pass with `glocker -unblock`
+#   - name: "x.com"                     # blocked only during these windows
 #     block_windows:
 #       - start: "09:00"
 #         end: "17:00"
 #         days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-#
-#   # always blocked, but allow a timed `glocker -unblock`:
-#   - name: "youtube.com"
-#     unblockable: true
-#
-# Replace the example below with the sites you want blocked (or delete it).
-- name: "example.com"
+
+# Social media — always blocked, but unblockable when you genuinely need them.
+- name: "reddit.com"
+  unblockable: true
+- name: "twitter.com"
+  unblockable: true
+- name: "x.com"
+  unblockable: true
+- name: "instagram.com"
+  unblockable: true
+- name: "facebook.com"
+  unblockable: true
+- name: "tiktok.com"
+  unblockable: true
+
+# YouTube — unblockable, so you can still pull up a tutorial when you need one.
+- name: "youtube.com"
+  unblockable: true
+
+# Hacker News — blocked during work hours only, open evenings and weekends.
+- name: "news.ycombinator.com"
+  block_windows:
+    - start: "09:00"
+      end: "17:00"
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri"]

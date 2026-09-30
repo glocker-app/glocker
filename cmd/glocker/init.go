@@ -5,63 +5,123 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"glocker/internal/config"
 )
 
-// runInit writes a starting config from the commented sample, filling in the
-// values people most often miss — the login to restrict/track (the top-level
-// `user`), and optionally the hosted-dashboard URL/token and an accountability
-// buddy email. It copies the sample verbatim and substitutes only the values, so
-// every comment in the sample survives. It refuses to overwrite an existing config.
-func runInit(confPath string) error {
+// envProfile is what the wizard detects about the machine so it can fill
+// environment-specific config values instead of leaving placeholders.
+type envProfile struct {
+	login      string // whose sudo is restricted + desktop tracked
+	display    string // $DISPLAY (X11 sessions)
+	xauthority string // $XAUTHORITY (X11 sessions)
+	suspend    string // panic-mode suspend command for this system
+}
+
+func detectEnv() envProfile {
+	e := envProfile{
+		login:      detectLogin(),
+		display:    os.Getenv("DISPLAY"),
+		xauthority: os.Getenv("XAUTHORITY"),
+		suspend:    "systemctl suspend",
+	}
+	// Fall back to pm-suspend only on a system without systemd.
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		if _, err := exec.LookPath("pm-suspend"); err == nil {
+			e.suspend = "pm-suspend"
+		}
+	}
+	return e
+}
+
+// initResult tells the caller what the wizard did, so the next-steps message can
+// speak to the actual choices.
+type initResult struct {
+	login         string
+	sudoRestricted bool
+	hosted        bool
+}
+
+func runInit(confPath string) (initResult, error) {
 	return initConfig(confPath, os.Stdin, stdinIsTTY())
 }
 
-// initConfig is the testable core: prompts are read from `in` and only asked when
-// `interactive` is true.
-func initConfig(confPath string, in io.Reader, interactive bool) error {
+// initConfig writes a starting config from the commented sample, filling in the
+// values that depend on the machine (login, desktop session, suspend command) and
+// the user's answers (restrict sudo, hosted sync, buddy email). It copies the
+// sample and edits values in place, so every comment survives, and refuses to
+// overwrite an existing config.
+func initConfig(confPath string, in io.Reader, interactive bool) (initResult, error) {
+	var res initResult
 	samplePath := confPath + ".sample"
 	if _, err := os.Stat(confPath); err == nil {
-		return fmt.Errorf("%s already exists — remove or rename it first (init won't overwrite your config)", confPath)
+		return res, fmt.Errorf("%s already exists — remove or rename it first (init won't overwrite your config)", confPath)
 	}
 	raw, err := os.ReadFile(samplePath)
 	if err != nil {
-		return fmt.Errorf("reading sample %s: %w", samplePath, err)
+		return res, fmt.Errorf("reading sample %s: %w", samplePath, err)
 	}
 	out := string(raw)
 
-	login := detectLogin()
+	env := detectEnv()
+	res.sudoRestricted = true // the sample ships sudoers.enabled: true
 	r := bufio.NewReader(in)
 	if interactive {
-		login = ask(r, fmt.Sprintf("Your Linux login (whose sudo is restricted + desktop tracked) [%s]: ", login), login)
-		if ans := ask(r, "Use a hosted glockpeek dashboard? [y/N]: ", "n"); strings.HasPrefix(strings.ToLower(ans), "y") {
+		env.login = ask(r, fmt.Sprintf("Your Linux login (whose sudo is restricted + desktop tracked) [%s]: ", env.login), env.login)
+		res.sudoRestricted = !strings.HasPrefix(strings.ToLower(
+			ask(r, "Restrict sudo to a daily window? This is glocker's core enforcement. [Y/n]: ", "y")), "n")
+		if strings.HasPrefix(strings.ToLower(ask(r, "Sync to a hosted glockpeek dashboard? [y/N]: ", "n")), "y") {
 			url := ask(r, "  glockpeek URL [https://my.glockerapp.com]: ", "https://my.glockerapp.com")
+			out = setStanzaScalar(out, "sync", "enabled", "true")
 			out = replaceScalar(out, "glockpeek_url", url)
 			if tok := ask(r, "  ingest token (blank to add later): ", ""); tok != "" {
 				out = replaceScalar(out, "token", tok)
 			}
+			out = setStanzaScalar(out, "sync", "encrypt", "true") // never plaintext off-box
+			res.hosted = true
 		}
 		if email := ask(r, "Accountability buddy email (blank to skip): ", ""); email != "" {
+			out = setStanzaScalar(out, "accountability", "enabled", "true")
 			out = replaceList(out, "buddy_emails", email)
 		}
 	}
-	if login == "" {
-		return fmt.Errorf("could not determine your login and none was given — set the top-level `user` in %s by hand", confPath)
+	if env.login == "" {
+		return res, fmt.Errorf("could not determine your login and none was given — set the top-level `user` in %s by hand", confPath)
 	}
-	out = replaceScalar(out, "user", login)
+	res.login = env.login
+
+	// The login appears in several places — the top-level `user`, both sudoers
+	// lines, the glocklock violation command, the nudge examples. Fill them all.
+	out = strings.ReplaceAll(out, config.PlaceholderUser, env.login)
+
+	if !res.sudoRestricted {
+		out = setStanzaScalar(out, "sudoers", "enabled", "false")
+	}
+
+	// Desktop session, X11 only (on Wayland the tools find the session themselves,
+	// so these are ignored — leave the sample's harmless defaults there).
+	if env.display != "" {
+		out = replaceScalar(out, "display", env.display)
+	}
+	if env.xauthority != "" {
+		out = replaceScalar(out, "xauthority", env.xauthority)
+	}
+
+	// Panic suspend command, if this system needs the pm-suspend fallback.
+	if env.suspend != "systemctl suspend" {
+		out = strings.ReplaceAll(out, `"systemctl suspend"`, `"`+env.suspend+`"`)
+	}
 
 	if err := os.WriteFile(confPath, []byte(out), 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", confPath, err)
+		return res, fmt.Errorf("writing %s: %w", confPath, err)
 	}
-
-	// Seed the personal blocklist from its sample so the !include resolves at
-	// install and the user has a clear place for their own sites. Best-effort:
-	// skipped when there's no sample (e.g. a minimal/standalone config layout).
 	seedPersonalDomains(filepath.Dir(confPath))
-	return nil
+	return res, nil
 }
 
 // seedPersonalDomains copies conf.d/personal-domains.yaml.sample to
@@ -81,8 +141,7 @@ func seedPersonalDomains(confDir string) {
 }
 
 // detectLogin picks the human user to restrict/track: SUDO_USER when run under
-// sudo, else $USER, else the current user. Never "root" (glocker restricts a
-// person's account, not root).
+// sudo, else $USER, else the current user. Never "root".
 func detectLogin() string {
 	if u := os.Getenv("SUDO_USER"); u != "" && u != "root" {
 		return u
@@ -113,9 +172,9 @@ func ask(r *bufio.Reader, label, def string) string {
 	return line
 }
 
-// replaceScalar swaps the quoted value of `key: "..."` in the sample text,
-// preserving the key's indentation and any trailing inline comment. A value
-// containing '$' is inserted literally (no regexp expansion).
+// replaceScalar swaps the quoted value of a unique `key: "..."`, preserving the
+// key's indentation and any trailing inline comment. A '$' in the value is
+// inserted literally (no regexp expansion).
 func replaceScalar(text, key, val string) string {
 	re := regexp.MustCompile(`(?m)^(\s*` + regexp.QuoteMeta(key) + `:\s*)"[^"]*"`)
 	return re.ReplaceAllStringFunc(text, func(m string) string {
@@ -130,4 +189,33 @@ func replaceList(text, key, val string) string {
 	return re.ReplaceAllStringFunc(text, func(m string) string {
 		return re.FindStringSubmatch(m)[1] + `["` + val + `"]`
 	})
+}
+
+// setStanzaScalar sets `key: value` inside a top-level `stanza:` block, leaving
+// the same key in other stanzas untouched (needed for keys like `enabled` that
+// recur). rawValue is written verbatim — quote it yourself for a string. Preserves
+// indentation and any trailing comment.
+func setStanzaScalar(text, stanza, key, rawValue string) string {
+	lines := strings.Split(text, "\n")
+	stanzaRe := regexp.MustCompile(`^` + regexp.QuoteMeta(stanza) + `:`)
+	keyRe := regexp.MustCompile(`^(\s+` + regexp.QuoteMeta(key) + `:\s*)(?:\[\]|"[^"]*"|\S+)(.*)$`)
+	in := false
+	for i, ln := range lines {
+		if stanzaRe.MatchString(ln) {
+			in = true
+			continue
+		}
+		if !in {
+			continue
+		}
+		if ln != "" && ln[0] != ' ' && ln[0] != '\t' { // next top-level line ends the stanza
+			in = false
+			continue
+		}
+		if m := keyRe.FindStringSubmatch(ln); m != nil {
+			lines[i] = m[1] + rawValue + m[2]
+			break
+		}
+	}
+	return strings.Join(lines, "\n")
 }

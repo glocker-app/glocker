@@ -133,15 +133,25 @@ func main() {
 
 	// Generate a starting config from the commented sample (normal user, pre-install).
 	if *initFlag {
-		if err := runInit(*confFlag); err != nil {
+		res, err := runInit(*confFlag)
+		if err != nil {
 			log.Fatalf("init failed: %v", err)
 		}
-		fmt.Printf("\nWrote %s.\n\n", *confFlag)
+		fmt.Printf("\nWrote %s (login: %s).\n\n", *confFlag, res.login)
 		fmt.Println("Next steps:")
-		fmt.Printf("  1. Review %s — set your block schedules, forbidden programs, and keywords.\n", *confFlag)
+		fmt.Printf("  1. Review %s — schedules, forbidden programs, keywords.\n", *confFlag)
 		fmt.Printf("  2. Add your own sites to %s.\n", filepath.Join(filepath.Dir(*confFlag), "conf.d", "personal-domains.yaml"))
 		fmt.Println("  3. Run 'make full-install' to fetch the standard blocklists and install glocker.")
-		fmt.Println("     (A bare 'glocker -install' skips the blocklist download and won't have any domains to block.)")
+		fmt.Println("     (A bare 'glocker -install' skips the blocklist download — nothing to block.)")
+		if res.sudoRestricted {
+			fmt.Println("\nNote — sudo: full sudo is allowed only 07:00–08:00 daily; outside it only")
+			fmt.Println("suspend + journalctl work. Widen sudoers.allow_windows in the config to taste")
+			fmt.Println("(remember you can only edit + reinstall DURING a window — that's the point).")
+		}
+		if res.hosted {
+			fmt.Println("\nNote — hosted sync: run 'glocker -connect' to install your encryption key")
+			fmt.Println("before syncing (encrypt is on, so the syncer waits for the key).")
+		}
 		return
 	}
 
