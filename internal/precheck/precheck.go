@@ -14,10 +14,32 @@ package precheck
 import (
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+// resolveUserGroups returns the actual group names a user belongs to — primary
+// AND secondary, resolved by the OS (NSS), not by scanning /etc/group by hand. A
+// package var so tests can stub it.
+var resolveUserGroups = func(username string) ([]string, error) {
+	u, err := user.Lookup(username)
+	if err != nil {
+		return nil, err
+	}
+	gids, err := u.GroupIds()
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(gids))
+	for _, gid := range gids {
+		if g, err := user.LookupGroupId(gid); err == nil {
+			names = append(names, g.Name)
+		}
+	}
+	return names, nil
+}
 
 // Status classifies a finding.
 type Status string
@@ -107,7 +129,7 @@ func Run(opts Options) Report {
 		checkRecoveryMode(o.GrubCfgPaths),
 		checkSSHRoot(o.SSHDConfig, o.SSHDConfigDir),
 	)
-	r.Findings = append(r.Findings, checkManagedUserSudoGroup(o.SudoersPath, o.SudoersDir, o.GroupPath, o.ManagedUser))
+	r.Findings = append(r.Findings, checkManagedUserSudoGroup(o.SudoersPath, o.SudoersDir, o.ManagedUser))
 	r.Findings = append(r.Findings, checkSudoers(o.SudoersPath, o.SudoersDir, o.ManagedUser))
 	r.Findings = append(r.Findings, checkSudoGroup(o.GroupPath, o.ManagedUser))
 	r.Findings = append(r.Findings, checkAutologin(o.AutologinPaths))
@@ -315,7 +337,7 @@ func checkSudoers(mainPath, dir, managedUser string) Finding {
 // sudo-grant list: it reports whether THE MANAGED USER is a member of a group that
 // has a blanket sudo grant (`%group … = … ALL`) — which lets them sudo past the
 // window regardless of glocker's line — and gives the one command to fix it.
-func checkManagedUserSudoGroup(sudoersMain, sudoersDir, groupPath, managedUser string) Finding {
+func checkManagedUserSudoGroup(sudoersMain, sudoersDir, managedUser string) Finding {
 	f := Finding{ID: "user-sudo-group", Title: "Your account can sudo past the window"}
 	if managedUser == "" {
 		f.Status = StatusUnknown
@@ -324,19 +346,17 @@ func checkManagedUserSudoGroup(sudoersMain, sudoersDir, groupPath, managedUser s
 	}
 	f.Enables = "you can sudo to root at any time, ignoring glocker's sudo window"
 
+	groups, err := resolveUserGroups(managedUser)
+	if err != nil {
+		f.Status = StatusUnknown
+		f.Detail = "couldn't resolve " + managedUser + "'s groups: " + err.Error()
+		return f
+	}
 	blanket := blanketSudoGroups(sudoersMain, sudoersDir)
 	var hits []string
-	if data, err := os.ReadFile(groupPath); err == nil {
-		for _, line := range strings.Split(string(data), "\n") {
-			fields := strings.Split(line, ":")
-			if len(fields) < 4 || !blanket[fields[0]] {
-				continue
-			}
-			for _, m := range strings.Split(fields[3], ",") {
-				if strings.TrimSpace(m) == managedUser {
-					hits = append(hits, fields[0])
-				}
-			}
+	for _, g := range groups {
+		if blanket[g] {
+			hits = append(hits, g)
 		}
 	}
 	if len(hits) == 0 {

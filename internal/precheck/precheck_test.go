@@ -131,13 +131,18 @@ func TestCheckSudoers(t *testing.T) {
 func TestCheckManagedUserSudoGroup(t *testing.T) {
 	dir := t.TempDir()
 	sudoers := filepath.Join(dir, "sudoers")
-	group := filepath.Join(dir, "group")
 	// %sudo grants blanket root; %scoped only a specific command.
 	writeFile(t, sudoers, "%sudo ALL=(ALL:ALL) ALL\n%scoped ALL=(root) NOPASSWD: /usr/bin/foo\n")
 
+	// Stub the OS group resolution (the real one hits /etc/passwd + NSS).
+	orig := resolveUserGroups
+	defer func() { resolveUserGroups = orig }()
+	userGroups := map[string][]string{}
+	resolveUserGroups = func(u string) ([]string, error) { return userGroups[u], nil }
+
 	// alice is in sudo (blanket) → OPEN, with a gpasswd fix naming her + the group.
-	writeFile(t, group, "sudo:x:27:alice\nscoped:x:900:alice\n")
-	f := checkManagedUserSudoGroup(sudoers, filepath.Join(dir, "none"), group, "alice")
+	userGroups["alice"] = []string{"alice", "sudo", "scoped"} // primary + secondary
+	f := checkManagedUserSudoGroup(sudoers, filepath.Join(dir, "none"), "alice")
 	if f.Status != StatusOpen {
 		t.Fatalf("status = %q, want OPEN", f.Status)
 	}
@@ -149,8 +154,8 @@ func TestCheckManagedUserSudoGroup(t *testing.T) {
 	}
 
 	// bob is only in the command-scoped group → not a blanket bypass → CLOSED.
-	writeFile(t, group, "sudo:x:27:alice\nscoped:x:900:bob\n")
-	if got := checkManagedUserSudoGroup(sudoers, filepath.Join(dir, "none"), group, "bob").Status; got != StatusClosed {
+	userGroups["bob"] = []string{"bob", "scoped"}
+	if got := checkManagedUserSudoGroup(sudoers, filepath.Join(dir, "none"), "bob").Status; got != StatusClosed {
 		t.Errorf("bob (command-scoped only): status = %q, want CLOSED", got)
 	}
 }
