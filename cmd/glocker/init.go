@@ -42,9 +42,10 @@ func detectEnv() envProfile {
 // initResult tells the caller what the wizard did, so the next-steps message can
 // speak to the actual choices.
 type initResult struct {
-	login         string
+	login          string
 	sudoRestricted bool
-	hosted        bool
+	sudoWindowLine int // 1-based line of sudoers.allow_windows in the written config
+	hosted         bool
 }
 
 func runInit(confPath string) (initResult, error) {
@@ -74,7 +75,7 @@ func initConfig(confPath string, in io.Reader, interactive bool) (initResult, er
 	if interactive {
 		env.login = ask(r, fmt.Sprintf("Your Linux login (whose sudo is restricted + desktop tracked) [%s]: ", env.login), env.login)
 		res.sudoRestricted = !strings.HasPrefix(strings.ToLower(
-			ask(r, "Restrict sudo to a daily window? This is glocker's core enforcement. [Y/n]: ", "y")), "n")
+			ask(r, "Enable the sudo restriction? (sample blocks sudo during a small daily window) [Y/n]: ", "y")), "n")
 		if strings.HasPrefix(strings.ToLower(ask(r, "Sync to a hosted glockpeek dashboard? [y/N]: ", "n")), "y") {
 			url := ask(r, "  glockpeek URL [https://my.glockerapp.com]: ", "https://my.glockerapp.com")
 			out = setStanzaScalar(out, "sync", "enabled", "true")
@@ -117,11 +118,39 @@ func initConfig(confPath string, in io.Reader, interactive bool) (initResult, er
 		out = strings.ReplaceAll(out, `"systemctl suspend"`, `"`+env.suspend+`"`)
 	}
 
+	res.sudoWindowLine = lineOf(out, "sudoers", "allow_windows")
+
 	if err := os.WriteFile(confPath, []byte(out), 0o644); err != nil {
 		return res, fmt.Errorf("writing %s: %w", confPath, err)
 	}
 	seedPersonalDomains(filepath.Dir(confPath))
 	return res, nil
+}
+
+// lineOf returns the 1-based line number of `key:` within a top-level `stanza:`
+// block, or 0 if not found.
+func lineOf(text, stanza, key string) int {
+	lines := strings.Split(text, "\n")
+	sre := regexp.MustCompile(`^` + regexp.QuoteMeta(stanza) + `:`)
+	kre := regexp.MustCompile(`^\s+` + regexp.QuoteMeta(key) + `:`)
+	in := false
+	for i, ln := range lines {
+		if sre.MatchString(ln) {
+			in = true
+			continue
+		}
+		if !in {
+			continue
+		}
+		if ln != "" && ln[0] != ' ' && ln[0] != '\t' {
+			in = false
+			continue
+		}
+		if kre.MatchString(ln) {
+			return i + 1
+		}
+	}
+	return 0
 }
 
 // seedPersonalDomains copies conf.d/personal-domains.yaml.sample to

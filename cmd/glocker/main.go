@@ -144,13 +144,13 @@ func main() {
 		fmt.Println("  3. Run 'make full-install' to fetch the standard blocklists and install glocker.")
 		fmt.Println("     (A bare 'glocker -install' skips the blocklist download — nothing to block.)")
 		if res.sudoRestricted {
-			fmt.Println("\nNote — sudo: full sudo is allowed only 07:00–08:00 daily; outside it only")
-			fmt.Println("suspend + journalctl work. Widen sudoers.allow_windows in the config to taste")
-			fmt.Println("(remember you can only edit + reinstall DURING a window — that's the point).")
+			fmt.Println("\nsudo: allowed during sudoers.allow_windows, blocked outside them. The sample")
+			fmt.Println("allows sudo all day except 09:00–10:00. Set your own windows at")
+			fmt.Printf("%s:%d.\n", *confFlag, res.sudoWindowLine)
 		}
 		if res.hosted {
-			fmt.Println("\nNote — hosted sync: run 'glocker -connect' to install your encryption key")
-			fmt.Println("before syncing (encrypt is on, so the syncer waits for the key).")
+			fmt.Println("\nhosted sync: encrypt is on, so run 'glocker -connect' to install your")
+			fmt.Println("encryption key before the syncer will push anything.")
 		}
 		return
 	}

@@ -128,12 +128,15 @@ sudoers:
   enabled: true
   allowed_sudoers_line: "yourusername ALL=(ALL) NOPASSWD:ALL"
   blocked_sudoers_line: "yourusername ALL=(ALL) NOPASSWD: /usr/sbin/pm-suspend, /usr/bin/journalctl"
-  # Default: full sudo only 07:00–08:00 daily; outside it, only the blocked line
-  # above. Widen these windows to taste — but note you can only edit + reinstall
-  # DURING a window (that's the point). `glocker -init` sets `user` throughout.
+  # sudo is allowed DURING these windows and blocked outside them. The default
+  # allows it all day except 09:00–10:00 — a small demonstration no-sudo window.
+  # Edit the windows to set your own blocked periods. `glocker -init` fills `user`.
   allow_windows:
-    - start: "07:00"
-      end: "08:00"
+    - start: "00:00"
+      end: "09:00"
+      days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+    - start: "10:00"
+      end: "23:59"
       days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 # ── Uninstall ─────────────────────────────────────────────────────────────────
