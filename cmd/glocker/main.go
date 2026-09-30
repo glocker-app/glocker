@@ -707,11 +707,8 @@ func main() {
 			}
 		}
 
-		// Socket not available, show help
-		fmt.Println("Glocker - Domain and System Access Control")
-		fmt.Println()
-		fmt.Println("Usage:")
-		flag.PrintDefaults()
+		// Socket not available, show the grouped help.
+		printGroupedUsage()
 		return
 	}
 
