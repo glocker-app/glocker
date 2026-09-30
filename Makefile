@@ -65,16 +65,19 @@ test: ## Run tests
 deploy-full: deploy deploy-extension ## Full deploy: dashboard binary + extension
 
 # Apply DB migrations as an EXPLICIT step, run BEFORE `deploy` — the hosted server
-# no longer migrates on boot (N nodes would race on DDL). Ships a freshly built
-# binary to a temp path and runs `-migrate` with it (reading the box's own
-# /etc/glocker/glockpeek.yaml), without touching the running service. Migrations
-# are additive/backward-compatible, so the old code keeps serving on the new schema
-# until `deploy` rolls the binary.
+# no longer migrates on boot (N nodes would race on DDL). Installs the current
+# config FIRST (so a rotated DB password is in place before we authenticate — the
+# migrate binary reads the box's /etc/glocker/glockpeek.yaml), then ships a freshly
+# built binary to a temp path and runs `-migrate`, without restarting the running
+# service. Migrations are additive/backward-compatible, so the old code keeps
+# serving on the new schema until `deploy` rolls the binary.
 migrate: ## Apply DB migrations on the box (runs automatically before deploy; server no longer migrates on boot)
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make migrate DEPLOY_HOST=my.example.com"; exit 1; }
+	@test -f $(GLOCKPEEK_CONF) || { echo "$(GLOCKPEEK_CONF) not found (gitignored server config with secrets) — create it from conf/glockpeek.yaml.sample"; exit 1; }
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o dist/glockpeek ./cmd/glockpeek
 	scp dist/glockpeek $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.migrate
-	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo -u glockpeek /tmp/glockpeek.migrate -migrate && rm -f /tmp/glockpeek.migrate'
+	scp $(GLOCKPEEK_CONF) $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.yaml.new
+	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -o root -g glockpeek -m 0640 /tmp/glockpeek.yaml.new /etc/glocker/glockpeek.yaml && sudo -u glockpeek /tmp/glockpeek.migrate -migrate && rm -f /tmp/glockpeek.migrate /tmp/glockpeek.yaml.new'
 
 deploy: migrate ## Migrate the DB (idempotent), then deploy the glockpeek binary + server config to the VPS
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy DEPLOY_HOST=my.example.com"; exit 1; }
