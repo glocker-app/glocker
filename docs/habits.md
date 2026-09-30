@@ -499,10 +499,6 @@ config file and restart glocker.
    log and tell the system that `glocker` has been uninstalled. IF you
    want to get of it completely, use the `-purge` option along with
    `-uninstall`. 
-4. `-security-check` - You won't need to use this yourself. It's run
-   by Make to to check if the system has everything needed to run
-   glocker. 
-
 ### Informational 
 1. `-status` - Shows the current status (blocked sites, violations,
    extension grants etc.). This is dynamic and changes. This the
@@ -518,9 +514,8 @@ config file and restart glocker.
    unlocked root account, root SSH login, autologin. The second half is
    the important one: if you're in `wheel` or have a blanket `NOPASSWD`
    grant, you can still `sudo` past the sudo window, so the restriction
-   won't really hold until you remove it. Run this after install to see
-   exactly what's left open and how to close each one. (`-security-check`
-   is the older, security-only subset of this.)
+   won't really hold until you remove it. It also runs automatically at
+   the end of install, so those gaps are surfaced up front.
 
 ### Cloud sync
 1. `-connect` - This is used to connect with the glocker cloud platform

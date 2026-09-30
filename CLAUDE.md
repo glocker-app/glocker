@@ -46,7 +46,7 @@ glocker -uninstall "reason"
 ### Entry Point
 - **`cmd/glocker/main.go`** - CLI entry point
   - Command-line flag definitions (`-status`, `-info`, `-version`, `-connect`,
-    `-extend`, `-purge`, `-security-check`, `-install`, `-uninstall`, `-note`, `-daemon`,
+    `-extend`, `-purge`, `-check`, `-install`, `-uninstall`, `-note`, `-daemon`,
     `-block`, `-block-app`, `-unblock`, `-add-keyword`, `-panic`, `-lock`, `-force`,
     `-resync`)
   - Flag handlers with socket communication

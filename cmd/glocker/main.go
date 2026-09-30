@@ -98,7 +98,7 @@ func printGroupedUsage() {
 		{"Setup & lifecycle", []string{"init", "install", "uninstall", "note", "purge", "connect", "force"}},
 		{"Runtime controls", []string{"block", "block-app", "unblock", "add-keyword", "extend", "panic", "lock"}},
 		{"Sync", []string{"resync"}},
-		{"Diagnostics", []string{"check", "security-check"}},
+		{"Diagnostics", []string{"check"}},
 	}
 	for _, g := range groups {
 		fmt.Fprintf(out, "%s:\n", g.title)
@@ -135,8 +135,7 @@ func main() {
 	panicFlag := flag.Bool("panic", false, "Enter panic mode: suspend the system for panic.duration minutes, re-suspending on early wake")
 	lockFlag := flag.Bool("lock", false, "Immediately lock sudoers access (ignores time windows)")
 	resyncFlag := flag.Bool("resync", false, "Re-push all local records to glockpeek (backfill), overwriting its copies — use after a fix like enabling encryption for a field. Watch it with `glocker -status`.")
-	securityCheckFlag := flag.Bool("security-check", false, "Report bypass/recovery routes (root login, recovery mode, extra sudoers, SSH root, autologin); read-only")
-	checkFlag := flag.Bool("check", false, "Unified preflight + audit: required capabilities (systemd, visudo, …) AND bypass/recovery routes (extra sudo grants, wheel/sudo membership, root login, SSH root, autologin). Read-only; run as root.")
+	checkFlag := flag.Bool("check", false, "Read-only preflight + audit (run as root): required capabilities (systemd, visudo, …) AND bypass/recovery routes (blanket sudo grants, wheel/sudo membership, root login, SSH root, autologin).")
 	connectFlag := flag.Bool("connect", false, "Connect this machine to your dashboard's encryption: fetch your key vault, unlock it with your passphrase, and install the key so synced data is end-to-end encrypted")
 	connectForce := flag.Bool("force", false, "With -connect: replace an existing key even if it differs from your vault (WARNING: makes data encrypted under the old key unreadable)")
 	purgeFlag := flag.Bool("purge", false, "With -uninstall: also remove the glockdoc watchdog + its schedule (timer/cron). Alone: clean up a leftover watchdog from an earlier uninstall.")
@@ -180,18 +179,6 @@ func main() {
 	}
 
 	// Handle security check (read-only; reads /etc/shadow so needs root)
-	if *securityCheckFlag {
-		if !install.RunningAsRoot(true) {
-			log.Fatal("Security check must be run as root (use sudo) — it reads /etc/shadow")
-		}
-		managedUser := ""
-		if cfg, err := config.LoadConfig(); err == nil {
-			managedUser = cfg.User
-		}
-		fmt.Print(precheck.Run(precheck.Options{ManagedUser: managedUser}).String())
-		return
-	}
-
 	// Unified check: capabilities (envcheck) + bypass/recovery routes (precheck) in
 	// one report. This is the "is my glocker install both able to run and actually
 	// enforceable?" command referenced in the docs.
