@@ -714,11 +714,22 @@ etc. The ones that are not encrypted are listed below
 - **`record_id`** — a keyed HMAC over the plaintext. The server can't
   reverse it, but identical events hash identically, so it can tell the
   *same* violation recurred — not what it is.
+- **Rules and tags you create** — (added 2026-09-30) when you tag or
+  "hide" an app in the dashboard, the program name (e.g.
+  `org.mozilla.firefox`) and the window title you pin the rule to are
+  stored in **cleartext**, because the matching that applies the rule
+  runs against them. So the server can see the app names you've written
+  rules for — the ones you singled out, not your full history. Sealing
+  these is planned.
 
-The upshot of all this is that glockerapp cannot see your data. The
-shape is fixed but it has no idea what the contents are. The downside
-is that if you lose your passphrase and recovery key, your data won't
-be recoverable. Whenever you hit the site, you need to enter your
+The upshot (corrected 2026-09-30) is that glockerapp can't see your
+usage **records** — the app names and window titles you actually visit
+are ciphertext; the server only ever sees the fixed shape (timings,
+counts, categories) and the handful of fields above. The honest
+exception is the rules and tags you author, whose program names are
+stored in the clear as noted just above. The downside of the encryption
+is that if you lose your passphrase and recovery key, your data won't be
+recoverable. Whenever you hit the site, you need to enter your
 passphrase so that decryption can happen.
 
 # Additional notes on maintaining healthy routines
