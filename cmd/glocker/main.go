@@ -58,16 +58,6 @@ func readPassphrase(prompt string) ([]byte, error) {
 	return []byte(strings.TrimRight(line, "\r\n")), nil
 }
 
-// parseSinceTime parses a -resync-since value as local time: a bare date
-// (YYYY-MM-DD) or a date plus time (YYYY-MM-DDTHH:MM or "YYYY-MM-DD HH:MM").
-func parseSinceTime(s string) (time.Time, error) {
-	for _, layout := range []string{"2006-01-02T15:04", "2006-01-02 15:04", "2006-01-02"} {
-		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
-			return t, nil
-		}
-	}
-	return time.Time{}, fmt.Errorf("unrecognized time format")
-}
 
 // ansiRE matches SGR (color/style) escape sequences.
 var ansiRE = regexp.MustCompile("\x1b\\[[0-9;]*m")
@@ -101,7 +91,6 @@ func main() {
 	uninstallNote := flag.String("note", "", "Optional free-form note to attach to -uninstall (e.g. context for the reason)")
 	daemonFlag := flag.Bool("daemon", false, "Run as daemon (for systemd service)")
 	statusFlag := flag.Bool("status", false, "Show runtime status (violations, temp unblocks, panic mode)")
-	watchFlag := flag.Bool("watch", false, "Continuously refresh -status until Ctrl-C (alternate screen; TTY only)")
 	infoFlag := flag.Bool("info", false, "Show configuration info (domains, programs, keywords)")
 	blockHosts := flag.String("block", "", "Comma-separated list of hosts to add to always block list")
 	blockApps := flag.String("block-app", "", "Comma-separated list of programs to add to the forbidden-programs list (killed on sight, 24/7)")
@@ -110,9 +99,7 @@ func main() {
 	addKeyword := flag.String("add-keyword", "", "Comma-separated list of keywords to add to both URL and content keyword lists")
 	panicFlag := flag.Bool("panic", false, "Enter panic mode: suspend the system for panic.duration minutes, re-suspending on early wake")
 	lockFlag := flag.Bool("lock", false, "Immediately lock sudoers access (ignores time windows)")
-	resyncFlag := flag.Bool("resync", false, "Re-push local records to glockpeek (backfill), overwriting its copies — use after a fix like enabling encryption for a field. Watch it with `glocker -status`/`-watch`.")
-	resyncSince := flag.String("resync-since", "", "With -resync: only re-push records on/after this local date/time (YYYY-MM-DD or YYYY-MM-DDTHH:MM). Empty = full history.")
-	testEmailFlag := flag.Bool("test-email", false, "Send a test accountability email via glockpeek to your configured buddy_emails, to confirm mail delivery works.")
+	resyncFlag := flag.Bool("resync", false, "Re-push all local records to glockpeek (backfill), overwriting its copies — use after a fix like enabling encryption for a field. Watch it with `glocker -status`.")
 	securityCheckFlag := flag.Bool("security-check", false, "Report bypass/recovery routes (root login, recovery mode, extra sudoers, SSH root, autologin); read-only")
 	checkFlag := flag.Bool("check", false, "Unified preflight + audit: required capabilities (systemd, visudo, …) AND bypass/recovery routes (extra sudo grants, wheel/sudo membership, root login, SSH root, autologin). Read-only; run as root.")
 	connectFlag := flag.Bool("connect", false, "Connect this machine to your dashboard's encryption: fetch your key vault, unlock it with your passphrase, and install the key so synced data is end-to-end encrypted")
@@ -619,51 +606,19 @@ func main() {
 	}
 
 	if *resyncFlag {
-		// Optional -resync-since limits how far back to re-push (local date/time).
-		var sinceMS int64
-		if s := strings.TrimSpace(*resyncSince); s != "" {
-			t, err := parseSinceTime(s)
-			if err != nil {
-				log.Fatalf("Invalid -resync-since %q: %v (use YYYY-MM-DD or YYYY-MM-DDTHH:MM)", s, err)
-			}
-			sinceMS = t.UnixMilli()
-		}
 		conn, err := net.Dial("unix", ipc.SocketPath)
 		if err != nil {
 			log.Fatalf("Failed to connect to glocker service: %v", err)
 		}
 		defer conn.Close()
-		conn.Write([]byte(fmt.Sprintf("resync:%d\n", sinceMS)))
+		conn.Write([]byte("resync:0\n"))
 		reader := bufio.NewReader(conn)
 		response, err := reader.ReadString('\n')
 		if err != nil {
 			log.Fatalf("Failed to read response: %v", err)
 		}
 		log.Printf("%s", strings.TrimSpace(response))
-		log.Println("Watch it push with `glocker -status` (or `glocker -watch`).")
-		return
-	}
-
-	if *testEmailFlag {
-		// glockpeek is the only party that can send accountability email, so this
-		// asks the daemon (which holds the sync URL/token) to trigger it there.
-		conn, err := net.Dial("unix", ipc.SocketPath)
-		if err != nil {
-			log.Fatalf("Failed to connect to glocker service: %v", err)
-		}
-		defer conn.Close()
-		conn.Write([]byte("test-email\n"))
-		response, err := bufio.NewReader(conn).ReadString('\n')
-		if err != nil {
-			log.Fatalf("Failed to read response: %v", err)
-		}
-		log.Printf("%s", strings.TrimSpace(response))
-		return
-	}
-
-	// Handle watch command (continuous -status refresh).
-	if *watchFlag {
-		runStatusWatch()
+		log.Println("Watch it push with `glocker -status`.")
 		return
 	}
 

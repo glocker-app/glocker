@@ -105,7 +105,7 @@ func glockerGID() int {
 // sudo), not merely membership in the glocker group. Everything else is
 // self-management the managed user may run directly.
 var privilegedActions = map[string]bool{
-	"uninstall": true, "resync": true, "test-email": true,
+	"uninstall": true, "resync": true,
 }
 
 // peerUIDFn resolves the connecting peer's real uid; a package var so tests can
@@ -303,15 +303,6 @@ func HandleConnection(cfg *config.Config, conn net.Conn) {
 				}
 			} else {
 				conn.Write([]byte("ERROR: syncer is not running (sync disabled, or encryption key unusable)\n"))
-			}
-		case "test-email":
-			// Ask glockpeek (the only party that can send) to fire a test
-			// accountability email to the account's buddies. Synchronous: report
-			// glockpeek's result back to the CLI.
-			if msg, err := syncer.SendTestEmail(cfg); err != nil {
-				conn.Write([]byte("ERROR: " + err.Error() + "\n"))
-			} else {
-				conn.Write([]byte("OK: " + msg + "\n"))
 			}
 		case "add-keyword":
 			if len(parts) != 2 {

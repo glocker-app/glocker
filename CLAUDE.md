@@ -45,14 +45,14 @@ glocker -uninstall "reason"
 
 ### Entry Point
 - **`cmd/glocker/main.go`** - CLI entry point
-  - Command-line flag definitions (`-status`, `-watch`, `-info`, `-version`, `-connect`,
+  - Command-line flag definitions (`-status`, `-info`, `-version`, `-connect`,
     `-extend`, `-purge`, `-security-check`, `-install`, `-uninstall`, `-note`, `-daemon`,
     `-block`, `-block-app`, `-unblock`, `-add-keyword`, `-panic`, `-lock`, `-force`,
-    `-resync` [+`-resync-since`], `-test-email`)
+    `-resync`)
   - Flag handlers with socket communication
   - Default behavior: show status or help
   - Daemon startup logic
-- **`cmd/glocker/watch.go`** - `-watch` live-refreshing status view (TTY only)
+- **`cmd/glocker/status.go`** - shared `-status`/`-info` socket + on-disk-fallback helpers
 
 ### Configuration (`internal/config/`)
 - **`types.go`** - Configuration structs and constants
@@ -103,8 +103,7 @@ glocker -uninstall "reason"
     - `extend` - One-hour grant for an extendible forbidden program
     - `lock` - Force sudoers lock
     - `add-keyword` - Add monitoring keywords
-    - `resync` - Rewind the syncer's cursors and backfill (re-push local records to glockpeek, overwriting its copies); optional `:sinceMS` payload
-    - `test-email` - Ask glockpeek to send a test accountability email to the account's buddies (via `syncer.SendTestEmail` → `POST /api/test-email`); confirms mail delivery. glockpeek sends — the agent can't.
+    - `resync` - Rewind the syncer's cursors and backfill (re-push local records to glockpeek, overwriting its copies)
     - `uninstall` - Uninstall glocker
   - `processLockRequest()` - Lock processor
   - `processAddKeywordRequest()` - Keyword processor
@@ -366,7 +365,7 @@ type ForbiddenProgram struct {
 - Client sends command via Unix socket at `/var/glocker/glocker.sock`
 - Format: `"action:payload\n"` (e.g., `"block:example.com\n"`)
 - Server processes command and returns response
-- Commands: `ping`, `status`, `info`, `unblock`, `block`, `block-app`, `panic`, `extend`, `lock`, `add-keyword`, `resync`, `test-email`, `uninstall`
+- Commands: `ping`, `status`, `info`, `unblock`, `block`, `block-app`, `panic`, `extend`, `lock`, `add-keyword`, `resync`, `uninstall`
 - Multi-line responses end with `"END"`
 
 ### Important Files and Paths
@@ -541,8 +540,8 @@ Server started by internal/web/server.go:StartWebTrackingServer()
   after a field that used to ship cleartext is now encrypted), `glocker -resync`
   (socket cmd → `syncer.Resync`) rewinds the cursors and backfills; because ingest
   upserts on the natural key, the re-push overwrites glockpeek's copies in place
-  (no server-side delete, no data loss). `-resync-since <date>` limits how far back.
-  `state.IsResyncing()` surfaces an in-flight backfill in `glocker -status`.
+  (no server-side delete, no data loss). `state.IsResyncing()` surfaces an
+  in-flight backfill in `glocker -status`.
 
 ### Extension Communication Flow
 

@@ -553,7 +553,7 @@ the daemon over a socket owned by the `glocker` group, and the installer adds yo
 user to that group. **Group membership only takes effect on your next login**, so
 log out and back in (or run `newgrp glocker`) once after your first install,
 otherwise those commands are refused until you do. The few commands that can
-disable enforcement or send mail — `-uninstall`, `-resync`, `-test-email` — still
+disable enforcement or re-push data — `-uninstall`, `-resync` — still
 require real root, so run them with `sudo`.
 
 The blocklists are handled by `update_domains.py`, run for you by `make
