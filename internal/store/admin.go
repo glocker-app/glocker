@@ -19,10 +19,26 @@ func (db *DB) ListUsers() ([]User, error) {
 // user-scoped table, in one transaction. Irreversible.
 func (db *DB) DeleteUserData(userID uint) error {
 	return db.DB.Transaction(func(tx *gorm.DB) error {
+		// RuleTag has no user_id — it links a Rule to a Tag. Remove the rows for this
+		// user's rules first (before the rules themselves go).
+		var ruleIDs []uint
+		if err := tx.Model(&Rule{}).Where("user_id = ?", userID).Pluck("id", &ruleIDs).Error; err != nil {
+			return err
+		}
+		if len(ruleIDs) > 0 {
+			if err := tx.Where("rule_id IN ?", ruleIDs).Delete(&RuleTag{}).Error; err != nil {
+				return err
+			}
+		}
+		// Every user-scoped table (all keyed by user_id). System-owned rows —
+		// Glocker:* tags and DefaultRule templates carry user_id 0, so this never
+		// touches them. Non-scoped infra (RateHit/CaptchaUse/SchedulerLease) is left.
 		for _, m := range []any{
 			&Session{}, &APIToken{}, &VerificationToken{},
 			&Violation{}, &Unblock{}, &LifecycleEvent{}, &UsageSample{},
-			&Heartbeat{}, &Rule{}, &TagColor{}, &IgnoredViolation{}, &SyncStatus{},
+			&Heartbeat{}, &Rule{}, &Tag{}, &TagOverride{}, &TagColor{},
+			&IgnoredViolation{}, &SyncStatus{}, &KeyVault{}, &DeviceConfig{},
+			&AccountabilityConfig{},
 		} {
 			if err := tx.Where("user_id = ?", userID).Delete(m).Error; err != nil {
 				return err

@@ -21,8 +21,22 @@ var (
 // token to email. The account cannot log in until VerifyEmail is called.
 func (db *DB) RegisterUser(email, password string) (*User, string, error) {
 	email = normalizeEmail(email)
-	if _, err := db.UserByEmail(email); err == nil {
-		return nil, "", ErrEmailTaken
+	if existing, err := db.UserByEmail(email); err == nil {
+		// A verified account owns the address.
+		if existing.Verified {
+			return nil, "", ErrEmailTaken
+		}
+		// Unverified: a pending registration still inside the link's lifetime is left
+		// alone (we never overwrite its password — only whoever receives the email may
+		// activate it). One past that lifetime is abandoned, or a squatter holding the
+		// address, so remove it and let this caller claim the email. This bounds
+		// account pre-registration to the verification window.
+		if time.Since(existing.CreatedAt) <= VerificationTTL {
+			return nil, "", ErrEmailTaken
+		}
+		if err := db.DeleteUser(existing.ID); err != nil {
+			return nil, "", err
+		}
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, "", err
 	}
