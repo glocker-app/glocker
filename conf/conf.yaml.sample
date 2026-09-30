@@ -1,12 +1,14 @@
 # ============================================================================
 # glocker configuration — SAMPLE
 # ============================================================================
-# Copy this to conf/conf.yaml, edit it, then run `make full-install`.
+# Easiest: run `make init` — it writes conf/conf.yaml from this file, filling in
+# your login and desktop session. Then review it and run `make full-install`. (Or
+# copy this to conf/conf.yaml and edit it by hand.)
 #
-# Every value here is a placeholder or a safe default — replace the example
-# usernames, addresses, keys, paths and keywords with your own. The large
-# blocklists are NOT stored in this file; `update_domains.py` generates them into
-# conf.d/ and they're pulled in via `!include` (see domains.list).
+# Every value here is a placeholder or a safe default — replace the example login,
+# emails and keywords with your own. The large blocklists are NOT stored in this
+# file; `update_domains.py` generates them into conf.d/, pulled in via `!include`
+# (see domains.list).
 #
 # The installed file lives at /etc/glocker/config.yaml and is read by the glocker
 # agent. (The glockpeek dashboard reads its own file — see the note just below.)
@@ -105,9 +107,9 @@ content:
   monitoring:
     enabled: true
     log_file: "/var/log/glocker/reports.log"
-  # Keywords the extension watches for. url_keywords match the address;
-  # content_keywords match page text; whitelist pages are never scanned or
-  # reported. Replace these placeholders with your own terms and trusted sites.
+  # Keywords the extension watches for. url_keywords match the address,
+  # content_keywords match page text, and whitelist pages are never scanned or
+  # reported. Add your own terms; the whitelist below are common trusted sites.
   keywords:
     url_keywords: []        # e.g. ["casino", "betting"] — matched against the address
     content_keywords: []    # e.g. ["buy now"] — matched against visible page text
@@ -121,9 +123,9 @@ content:
 
 # ── Blocking: privileges (sudo) ───────────────────────────────────────────────
 # Sudoers control — the REAL enforcement. During allow_windows sudo is permitted;
-# outside them the blocked line applies. Set `user` to your login name. Keep the
-# blocked line limited to sudo you genuinely need; do NOT leave yourself able to
-# edit /etc/hosts, /etc/sudoers, or remove glocker.
+# outside them the blocked line applies. Keep the blocked line limited to sudo you
+# genuinely need; do NOT leave yourself able to edit /etc/hosts, /etc/sudoers, or
+# remove glocker.
 sudoers:
   enabled: true
   allowed_sudoers_line: "yourusername ALL=(ALL) NOPASSWD:ALL"
@@ -256,6 +258,6 @@ panic:
 #   ./update_domains.py 1            # update just source #1
 #   ./update_domains.py strip        # delete the generated conf.d/ files
 #
-# `make full-install` runs `update_domains.py all` for you. After a manual
-# update: `glocker -reload`.
+# `make full-install` runs `update_domains.py all` for you. There is no runtime
+# reload — after editing config or blocklists, reinstall to apply: `make install`.
 # ============================================================================
