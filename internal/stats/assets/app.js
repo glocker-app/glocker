@@ -3512,9 +3512,12 @@ function userRow(u) {
   };
   actions.append(limLabel, saveBtn);
 
-  // Cancel subscription — one action: revoke the live subscription at Polar (if
-  // any) and reset the account to the free tier. Shown for any subscribed state.
-  if (u.subStatus) {
+  // Subscription lever (billing instances only). Cancel for a subscribed account:
+  // revoke the live sub at Polar (if any) and reset to free. Grant for an
+  // unsubscribed one: comp the paid tier directly (no payment), permanent unless
+  // you set an expiry date.
+  const billingOn = state.me && state.me.billing;
+  if (billingOn && u.subStatus) {
     const cancelSub = document.createElement("button");
     cancelSub.className = "btn-ghost";
     cancelSub.type = "button";
@@ -3525,6 +3528,34 @@ function userRow(u) {
       renderUsers();
     };
     actions.append(cancelSub);
+  } else if (billingOn && !u.subStatus) {
+    const grantSub = document.createElement("button");
+    grantSub.className = "btn-ghost";
+    grantSub.type = "button";
+    grantSub.textContent = "Grant subscription";
+    grantSub.onclick = async () => {
+      const until = prompt(
+        `Comp ${u.email} the paid tier (no payment).\n\n` +
+        `Leave blank for permanent access, or enter an expiry date (YYYY-MM-DD).`,
+        "");
+      if (until === null) return; // cancelled the prompt
+      const body = {};
+      if (until.trim() !== "") {
+        const t = Date.parse(until.trim());
+        if (isNaN(t)) { alert("Couldn't read that date. Use YYYY-MM-DD, or leave blank for permanent."); return; }
+        body.untilMillis = t;
+      }
+      try {
+        const res = await fetch(`api/admin/grant-subscription?id=${u.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) alert(`Grant failed: ${(await res.text()).trim() || res.status}`);
+      } catch { /* re-render reflects state */ }
+      renderUsers();
+    };
+    actions.append(grantSub);
   }
 
   // Delete (never your own admin account).

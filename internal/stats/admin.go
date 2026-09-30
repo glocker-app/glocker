@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"glocker/internal/store"
 
@@ -140,6 +141,64 @@ func adminCancelSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+// adminGrantSubscription comps an account the paid tier without a payment — the
+// operator grants access directly (a friend, a beta tester, a manual make-good).
+// It writes an "active" subscription with the paid device cap and, deliberately,
+// an EMPTY provider sub id: the on-load reconcile skips accounts with no SubID, so
+// a comp is never fetched from Polar and never clobbered. Optional {"untilMillis":N}
+// time-boxes access (HasAccess lapses after SubCurrentEnd); absent/0 = permanent.
+// Refuses an account that already has a provider subscription — cancel it first —
+// so a comp can't silently orphan a live Polar sub by blanking its id.
+func adminGrantSubscription(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !billingEnabled {
+		http.Error(w, "billing is disabled — every account already has access", http.StatusBadRequest)
+		return
+	}
+	id, err := strconv.ParseUint(r.URL.Query().Get("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid user id", http.StatusBadRequest)
+		return
+	}
+	u, err := db.UserByID(uint(id))
+	if err != nil {
+		http.Error(w, "no such user", http.StatusNotFound)
+		return
+	}
+	if u.SubID != "" {
+		http.Error(w, "account has a provider subscription — cancel it first, then grant", http.StatusConflict)
+		return
+	}
+	var in struct {
+		UntilMillis int64 `json:"untilMillis"`
+	}
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 4*1024))
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &in); err != nil {
+			http.Error(w, "bad body", http.StatusBadRequest)
+			return
+		}
+	}
+	var end time.Time // zero = permanent
+	if in.UntilMillis > 0 {
+		end = time.UnixMilli(in.UntilMillis)
+	}
+	// Empty sub id on purpose (keeps the comp off the Polar reconcile path).
+	if err := db.SetSubscription(u.ID, store.SubStatusActive, "", end, billing.PaidDeviceLimit, time.Now()); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			http.Error(w, "no such user", http.StatusNotFound)
+			return
+		}
+		log.Printf("billing: admin grant failed for user %d: %v", u.ID, err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "subStatus": store.SubStatusActive})
 }
 
 func adminSetDeviceLimit(w http.ResponseWriter, r *http.Request) {

@@ -169,6 +169,100 @@ func TestAdminCancelSubscription(t *testing.T) {
 	}
 }
 
+// TestAdminGrantSubscription: the admin comps a free account the paid tier without a
+// payment — active status, paid cap, empty provider id (so the reconcile skips it) —
+// and refuses to comp an account that already has a provider subscription.
+func TestAdminGrantSubscription(t *testing.T) {
+	sdb, err := store.Open(store.Options{Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "test.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sdb.Close() })
+	admin, _ := sdb.CreateUser("admin@x.com", "longenough1")
+	bob, _ := sdb.CreateUser("bob@x.com", "longenough1")
+	adminTok, _ := sdb.CreateSession(admin.ID)
+	bobTok, _ := sdb.CreateSession(bob.ID)
+
+	mux := http.NewServeMux()
+	Register(mux, sdb, Options{Auth: true, AdminEmail: "admin@x.com",
+		Billing: BillingOptions{Enabled: true, APIBase: "http://unused", APIToken: "tok", ProductID: "p", PaidDeviceLimit: 7}})
+	req := func(target, tok, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest("POST", target, strings.NewReader(body))
+		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: tok})
+		return do(mux, r)
+	}
+	bobID := strconv.FormatUint(uint64(bob.ID), 10)
+
+	// Non-admin is forbidden.
+	if rec := req("/api/admin/grant-subscription?id="+bobID, bobTok, ""); rec.Code != http.StatusForbidden {
+		t.Errorf("non-admin grant: got %d, want 403", rec.Code)
+	}
+	// Admin comps bob → active, paid cap, empty sub id, permanent (zero end).
+	if rec := req("/api/admin/grant-subscription?id="+bobID, adminTok, ""); rec.Code != http.StatusOK {
+		t.Fatalf("admin grant: %d %s", rec.Code, rec.Body.String())
+	}
+	after, _ := sdb.UserByEmail("bob@x.com")
+	if after.SubStatus != store.SubStatusActive || after.SubID != "" {
+		t.Errorf("comp not written: status=%q id=%q", after.SubStatus, after.SubID)
+	}
+	if !after.SubCurrentEnd.IsZero() {
+		t.Errorf("permanent comp should have zero end, got %v", after.SubCurrentEnd)
+	}
+	if store.EffectiveDeviceLimit(after) != 7 {
+		t.Errorf("paid device cap not applied: got %d, want 7", store.EffectiveDeviceLimit(after))
+	}
+	if !after.HasAccess() {
+		t.Error("comped account should have access")
+	}
+	// Re-granting an account that now has a subscription is refused (409) — but this
+	// one has an empty sub id, so it's still comp-able. Give carol a real provider sub.
+	carol, _ := sdb.CreateUser("carol@x.com", "longenough1")
+	if err := sdb.SetSubscription(carol.ID, store.SubStatusActive, "sub_live", time.Now().Add(720*time.Hour), 7, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	carolID := strconv.FormatUint(uint64(carol.ID), 10)
+	if rec := req("/api/admin/grant-subscription?id="+carolID, adminTok, ""); rec.Code != http.StatusConflict {
+		t.Errorf("grant over a provider sub: got %d, want 409", rec.Code)
+	}
+	// Time-boxed comp: an expiry in the past means no access.
+	dave, _ := sdb.CreateUser("dave@x.com", "longenough1")
+	daveID := strconv.FormatUint(uint64(dave.ID), 10)
+	past := time.Now().Add(-time.Hour).UnixMilli()
+	if rec := req("/api/admin/grant-subscription?id="+daveID, adminTok,
+		`{"untilMillis":`+strconv.FormatInt(past, 10)+`}`); rec.Code != http.StatusOK {
+		t.Fatalf("time-boxed grant: %d %s", rec.Code, rec.Body.String())
+	}
+	afterDave, _ := sdb.UserByEmail("dave@x.com")
+	if afterDave.HasAccess() {
+		t.Error("comp expired in the past should not grant access")
+	}
+	// Unknown id → 404.
+	if rec := req("/api/admin/grant-subscription?id=999999", adminTok, ""); rec.Code != http.StatusNotFound {
+		t.Errorf("grant unknown: got %d, want 404", rec.Code)
+	}
+}
+
+// TestAdminGrantSubscriptionBillingDisabled: with billing off, the grant is refused —
+// every account already has access, so a comp is meaningless.
+func TestAdminGrantSubscriptionBillingDisabled(t *testing.T) {
+	sdb, err := store.Open(store.Options{Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "test.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sdb.Close() })
+	admin, _ := sdb.CreateUser("admin@x.com", "longenough1")
+	bob, _ := sdb.CreateUser("bob@x.com", "longenough1")
+	adminTok, _ := sdb.CreateSession(admin.ID)
+
+	mux := http.NewServeMux()
+	Register(mux, sdb, Options{Auth: true, AdminEmail: "admin@x.com"}) // Billing not enabled
+	r := httptest.NewRequest("POST", "/api/admin/grant-subscription?id="+strconv.FormatUint(uint64(bob.ID), 10), nil)
+	r.AddCookie(&http.Cookie{Name: sessionCookie, Value: adminTok})
+	if rec := do(mux, r); rec.Code != http.StatusBadRequest {
+		t.Errorf("grant with billing disabled: got %d, want 400", rec.Code)
+	}
+}
+
 func TestAdminDisabledWithoutAdminEmail(t *testing.T) {
 	mux, sdb := newMux(t) // Options with no AdminEmail
 	u, _ := sdb.CreateUser("someone@x.com", "longenough1")

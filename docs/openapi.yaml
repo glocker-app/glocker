@@ -181,6 +181,59 @@ paths:
           description: No such user
         "502":
           description: Could not revoke at the provider
+  /api/admin/grant-subscription:
+    post:
+      summary: Comp a user the paid tier without a payment (admin-only)
+      description: >
+        Grants an account the paid tier directly — a friend, a beta tester, a manual
+        make-good — writing an "active" subscription with the paid device cap and an
+        empty provider subscription id (so the on-load Polar reconcile skips it and never
+        clobbers the comp). Permanent by default; an optional untilMillis time-boxes it
+        (access lapses after that instant). Admin-gated. Refuses an account that already
+        has a provider subscription (cancel it first) and refuses when billing is disabled
+        (every account already has access).
+      operationId: adminGrantSubscription
+      parameters:
+        - name: id
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Target account id.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                untilMillis:
+                  type: integer
+                  format: int64
+                  description: >
+                    Optional Unix epoch milliseconds when the comp expires. Absent or 0
+                    grants permanent access.
+      responses:
+        "200":
+          description: Access granted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  subStatus:
+                    type: string
+                    example: active
+        "400":
+          description: Invalid id, bad body, or billing disabled
+        "403":
+          description: Not the admin account
+        "404":
+          description: No such user
+        "409":
+          description: Account already has a provider subscription — cancel it first
   /api/admin/metrics:
     get:
       summary: Live server and database health (admin-only)
