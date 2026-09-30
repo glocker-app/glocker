@@ -346,16 +346,19 @@ deliberate cadence that will give you the time to let the urge die
 out. Remember, any resistance to the easiness of the habit means that
 it won't form or amplify.
 
-The `enabled` key turns the gate on. `interval_ms` is how fast the
-characters of the sentence are revealed, one at a time. `deadline_ms`
-is how long you have after a character appears to type it before it
-counts as a miss. `grace_ms` is the pause before the first character
-shows up. `lines` is how many sentences you have to get through. If
-you type a wrong key, fall behind the cadence, or the terminal loses
-focus, it resets with a fresh sentence. `recency_hours` and
-`recent_lines` handle repeats: if you've already uninstalled within
-the last `recency_hours`, you have to type `recent_lines` sentences
-instead of `lines`.
+The `enabled` key is all you need — the timings ship with sensible
+built-in defaults (updated 2026-09-30; they used to all live in the
+config). If you want to tune it, the knobs are still there:
+`interval_ms` is how fast the characters of the sentence are revealed,
+one at a time; `deadline_ms` is how long you have after a character
+appears to type it before it counts as a miss; `grace_ms` is the pause
+before the first character shows up; and `lines` is how many sentences
+you have to get through. If you type a wrong key, fall behind the
+cadence, or the terminal loses focus, it resets with a fresh sentence.
+`recency_hours` and `recent_lines` handle repeats: if you've already
+uninstalled within the last `recency_hours`, you have to type
+`recent_lines` sentences instead of `lines`. You can also set
+`sentences` to your own pool instead of the built-in one.
 
 ### Violation tracking
 Anytime you visit a blocked site or a page with blocked content or
