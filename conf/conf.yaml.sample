@@ -128,9 +128,8 @@ sudoers:
   enabled: true
   allowed_sudoers_line: "yourusername ALL=(ALL) NOPASSWD:ALL"
   blocked_sudoers_line: "yourusername ALL=(ALL) NOPASSWD: /usr/sbin/pm-suspend, /usr/bin/journalctl"
-  # sudo is allowed DURING these windows and blocked outside them. The default
-  # allows it all day except 09:00–10:00 — a small demonstration no-sudo window.
-  # Edit the windows to set your own blocked periods. `glocker -init` fills `user`.
+  # The default allows full sudo all day except 09:00–10:00 (a small demonstration
+  # no-sudo window). Edit these windows to set your own blocked periods.
   allow_windows:
     - start: "00:00"
       end: "09:00"
