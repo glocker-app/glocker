@@ -150,10 +150,12 @@ func adminCancelSubscription(w http.ResponseWriter, r *http.Request) {
 // an EMPTY provider sub id: the on-load reconcile skips accounts with no SubID, so
 // a comp is never fetched from Polar and never clobbered. Optional {"untilMillis":N}
 // time-boxes access (HasAccess lapses after SubCurrentEnd); absent/0 = permanent.
-// Refuses an account that already HAS access (active/trialing, or a cancel still
-// within its paid period) — there is nothing to grant, and blanking a live sub id
-// would orphan it at Polar. An expired/lapsed account (no access, dead sub) IS
-// comp-able even if it still carries a stale sub id, which this clears.
+// Refuses only an account with a LIVE, renewing subscription (active or trialing):
+// there is nothing to grant, and blanking its live sub id would orphan it at Polar
+// (cancel it first). Every other state is enable-able — a canceled sub (still in its
+// grace period or lapsed), an expired or past_due one, or a free account — even when
+// a stale sub id lingers, which this clears. A canceled/ending sub is safe to comp
+// over: it will not renew, so detaching it at Polar loses nothing.
 func adminGrantSubscription(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -173,8 +175,8 @@ func adminGrantSubscription(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such user", http.StatusNotFound)
 		return
 	}
-	if u.HasAccess() {
-		http.Error(w, "account already has access — nothing to grant", http.StatusConflict)
+	if u.SubStatus == store.SubStatusActive || u.SubStatus == store.SubStatusTrialing {
+		http.Error(w, "account has a live subscription — cancel it first", http.StatusConflict)
 		return
 	}
 	var in struct {

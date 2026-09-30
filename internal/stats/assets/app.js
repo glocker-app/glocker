@@ -242,6 +242,65 @@ function promptPassphrase(errMsg) {
   });
 }
 
+// promptModal is the in-app replacement for the native prompt()/confirm()/alert():
+// a themed dialog matching promptPassphrase. Resolves the entered text on submit
+// (or true when input:false), or null if cancelled (Cancel button, Esc, backdrop).
+// Options: title, message, placeholder, submitLabel, cancelLabel (null hides it),
+// initial, input (false = confirm/alert, no text field), and validate(value) →
+// error string that keeps the dialog open when non-empty.
+function promptModal(opts = {}) {
+  const {
+    title = "", message = "", placeholder = "", submitLabel = "OK",
+    cancelLabel = "Cancel", initial = "", input = true, validate,
+  } = opts;
+  return new Promise((resolve) => {
+    const ov = document.createElement("div");
+    ov.style.cssText =
+      "position:fixed;inset:0;background:rgba(7,9,13,.94);display:flex;align-items:center;justify-content:center;z-index:9999;";
+    const inputHTML = input
+      ? `<input type="text" style="width:100%;padding:10px 12px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:1rem;box-sizing:border-box;" />`
+      : "";
+    const cancelHTML = cancelLabel
+      ? `<button type="button" class="pm-cancel" style="padding:9px 16px;background:var(--bg-2);color:var(--ink);border:1px solid var(--line);border-radius:8px;cursor:pointer;"></button>`
+      : "";
+    ov.innerHTML = `
+      <form style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px;width:min(440px,90vw);color:var(--ink);font-family:inherit;">
+        <h2 style="margin:0 0 8px;font-size:1.1rem;"></h2>
+        <p style="color:var(--ink-dim);font-size:.9rem;margin:0 0 14px;white-space:pre-line;"></p>
+        ${inputHTML}
+        <div class="pm-err" style="color:var(--danger);font-size:.85rem;min-height:1.2em;margin-top:8px;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">
+          ${cancelHTML}
+          <button type="submit" class="pm-ok" style="padding:9px 16px;background:var(--signal);color:var(--on-accent);border:none;border-radius:8px;font-weight:600;cursor:pointer;"></button>
+        </div>
+      </form>`;
+    ov.querySelector("h2").textContent = title;
+    ov.querySelector("p").textContent = message;
+    ov.querySelector(".pm-ok").textContent = submitLabel;
+    const inputEl = ov.querySelector("input");
+    if (inputEl) { inputEl.placeholder = placeholder; inputEl.value = initial; }
+    const errEl = ov.querySelector(".pm-err");
+    const close = (val) => {
+      document.body.removeChild(ov);
+      document.removeEventListener("keydown", onKey);
+      resolve(val);
+    };
+    const onKey = (e) => { if (e.key === "Escape") close(null); };
+    ov.querySelector("form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const v = inputEl ? inputEl.value : true;
+      if (validate) { const msg = validate(inputEl ? inputEl.value : ""); if (msg) { errEl.textContent = msg; return; } }
+      close(v);
+    });
+    const cancelBtn = ov.querySelector(".pm-cancel");
+    if (cancelBtn) { cancelBtn.textContent = cancelLabel; cancelBtn.addEventListener("click", () => close(null)); }
+    ov.addEventListener("mousedown", (e) => { if (e.target === ov) close(null); });
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(ov);
+    (inputEl || ov.querySelector(".pm-ok")).focus();
+  });
+}
+
 // unlockVault fetches the vault and opens it with the user's passphrase, retrying
 // on a wrong passphrase. Sets masterKey. Returns false only if the vault can't be
 // fetched.
@@ -3512,53 +3571,57 @@ function userRow(u) {
   };
   actions.append(limLabel, saveBtn);
 
-  // Subscription levers (billing instances only), keyed on ACCESS not status.
-  // Cancel: shown whenever there's a subscription record to unwind — revoke the
-  // live sub at Polar (if any) and reset to free. Grant: shown whenever the account
-  // lacks access (free, expired, or a lapsed cancel) — comp the paid tier directly
-  // (no payment), permanent unless you set an expiry date. An expired account shows
-  // both: grant to comp it, or cancel to fully reset it to free.
+  // Subscription lever (billing instances only) — a single on/off per account.
+  // A live, renewing sub (active/trialing) shows "Cancel subscription" (revoke at
+  // Polar + reset to free). Every other billing state — canceled (still in its
+  // grace period), canceled (lapsed), expired, past_due, or a brand-new free
+  // account — shows "Enable": comp the paid tier directly (no payment), permanent
+  // unless an expiry date is given. A canceled account's useful action is to turn
+  // it back on, not to cancel it again.
   const billingOn = state.me && state.me.billing;
-  if (billingOn && u.subStatus) {
+  const liveSub = u.subStatus === "active" || u.subStatus === "trialing";
+  if (billingOn && liveSub) {
     const cancelSub = document.createElement("button");
     cancelSub.className = "btn-ghost";
     cancelSub.type = "button";
     cancelSub.textContent = "Cancel subscription";
     cancelSub.onclick = async () => {
-      if (!confirm(`Cancel ${u.email}'s subscription? Revokes it at Polar and returns the account to the free tier.`)) return;
+      if (!(await promptModal({
+        title: "Cancel subscription",
+        message: `Cancel ${u.email}'s subscription? Revokes it at Polar and returns the account to the free tier.`,
+        submitLabel: "Cancel subscription", cancelLabel: "Keep", input: false,
+      }))) return;
       try { await fetch(`api/admin/cancel-subscription?id=${u.id}`, { method: "POST" }); } catch { /* re-render reflects state */ }
       renderUsers();
     };
     actions.append(cancelSub);
-  }
-  if (billingOn && !u.hasAccess) {
-    const grantSub = document.createElement("button");
-    grantSub.className = "btn-ghost";
-    grantSub.type = "button";
-    grantSub.textContent = "Grant subscription";
-    grantSub.onclick = async () => {
-      const until = prompt(
-        `Comp ${u.email} the paid tier (no payment).\n\n` +
-        `Leave blank for permanent access, or enter an expiry date (YYYY-MM-DD).`,
-        "");
-      if (until === null) return; // cancelled the prompt
+  } else if (billingOn) {
+    const enableSub = document.createElement("button");
+    enableSub.className = "btn-ghost";
+    enableSub.type = "button";
+    enableSub.textContent = "Enable";
+    enableSub.onclick = async () => {
+      const until = await promptModal({
+        title: "Enable subscription",
+        message: `Comp ${u.email} the paid tier (no payment).\n\nLeave blank for permanent access, or enter an expiry date (YYYY-MM-DD).`,
+        placeholder: "YYYY-MM-DD (optional)",
+        submitLabel: "Enable",
+        validate: (v) => (v.trim() === "" || !isNaN(Date.parse(v.trim())) ? "" : "Couldn't read that date. Use YYYY-MM-DD, or leave blank for permanent."),
+      });
+      if (until === null) return; // cancelled
       const body = {};
-      if (until.trim() !== "") {
-        const t = Date.parse(until.trim());
-        if (isNaN(t)) { alert("Couldn't read that date. Use YYYY-MM-DD, or leave blank for permanent."); return; }
-        body.untilMillis = t;
-      }
+      if (until.trim() !== "") body.untilMillis = Date.parse(until.trim());
       try {
         const res = await fetch(`api/admin/grant-subscription?id=${u.id}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
-        if (!res.ok) alert(`Grant failed: ${(await res.text()).trim() || res.status}`);
+        if (!res.ok) await promptModal({ title: "Couldn't enable", message: (await res.text()).trim() || String(res.status), input: false, cancelLabel: null });
       } catch { /* re-render reflects state */ }
       renderUsers();
     };
-    actions.append(grantSub);
+    actions.append(enableSub);
   }
 
   // Delete (never your own admin account).
@@ -3568,7 +3631,13 @@ function userRow(u) {
     del.type = "button";
     del.textContent = "Delete";
     del.onclick = async () => {
-      if (!confirm(`Permanently delete ${u.email} and ALL of their data? This cannot be undone.`)) return;
+      if (!(await promptModal({
+        title: "Delete account",
+        message: `Permanently delete ${u.email} and ALL of their data? This cannot be undone.`,
+        submitLabel: "Delete",
+        cancelLabel: "Keep",
+        input: false,
+      }))) return;
       try { await fetch(`api/admin/users?id=${u.id}`, { method: "DELETE" }); } catch { /* re-render */ }
       renderUsers();
     };

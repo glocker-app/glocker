@@ -214,16 +214,31 @@ func TestAdminGrantSubscription(t *testing.T) {
 	if !after.HasAccess() {
 		t.Error("comped account should have access")
 	}
-	// An account that currently HAS access is refused (409) — nothing to grant, and
-	// blanking a live sub id would orphan it at Polar. carol is active with a future
-	// period end.
+	// A LIVE, renewing sub (active/trialing) is refused (409) — nothing to grant, and
+	// blanking its live sub id would orphan it at Polar. carol is active.
 	carol, _ := sdb.CreateUser("carol@x.com", "longenough1")
 	if err := sdb.SetSubscription(carol.ID, store.SubStatusActive, "sub_live", time.Now().Add(720*time.Hour), 7, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	carolID := strconv.FormatUint(uint64(carol.ID), 10)
 	if rec := req("/api/admin/grant-subscription?id="+carolID, adminTok, ""); rec.Code != http.StatusConflict {
-		t.Errorf("grant to an account with access: got %d, want 409", rec.Code)
+		t.Errorf("grant over a live sub: got %d, want 409", rec.Code)
+	}
+
+	// A CANCELED sub still in its grace period (has access, won't renew) IS
+	// enable-able — the admin comps it to permanent, clearing the ending sub id.
+	fred, _ := sdb.CreateUser("fred@x.com", "longenough1")
+	if err := sdb.SetSubscription(fred.ID, store.SubStatusCanceled, "sub_ending", time.Now().Add(240*time.Hour), 7, time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	fredID := strconv.FormatUint(uint64(fred.ID), 10)
+	if rec := req("/api/admin/grant-subscription?id="+fredID, adminTok, ""); rec.Code != http.StatusOK {
+		t.Fatalf("enable a canceled-in-grace sub: %d %s", rec.Code, rec.Body.String())
+	}
+	afterFred, _ := sdb.UserByEmail("fred@x.com")
+	if afterFred.SubStatus != store.SubStatusActive || afterFred.SubID != "" || !afterFred.SubCurrentEnd.IsZero() {
+		t.Errorf("canceled sub not comped to permanent: status=%q id=%q end=%v",
+			afterFred.SubStatus, afterFred.SubID, afterFred.SubCurrentEnd)
 	}
 
 	// An EXPIRED account still carrying a stale provider sub id (no access) IS
