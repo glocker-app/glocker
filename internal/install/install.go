@@ -5,7 +5,9 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +17,22 @@ import (
 	"glocker/internal/utils"
 	"glocker/internal/web"
 )
+
+// ensureGlockerGroup creates the `glocker` group (idempotent) and returns its gid,
+// or -1 if it couldn't be created/looked up. Group members reach the daemon socket
+// and can read the config for the -status/-info fallback, without being root.
+func ensureGlockerGroup() int {
+	_ = exec.Command("groupadd", "-f", "glocker").Run()
+	g, err := user.LookupGroup("glocker")
+	if err != nil {
+		return -1
+	}
+	gid, err := strconv.Atoi(g.Gid)
+	if err != nil {
+		return -1
+	}
+	return gid
+}
 
 const (
 	SystemdServiceFile   = "extras/glocker.service"
@@ -126,6 +144,11 @@ func InstallGlocker(confPath string) error {
 		return fmt.Errorf("failed to resolve executable path: %w", err)
 	}
 
+	// The glocker group gates socket access AND lets the managed user read the
+	// config for the -status/-info fallback (below), so create it before we set the
+	// config's group. Idempotent; the user is added to it later (step 4a).
+	glockerGID := ensureGlockerGroup()
+
 	// Step 3: Copy config file from confPath to target location
 	log.Printf("Copying config file from %s to %s", confPath, config.GlockerConfigFile)
 
@@ -144,16 +167,20 @@ func InstallGlocker(confPath string) error {
 	}
 	log.Printf("✓ Config file copied to %s", config.GlockerConfigFile)
 
-	// Set ownership and make config file immutable
-	if err := os.Chown(config.GlockerConfigFile, 0, 0); err != nil {
+	// The config carries sync.token (a hosted-account bearer credential), so it must
+	// not be world-readable. But the managed user needs to read it for `-info` and
+	// the `-status` fallback now that the client isn't setuid. So: root:glocker 0640
+	// — root + the glocker group (i.e. the managed user, their own token) can read,
+	// nobody else. Falls back to root-only 0600 if the group couldn't be created.
+	gid, mode := 0, os.FileMode(0o600)
+	if glockerGID >= 0 {
+		gid, mode = glockerGID, 0o640
+	}
+	if err := os.Chown(config.GlockerConfigFile, 0, gid); err != nil {
 		log.Printf("Warning: couldn't set config file ownership: %v", err)
 	}
-	// Root-only: the config carries sync.token (a bearer credential for the hosted
-	// account). CopyFile preserves the source mode, which is world-readable on a dev
-	// checkout, so any local user could read the token. The daemon runs as root, so
-	// 0600 loses nothing.
-	if err := os.Chmod(config.GlockerConfigFile, 0o600); err != nil {
-		log.Printf("Warning: couldn't tighten config file permissions: %v", err)
+	if err := os.Chmod(config.GlockerConfigFile, mode); err != nil {
+		log.Printf("Warning: couldn't set config file permissions: %v", err)
 	}
 	if err := exec.Command("chattr", "+i", config.GlockerConfigFile).Run(); err != nil {
 		log.Printf("Warning: couldn't set immutable flag on config file: %v", err)
@@ -194,15 +221,11 @@ func InstallGlocker(confPath string) error {
 	}
 	log.Println("✓ Binary installed (0755, not setuid)")
 
-	// Step 4a: The glocker group gates socket access now that the binary isn't
-	// setuid. The daemon owns the socket root:glocker 0660; a member can run the
-	// self-management commands (status, unblock, extend, …) without sudo, while
-	// uninstall/resync still need real root. Create the group and add the
-	// managed user. NOTE: group membership only takes effect on the user's NEXT
-	// login — until then they must use sudo or `newgrp glocker`.
-	if err := exec.Command("groupadd", "-f", "glocker").Run(); err != nil {
-		log.Printf("Warning: couldn't create the glocker group: %v", err)
-	}
+	// Step 4a: Add the managed user to the glocker group (created earlier). Members
+	// reach the socket root:glocker 0660 and read the config, so the self-management
+	// commands (status, info, unblock, extend, …) work without sudo; uninstall/resync
+	// still need real root. NOTE: group membership only takes effect on the user's
+	// NEXT login — until then they must use sudo or `newgrp glocker`.
 	if cfg.User != "" {
 		if err := exec.Command("gpasswd", "-a", cfg.User, "glocker").Run(); err != nil {
 			log.Printf("Warning: couldn't add %s to the glocker group: %v", cfg.User, err)
