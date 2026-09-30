@@ -152,7 +152,7 @@ func InstallGlocker(confPath string) error {
 	// by systemd as root) owns the socket root:glocker 0660, the managed user joins
 	// the glocker group below, and privileged commands are gated by the caller's real
 	// uid (SO_PEERCRED) — so a group member gets self-management commands, and
-	// uninstall/resync/test-email still require sudo.
+	// uninstall/resync still require sudo.
 	if err := os.Chmod(config.InstallPath, 0o755); err != nil {
 		return fmt.Errorf("failed to set binary permissions: %w", err)
 	}
@@ -166,7 +166,7 @@ func InstallGlocker(confPath string) error {
 	// Step 4a: The glocker group gates socket access now that the binary isn't
 	// setuid. The daemon owns the socket root:glocker 0660; a member can run the
 	// self-management commands (status, unblock, extend, …) without sudo, while
-	// uninstall/resync/test-email still need real root. Create the group and add the
+	// uninstall/resync still need real root. Create the group and add the
 	// managed user. NOTE: group membership only takes effect on the user's NEXT
 	// login — until then they must use sudo or `newgrp glocker`.
 	if err := exec.Command("groupadd", "-f", "glocker").Run(); err != nil {
