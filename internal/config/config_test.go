@@ -233,3 +233,16 @@ func TestSetupLogging(t *testing.T) {
 		})
 	}
 }
+
+func TestMindfulWithDefaults(t *testing.T) {
+	got := MindfulUninstallConfig{Enabled: true}.WithDefaults() // all tuning unset
+	if got.IntervalMs != DefaultMindfulIntervalMs || got.DeadlineMs != DefaultMindfulDeadlineMs ||
+		got.GraceMs != DefaultMindfulGraceMs || got.Lines != DefaultMindfulLines ||
+		got.RecencyHours != DefaultMindfulRecencyHours || got.RecentLines != DefaultMindfulRecentLines {
+		t.Errorf("defaults not applied: %+v", got)
+	}
+	// An explicit value is preserved.
+	if got := (MindfulUninstallConfig{IntervalMs: 500}).WithDefaults(); got.IntervalMs != 500 {
+		t.Errorf("explicit interval_ms overridden: %d", got.IntervalMs)
+	}
+}

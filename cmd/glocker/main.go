@@ -271,7 +271,7 @@ func main() {
 		// upgrades no longer uninstall (glocker -install swaps in place), so there
 		// is no "maintenance" bypass to abuse.
 		if uninstallCfg.MindfulUninstall.Enabled {
-			mc := uninstallCfg.MindfulUninstall
+			mc := uninstallCfg.MindfulUninstall.WithDefaults()
 
 			// Recency escalation: if the ledger shows a recent uninstall, treat
 			// this as a repeat and raise the challenge. The current uninstall

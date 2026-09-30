@@ -148,12 +148,10 @@ sudoers:
 # client-side in your terminal; if enabled with no tty, the uninstall is refused.
 mindful_uninstall:
   enabled: true
-  interval_ms: 1000                     # per-character reveal cadence
-  deadline_ms: 2000                     # grace after a char appears before a miss resets
-  grace_ms: 1200                        # pause before the first character
-  lines: 1                              # base sentences chained into one challenge
-  recency_hours: 24                     # look back this far for a prior uninstall
-  recent_lines: 3                       # longer challenge on a repeat within the window (0 = no escalation)
+  # The timings (reveal cadence, deadlines, challenge length, repeat escalation)
+  # have built-in defaults — you only need `enabled`. Advanced: override any of
+  # interval_ms / deadline_ms / grace_ms / lines / recency_hours / recent_lines,
+  # or set `sentences:` to a custom pool.
 
 # Install/uninstall accountability. `glocker -uninstall` must cite one of these
 # reasons. All reasons are gated equally by the mindful gate above — upgrades no

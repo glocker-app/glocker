@@ -212,6 +212,42 @@ type MindfulUninstallConfig struct {
 	RecentLines  int `yaml:"recent_lines"`  // sentences to chain on a repeat (0 = no escalation)
 }
 
+// Mindful-uninstall tuning defaults, applied to any field left unset so a user's
+// config only needs `enabled` (the timings are sensible for everyone).
+const (
+	DefaultMindfulIntervalMs   = 1000 // per-character reveal cadence
+	DefaultMindfulDeadlineMs   = 2000 // grace after a char before a miss resets
+	DefaultMindfulGraceMs      = 1200 // pause before the first character
+	DefaultMindfulLines        = 1    // base sentences per challenge
+	DefaultMindfulRecencyHours = 24   // repeat-uninstall lookback window
+	DefaultMindfulRecentLines  = 3    // longer challenge on a repeat within the window
+)
+
+// WithDefaults fills any unset (zero) tuning field with its default, so the sample
+// config can carry just `enabled` and everything else is built-in. Escalation is on
+// by default; set recent_lines equal to lines to neutralise it.
+func (m MindfulUninstallConfig) WithDefaults() MindfulUninstallConfig {
+	if m.IntervalMs <= 0 {
+		m.IntervalMs = DefaultMindfulIntervalMs
+	}
+	if m.DeadlineMs <= 0 {
+		m.DeadlineMs = DefaultMindfulDeadlineMs
+	}
+	if m.GraceMs <= 0 {
+		m.GraceMs = DefaultMindfulGraceMs
+	}
+	if m.Lines <= 0 {
+		m.Lines = DefaultMindfulLines
+	}
+	if m.RecencyHours <= 0 {
+		m.RecencyHours = DefaultMindfulRecencyHours
+	}
+	if m.RecentLines <= 0 {
+		m.RecentLines = DefaultMindfulRecentLines
+	}
+	return m
+}
+
 // HeartbeatConfig controls the glockdoc liveness watchdog. It is consumed at
 // install time to schedule it — a systemd timer, or a root cron job where that
 // fails (internal/install). The glockdoc binary itself takes its parameters from
