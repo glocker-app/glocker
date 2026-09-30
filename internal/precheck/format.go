@@ -40,8 +40,7 @@ func (r Report) OpenCount() int {
 // String renders the report as a readable block.
 func (r Report) String() string {
 	var b strings.Builder
-	b.WriteString("Security check — bypass & recovery routes\n")
-	b.WriteString("(read-only; nothing was changed)\n\n")
+	b.WriteString("Security check — bypass & recovery routes\n\n")
 	for _, f := range r.Findings {
 		fmt.Fprintf(&b, "  [%-4s] %s\n", f.tag(), f.Title)
 		if f.Detail != "" {
