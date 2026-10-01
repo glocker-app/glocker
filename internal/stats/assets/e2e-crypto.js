@@ -19,6 +19,7 @@ const AAD_RECOVERY_WRAP = "glocker/e2e:mkwrap-recovery:v1";
 const RECOVERY_HKDF_INFO = "glocker/e2e:recovery-kek:v1";
 
 const te = new TextEncoder();
+const td = new TextDecoder();
 const rand = (n) => crypto.getRandomValues(new Uint8Array(n));
 
 // ── encodings (match Go: base64.StdEncoding, base32.StdEncoding no-padding) ───
@@ -164,6 +165,33 @@ export async function decryptRecord(mk, box, aad = new Uint8Array(0)) {
 export async function decryptField(mk, b64NonceCt, aad) {
   const buf = fromB64(b64NonceCt);
   return open(mk, { nonce: buf.slice(0, NONCE_LEN), ct: buf.slice(NONCE_LEN) }, aad);
+}
+
+// ── registry fields (tags & rules authored in the browser) ───────────────────
+// The strings a user authors in the dashboard — a rule's program/title regexes,
+// a user tag's namespace/name — are sealed client-side before they're POST/PUT'd,
+// so glockpeek stores only ciphertext for them (as it already does for usage
+// records). A sealed value is the marker ENC_PREFIX followed by base64(nonce‖ct);
+// a value without the marker is cleartext (local mode, or not yet migrated).
+// Both helpers are idempotent: sealString leaves an already-sealed value alone,
+// openString passes a cleartext value straight through — which is exactly what
+// makes the one-time migration safe to re-run and lossless.
+export const ENC_PREFIX = "enc:v1:";
+export const isSealed = (text) => typeof text === "string" && text.startsWith(ENC_PREFIX);
+
+export async function sealString(mk, text, aad) {
+  if (typeof text !== "string" || text === "" || text.startsWith(ENC_PREFIX)) return text;
+  const box = await seal(mk, te.encode(text), aad);
+  const out = new Uint8Array(NONCE_LEN + box.ct.length);
+  out.set(box.nonce, 0);
+  out.set(box.ct, NONCE_LEN);
+  return ENC_PREFIX + toB64(out);
+}
+
+export async function openString(mk, text, aad) {
+  if (typeof text !== "string" || !text.startsWith(ENC_PREFIX)) return text;
+  const buf = fromB64(text.slice(ENC_PREFIX.length));
+  return td.decode(await open(mk, { nonce: buf.slice(0, NONCE_LEN), ct: buf.slice(NONCE_LEN) }, aad));
 }
 
 export const _internal = { toB64, fromB64, toB32, fromB32, deriveKEK }; // for tests

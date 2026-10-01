@@ -4,7 +4,7 @@
 // where you actually slip — and hatches the slots where glocker was off, so a
 // blank cell is never mistaken for a safe one.
 
-import { openVault, decryptField } from "./e2e-crypto.js";
+import { openVault, decryptField, sealString, openString, isSealed } from "./e2e-crypto.js";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const DAY = 86400000;
@@ -499,14 +499,24 @@ async function bootDashboard(me) {
   bootPhase("applying rules");
   // Tag registry (shared Glocker:* system tags + this account's own), then the
   // rules that attach them. Both non-fatal if missing. Matching stays client-side.
+  let rawTags = [], rawRules = [];
   try {
     const tres = await fetch("api/tags");
-    if (tres.ok) setTags((await tres.json()).tags || []);
+    if (tres.ok) {
+      rawTags = (await tres.json()).tags || [];
+      setTags(await Promise.all(rawTags.map(openTag)));
+    }
   } catch { /* keep empty registry */ }
   try {
     const rres = await fetch("api/rules");
-    if (rres.ok) state.rules = (await rres.json()).rules || [];
+    if (rres.ok) {
+      rawRules = (await rres.json()).rules || [];
+      state.rules = await Promise.all(rawRules.map(openRuleRow));
+    }
   } catch { /* keep empty rules */ }
+  // One-time: seal anything the browser authored that's still stored cleartext
+  // (this account's pre-encryption tags/rules, or a new account's seeded rules).
+  if (registryNeedsSeal(rawTags, rawRules)) await migrateSealRegistry();
 
   // False-positive ignore list (non-fatal if missing).
   try {
@@ -2169,6 +2179,75 @@ function computeUsage(entries) {
 // { program, title, tag }: optional case-insensitive regexes on the active
 // window's class and title. The first rule whose present regexes all match
 // wins; $1..$9 in the tag interpolate that rule's regex captures.
+// ── registry encryption (tags & rules) ──────────────────────────────────────
+// The strings a user authors — a rule's program/title, a user tag's
+// namespace/name — are sealed in the browser before they leave it, so glockpeek
+// stores only ciphertext (as it already does for usage records). System tags
+// (Glocker:*) are shared vendor data and stay cleartext. state.tags / state.rules
+// always hold the DECRYPTED values: reads open, writes seal. In local mode there
+// is no masterKey, so these pass everything through as cleartext.
+const REG_TE = new TextEncoder();
+const REG_AAD = { tagNs: "tag.namespace", tagName: "tag.name", ruleProg: "rule.program", ruleTitle: "rule.title" };
+// Set if any sealed tag/rule field failed to open — blocks the seal migration so a
+// field we can't read is never lost or re-sealed over.
+let regDecryptError = false;
+
+async function sealReg(text, label) {
+  return masterKey ? sealString(masterKey, text || "", REG_TE.encode(label)) : (text || "");
+}
+async function openReg(text, label) {
+  if (!masterKey || !isSealed(text)) return text;
+  try {
+    return await openString(masterKey, text, REG_TE.encode(label));
+  } catch (e) {
+    console.error("registry field failed to decrypt — leaving it sealed:", e);
+    regDecryptError = true;
+    return text; // keep the ciphertext: never lose it, never re-seal it
+  }
+}
+// Decrypt a tag for display/matching — user tags only; system tags are cleartext.
+async function openTag(t) {
+  if (t.scope !== "user") return t;
+  return { ...t, namespace: await openReg(t.namespace, REG_AAD.tagNs), name: await openReg(t.name, REG_AAD.tagName) };
+}
+async function openRuleRow(r) {
+  return { ...r, program: await openReg(r.program, REG_AAD.ruleProg), title: await openReg(r.title, REG_AAD.ruleTitle) };
+}
+// True when something the browser authored is still stored cleartext and the vault
+// is unlocked — the signal to run the one-time seal migration.
+function registryNeedsSeal(rawTags, rawRules) {
+  if (!masterKey || regDecryptError) return false;
+  const tagUnsealed = rawTags.some((t) => t.scope === "user" && ((t.namespace && !isSealed(t.namespace)) || (t.name && !isSealed(t.name))));
+  const ruleUnsealed = rawRules.some((r) => (r.program && !isSealed(r.program)) || (r.title && !isSealed(r.title)));
+  return tagUnsealed || ruleUnsealed;
+}
+// One-time, idempotent seal of any still-cleartext user tags and rules. Writes in
+// place (ids/colours/tagIds/positions preserved), so nothing is lost; the marker
+// makes a re-run a no-op. state.tags / state.rules already hold plaintext here.
+async function migrateSealRegistry() {
+  try {
+    for (const t of state.tags) {
+      if (t.scope !== "user") continue;
+      await fetch(`api/tags?id=${t.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ namespace: await sealReg(t.namespace, REG_AAD.tagNs), name: await sealReg(t.name, REG_AAD.tagName) }),
+      });
+    }
+    if (state.rules.length) {
+      const rules = await Promise.all(state.rules.map(async (r, i) => ({
+        position: i,
+        program: await sealReg(r.program, REG_AAD.ruleProg),
+        title: await sealReg(r.title, REG_AAD.ruleTitle),
+        tagIds: r.tagIds || [],
+      })));
+      await fetch("api/rules", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rules }) });
+    }
+  } catch (e) {
+    console.warn("registry seal migration incomplete (will retry next load):", e);
+  }
+}
+
 function setTags(tags) {
   state.tags = tags || [];
   state.tagById = new Map();
@@ -3021,15 +3100,20 @@ async function saveRulesToServer() {
   btn.disabled = true;
   setRulesStatus("saving…", "");
   try {
-    const payload = { rules: state.rules.map((r, i) => ({ position: i, program: r.program, title: r.title, tagIds: r.tagIds || [] })) };
+    const payload = { rules: await Promise.all(state.rules.map(async (r, i) => ({
+      position: i,
+      program: await sealReg(r.program, REG_AAD.ruleProg),
+      title: await sealReg(r.title, REG_AAD.ruleTitle),
+      tagIds: r.tagIds || [],
+    }))) };
     const res = await fetch("api/rules", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(await errText(res, `server returned ${res.status}`));
-    const cfg = await res.json(); // canonical, server-validated
-    state.rules = cfg.rules || [];
+    const cfg = await res.json(); // canonical, server-validated (ciphertext) — decrypt back for the UI/matcher
+    state.rules = await Promise.all((cfg.rules || []).map(openRuleRow));
     renderRulesEditor();
     markRuleValidity();
     recategorize();
@@ -3140,7 +3224,7 @@ function setTagsStatus(msg, cls) {
 async function reloadTags() {
   try {
     const res = await fetch("api/tags");
-    if (res.ok) setTags((await res.json()).tags || []);
+    if (res.ok) setTags(await Promise.all(((await res.json()).tags || []).map(openTag)));
   } catch { /* keep current registry */ }
   renderTags();
   renderRulesEditor();
@@ -3149,12 +3233,22 @@ async function reloadTags() {
 }
 
 async function createTag(namespace, name) {
+  // Once names are ciphertext the DB can't catch a duplicate, so check here — we
+  // hold the decrypted registry. Case-insensitive within the namespace.
+  const dup = state.tags.some((t) => t.scope === "user" &&
+    (t.namespace || "").toLowerCase() === namespace.toLowerCase() &&
+    (t.name || "").toLowerCase() === name.toLowerCase());
+  if (dup) { setTagsStatus(`${namespace}:${name} already exists`, "err"); return; }
   setTagsStatus("saving…", "");
   try {
     const res = await fetch("api/tags", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ namespace, name, color: randomTagColor(), distraction: false }),
+      body: JSON.stringify({
+        namespace: await sealReg(namespace, REG_AAD.tagNs),
+        name: await sealReg(name, REG_AAD.tagName),
+        color: randomTagColor(), distraction: false,
+      }),
     });
     if (!res.ok) { setTagsStatus(await errText(res, "add failed"), "err"); return; }
     if (state.pendingNamespace === namespace) state.pendingNamespace = null;
@@ -3165,11 +3259,15 @@ async function createTag(namespace, name) {
 
 async function patchTag(id, fields) {
   setTagsStatus("saving…", "");
+  // Seal name/namespace if this patch changes them (colour/distraction pass through).
+  const out = { ...fields };
+  if (typeof out.namespace === "string") out.namespace = await sealReg(out.namespace, REG_AAD.tagNs);
+  if (typeof out.name === "string") out.name = await sealReg(out.name, REG_AAD.tagName);
   try {
     const res = await fetch(`api/tags?id=${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(fields),
+      body: JSON.stringify(out),
     });
     if (!res.ok) { setTagsStatus(await errText(res, "update failed"), "err"); return; }
     await reloadTags();
