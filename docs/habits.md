@@ -347,8 +347,7 @@ out. Remember, any resistance to the easiness of the habit means that
 it won't form or amplify.
 
 The `enabled` key is all you need — the timings ship with sensible
-built-in defaults (updated 2026-09-30; they used to all live in the
-config). If you want to tune it, the knobs are still there:
+built-in defaults. If you want to tune it, the knobs are still there:
 `interval_ms` is how fast the characters of the sentence are revealed,
 one at a time; `deadline_ms` is how long you have after a character
 appears to type it before it counts as a miss; `grace_ms` is the pause
@@ -375,11 +374,13 @@ have to wait for the time specified in
 `violation_tracking.lock_duration`. Glocklock will pick up
 `violation_tracking.background` to display on the screen when it locks
 (this is X11 only. On Gnome/Wayland, you simply get a lock screen). 
-
-Glocker runs as root so just running glocklock won't work. My own
-command is 
+The `violation_tracking.command` is what will run when you cross the
+violation threshold. My own is 
 
     sudo -u john DISPLAY=:1 /usr/local/bin/glocklock
+
+Since glocker runs as root so just running glocklock won't work.
+
 
 ### Usage monitor
 Glocker can also track what window (Application/title) you're
@@ -400,8 +401,8 @@ and `xauthority` are ignored. Instead, glocker talks to your session
 over D-Bus. It also needs a small GNOME Shell extension to read the
 focused window, which the installer sets up for you. glocker
 automatically detects X11 or Wayland and uses whichever keys
-apply. There are a few systems (KDE Plasma, Sway, Hyprland, etc.)
-which we don't support yet.
+apply. There are a few systems (KDE Plasma, etc.)  which we don't
+support yet.
 
 The `log_file` will contain usage statistics. Each entry in this
 file contains a timestamp and then a list of windows. Each window
@@ -506,16 +507,14 @@ config file and restart glocker.
    daemon is actually running.
 2. `-info` - Shows configuration information which is static. 
 3. `-version` - Shows what version of Glocker is running
-4. `-check` - (added 2026-09-30) One unified read-only audit, run as
-   `sudo glocker -check`. It reports two things: the **capabilities**
-   glocker needs to run (systemd, visudo, an immutable filesystem, a
-   watchdog scheduler), and the **bypass and recovery routes** on the
-   machine — extra sudo grants, `wheel`/`sudo` group membership, an
-   unlocked root account, root SSH login, autologin. The second half is
-   the important one: if you're in `wheel` or have a blanket `NOPASSWD`
-   grant, you can still `sudo` past the sudo window, so the restriction
-   won't really hold until you remove it. It also runs automatically at
-   the end of install, so those gaps are surfaced up front.
+4. `-check` - Runs an audit of your system to see if it is configured
+   to allow bypasses. It needs to be run as root. It reports two
+   things: the **capabilities** glocker needs to run (systemd, visudo,
+   an immutable filesystem, a watchdog scheduler), and the **bypass
+   and recovery routes** on the machine — extra sudo grants,
+   `wheel`/`sudo` group membership, an unlocked root account, root SSH
+   login, autologin. It also runs automatically at the end of install,
+   so that you get this information upfront.
 
 ### Cloud sync
 1. `-connect` - This is used to connect with the glocker cloud platform
@@ -531,6 +530,9 @@ install, run `make init` — it writes `conf/conf.yaml` from the sample and fill
 in your login and desktop session (or copy `conf/conf.yaml.sample` to
 `conf/conf.yaml` by hand) — then edit it as described above.
 
+`make init` runs the setup wizard to create an initial
+`conf/conf.yaml`. It will refuse to run if this file already exists. 
+
 `make install` is what you'll use most of the time. It rebuilds all four
 binaries and reinstalls glocker in place. If glocker is already running, it
 stops the daemon, swaps in the new binaries and config, and starts it again.
@@ -541,15 +543,16 @@ This is also how you apply changes after editing `conf/conf.yaml`.
 pulled in fresh; for everyday config edits, `make install` is enough since
 it skips the (slow) blocklist download.
 
-A note on privileges (changed 2026-09-30). Glocker's binary is a normal,
-non-setuid program; the enforcement daemon runs as root under systemd. Everyday
-commands — `glocker -status`, `-unblock`, `-extend`, `-panic` and the like — reach
-the daemon over a socket owned by the `glocker` group, and the installer adds your
-user to that group. **Group membership only takes effect on your next login**, so
-log out and back in (or run `newgrp glocker`) once after your first install,
-otherwise those commands are refused until you do. The few commands that can
-disable enforcement or re-push data — `-uninstall`, `-resync` — still
-require real root, so run them with `sudo`.
+A note on privileges. Glocker's binary is a normal, non-setuid
+program; the enforcement daemon runs as root under systemd. Everyday
+commands — `glocker -status`, `-unblock`, `-extend`, `-panic` and the
+like — reach the daemon over a socket owned by the `glocker` group,
+and the installer adds your user to that group. **Group membership
+only takes effect on your next login**, so log out and back in once
+after your first install, otherwise those commands are refused until
+you do. The few commands that can disable enforcement or re-push data
+— `-uninstall`, `-resync` — still require real root, so run them with
+`sudo`.
 
 The blocklists are handled by `update_domains.py`, run for you by `make
 update-blocklists` (which `full-install` calls). It downloads several large
@@ -655,8 +658,51 @@ benefits.
 The subscription also helps me support and maintain the software.
 
 ## How to subscribe
-{should have details about the web portal when it's done and about how
-to run the glocker commands to connect it to glockerapp}
+
+Sign up at [my.glockerapp.com](https://my.glockerapp.com) and pick a plan.
+The dashboard then gives you an *ingest token* (so your machine can push its
+data) and lets you set an *encryption passphrase* (which protects your data
+so that even I can't read it — see the Encryption section below).
+
+Next, point your running glocker at the dashboard. The setup wizard does this
+for you: `glocker -init` asks whether to sync to a hosted glockpeek and takes
+the URL and token. If glocker is already installed, set them by hand in the
+`sync` stanza of `conf/conf.yaml` instead:
+
+    sync:
+      enabled: true
+      glockpeek_url: "https://my.glockerapp.com"
+      token: "<your ingest token>"
+      encrypt: true
+
+Finally, install your encryption key on the machine:
+
+    glocker -connect
+
+It asks for your passphrase, fetches your key vault from the dashboard,
+unlocks it, and writes the master key to `/etc/glocker/e2e.key`. Run it once
+on each machine you want to sync. They all share the same key, so the
+dashboard can combine them into one picture. After that, glocker syncs on its
+own.
+
+### Accountability buddies
+
+If you're fighting something like pornography or gambling, having someone in
+the loop helps. Add one or more buddy emails and glockpeek will send them a
+rolling digest plus immediate alerts — a "went dark" alert if your machine
+stops reporting (a dead-man's switch), and a high-violation alert when you
+cross a threshold. The mails carry counts and liveness only ("14 violations,
+went dark 2h"); the server can't read your encrypted records, so it never
+tells them *what* you were doing.
+
+The wizard asks for a buddy email during `glocker -init`. To set it by hand,
+use the `accountability` stanza:
+
+    accountability:
+      enabled: true
+      buddy_emails:
+        - "friend@example.com"
+      digest_every_hours: 24
 
 
 ## Encryption
@@ -714,22 +760,23 @@ etc. The ones that are not encrypted are listed below
 - **`record_id`** — a keyed HMAC over the plaintext. The server can't
   reverse it, but identical events hash identically, so it can tell the
   *same* violation recurred — not what it is.
-- **Rules and tags you create** — (added 2026-09-30) when you tag or
-  "hide" an app in the dashboard, the program name (e.g.
-  `org.mozilla.firefox`) and the window title you pin the rule to are
-  stored in **cleartext**, because the matching that applies the rule
-  runs against them. So the server can see the app names you've written
-  rules for — the ones you singled out, not your full history. Sealing
-  these is planned.
+- **Rules and tags — structure only.** (updated 2026-10-01) The program
+  names and window titles in the rules you write, and your own tag names,
+  are now end-to-end encrypted as well: they're sealed in your browser
+  before they're saved, so the server stores only ciphertext for them and
+  the matching that applies a rule runs in your browser after it decrypts
+  them. What stays visible is the *shape* of your registry — how many
+  rules and tags you have, their order, the colours you pick, and the
+  shared `Glocker:*` system categories (those are the same for everyone,
+  so they were never yours to hide).
 
-The upshot (corrected 2026-09-30) is that glockerapp can't see your
-usage **records** — the app names and window titles you actually visit
-are ciphertext; the server only ever sees the fixed shape (timings,
-counts, categories) and the handful of fields above. The honest
-exception is the rules and tags you author, whose program names are
-stored in the clear as noted just above. The downside of the encryption
-is that if you lose your passphrase and recovery key, your data won't be
-recoverable. Whenever you hit the site, you need to enter your
-passphrase so that decryption can happen.
+The upshot is that glockerapp can't see your data. The app names and
+window titles you actually visit, and the rules and tags you write
+against them, are all ciphertext; the server only ever sees the fixed
+shape (timings, counts, categories, and the structure of your registry)
+and the handful of fields above. The downside of the encryption is that
+if you lose your passphrase and recovery key, your data won't be
+recoverable. Whenever you hit the site, you need to enter your passphrase
+so that decryption can happen.
 
 # Additional notes on maintaining healthy routines
