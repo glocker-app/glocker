@@ -1124,13 +1124,13 @@ function buildHeatmap(violations, b) {
   return { counts, max, peak, unmanagedFrac };
 }
 
-// ── Color ramp for the heatmap (ember → danger) ─────────
+// ── Color ramp for the heatmap (pale wash → correction red, on paper) ─────────
 const RAMP = [
-  [12, 17, 25],    // base / none
-  [90, 28, 36],
-  [150, 30, 40],
-  [200, 40, 45],
-  [255, 90, 60],   // hottest
+  [228, 221, 204], // base / none (matches --line; unused for count>0)
+  [233, 201, 191], // faintest hit — a pale red wash
+  [213, 150, 138],
+  [192, 86, 74],   // the margin red
+  [168, 54, 44],   // hottest — deep correction red
 ];
 function heatColor(ratio) {
   if (ratio <= 0) return `rgb(${RAMP[0].join(",")})`;
@@ -1466,7 +1466,7 @@ function renderTimeline(canvasId = "chart-timeline") {
   const underlay = (c) => {
     const { ctx, chartArea: a } = c;
     ctx.save();
-    ctx.fillStyle = "rgba(192,70,143,0.20)";
+    ctx.fillStyle = "rgba(169,156,130,0.28)";
     for (const p of state.data.unmanaged) {
       const x1 = xAt(a, Math.max(p.start, start));
       const x2 = xAt(a, Math.min(p.open ? now : p.end, end));
@@ -1483,14 +1483,14 @@ function renderTimeline(canvasId = "chart-timeline") {
     if (state.winStart == null) return;
     const x1 = xAt(a, state.winStart), x2 = xAt(a, state.winEnd);
     ctx.save();
-    ctx.fillStyle = "rgba(15,16,19,0.62)";
+    ctx.fillStyle = "rgba(246,241,231,0.64)";
     ctx.fillRect(a.left, a.top, x1 - a.left, a.height);
     ctx.fillRect(x2, a.top, a.right - x2, a.height);
-    ctx.strokeStyle = "#4bbdd4";
+    ctx.strokeStyle = "#c0564a";
     ctx.lineWidth = 2;
     for (const x of [x1, x2]) {
       ctx.beginPath(); ctx.moveTo(x, a.top); ctx.lineTo(x, a.bottom); ctx.stroke();
-      ctx.fillStyle = "#4bbdd4";
+      ctx.fillStyle = "#c0564a";
       ctx.fillRect(x - 1.5, a.top + a.height / 2 - 8, 3, 16); // grab knob
     }
     ctx.restore();
@@ -2102,7 +2102,7 @@ function stackedBar(id, labels, series, { yUnit = "", precision = 0, autoSkipX =
   if (autoSkipX) { opts.scales.x.ticks.autoSkip = true; opts.scales.x.ticks.maxTicksLimit = 12; }
   opts.scales.y.stacked = true;
   opts.scales.y.ticks.callback = (v) => v + yUnit;
-  opts.plugins.legend = { display: true, position: "bottom", labels: { color: TICK, boxWidth: 10, font: { family: "IBM Plex Mono", size: 10 } } };
+  opts.plugins.legend = { display: true, position: "bottom", labels: { color: TICK, boxWidth: 10, font: { family: "Courier Prime", size: 10 } } };
   opts.plugins.tooltip = { callbacks: { label: (c) => `${c.dataset.label}: ${c.parsed.y.toFixed(precision)}${yUnit}` } };
   state.charts[id] = new Chart(ctx, {
     type: "bar",
@@ -2770,7 +2770,7 @@ function doughnutChart(id, labels, msValues, colors, onHoverLabel) {
         ? (_e, els) => onHoverLabel(els.length ? labels[els[0].index] : null)
         : undefined,
       plugins: {
-        legend: { position: "right", labels: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, boxWidth: 10, padding: 6 } },
+        legend: { position: "right", labels: { color: TICK, font: { family: "Courier Prime", size: 10 }, boxWidth: 10, padding: 6 } },
         tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ${fmtDur(ctx.parsed)}` } },
       },
     },
@@ -3354,8 +3354,8 @@ function renderFooter() { /* server-rendered */ }
 function cssVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name.replace("var(", "").replace(")", "")).trim();
 }
-const GRID = "rgba(255,255,255,0.08)";
-const TICK = "#aeb9c9";
+const GRID = "rgba(34,50,78,0.10)";
+const TICK = "#5b6a83";
 
 // Chart fills read better translucent, with a solid same-colour border keeping
 // the shape crisp (the same treatment the violations area chart uses). FILL_ALPHA
@@ -3383,12 +3383,12 @@ function hbarChart(id, { labels, pct, ms, colors, onSelect }) {
       beginAtZero: true,
       grid: { color: GRID },
       border: { display: false },
-      ticks: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, callback: (v) => `${v}%` },
+      ticks: { color: TICK, font: { family: "Courier Prime", size: 10 }, callback: (v) => `${v}%` },
     },
     y: {
       grid: { display: false },
       border: { display: false },
-      ticks: { color: TICK, font: { family: "IBM Plex Mono", size: 11 }, autoSkip: false },
+      ticks: { color: TICK, font: { family: "Courier Prime", size: 11 }, autoSkip: false },
     },
   };
   opts.plugins.legend = { display: false };
@@ -3426,7 +3426,7 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
   opts.plugins.legend = {
     display: true,
     position: "bottom",
-    labels: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, boxWidth: 12, padding: 8 },
+    labels: { color: TICK, font: { family: "Courier Prime", size: 10 }, boxWidth: 12, padding: 8 },
   };
   opts.plugins.tooltip = {
     mode: "index",
@@ -3461,7 +3461,7 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
         const { ctx } = chart;
         ctx.save();
         ctx.fillStyle = cssVar("var(--ink-dim)");
-        ctx.font = "10px IBM Plex Mono, monospace";
+        ctx.font = "10px Courier Prime, monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "bottom";
         for (let i = 0; i < topLabels.length; i++) {
@@ -3547,8 +3547,8 @@ function baseOpts() {
     maintainAspectRatio: false,
     plugins: { legend: { display: false }, tooltip: { intersect: false, mode: "index" } },
     scales: {
-      x: { grid: { display: false }, border: { display: false }, ticks: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, maxRotation: 0, autoSkip: false } },
-      y: { beginAtZero: true, grid: { color: GRID }, border: { display: false }, ticks: { color: TICK, font: { family: "IBM Plex Mono", size: 10 }, precision: 0 } },
+      x: { grid: { display: false }, border: { display: false }, ticks: { color: TICK, font: { family: "Courier Prime", size: 10 }, maxRotation: 0, autoSkip: false } },
+      y: { beginAtZero: true, grid: { color: GRID }, border: { display: false }, ticks: { color: TICK, font: { family: "Courier Prime", size: 10 }, precision: 0 } },
     },
   };
 }
