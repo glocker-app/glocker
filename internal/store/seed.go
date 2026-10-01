@@ -12,16 +12,16 @@ import "gorm.io/gorm/clause"
 var glockerTags = []Tag{
 	// Curated palette: even hue spread, medium saturation, ~65% lightness so the
 	// categories stay distinct yet calm on the near-black background.
-	{Namespace: "Glocker", Name: "entertainment", Color: "#d9789f", Distraction: true},
-	{Namespace: "Glocker", Name: "social", Color: "#6f9de0", Distraction: true},
-	{Namespace: "Glocker", Name: "games", Color: "#e0a94e", Distraction: true},
-	{Namespace: "Glocker", Name: "adult", Color: "#d76b6b", Distraction: true},
-	{Namespace: "Glocker", Name: "news", Color: "#4bb8a5"},
-	{Namespace: "Glocker", Name: "shopping", Color: "#a98fe0"},
-	{Namespace: "Glocker", Name: "messaging", Color: "#5cc4d6"},
-	{Namespace: "Glocker", Name: "work", Color: "#8493e6"},
-	{Namespace: "Glocker", Name: "dev", Color: "#92c26f"},
-	{Namespace: "Glocker", Name: "hide", Color: "#5b6675", Behavior: "hide"},
+	{Namespace: "Glocker", Name: "entertainment", Color: "#b07398", Distraction: true},
+	{Namespace: "Glocker", Name: "social", Color: "#6b8cb0", Distraction: true},
+	{Namespace: "Glocker", Name: "games", Color: "#c9a04e", Distraction: true},
+	{Namespace: "Glocker", Name: "adult", Color: "#bd6b66", Distraction: true},
+	{Namespace: "Glocker", Name: "news", Color: "#5f9ea0"},
+	{Namespace: "Glocker", Name: "shopping", Color: "#9b7aa0"},
+	{Namespace: "Glocker", Name: "messaging", Color: "#6fa6b0"},
+	{Namespace: "Glocker", Name: "work", Color: "#6e7f99"},
+	{Namespace: "Glocker", Name: "dev", Color: "#7a9b76"},
+	{Namespace: "Glocker", Name: "hide", Color: "#9a927f", Behavior: "hide"},
 }
 
 // glockerStarterRules seed a fresh account so it classifies out of the box. Each

@@ -2551,14 +2551,14 @@ function escapeRegex(s) {
   return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Categorical palette for the tag pie (distinct hues that read on the dark
-// theme). "(untagged)" is always rendered in the muted faint ink instead.
-// Fallback palette for user tags without a set colour, and for unblock-reason
-// colours. Same muted family as the Glocker:* defaults (see store/seed.go),
+// Categorical palette for charts/tags — muted, desaturated hues that sit on the
+// paper background and harmonise with the ink/red identity. "(untagged)" renders
+// in faint ink instead. Fallback for user tags without a set colour and for
+// unblock-reason colours; same family as the Glocker:* defaults (store/seed.go),
 // ordered so neighbours in a stack stay distinguishable.
 const TAG_COLORS = [
-  "#6f9de0", "#e0a94e", "#4bb8a5", "#d9789f", "#92c26f",
-  "#a98fe0", "#5cc4d6", "#e08a5c", "#8493e6", "#d76b6b",
+  "#6b8cb0", "#c9a04e", "#7a9b76", "#c37b5e", "#9b7aa0",
+  "#5f9ea0", "#bd7470", "#9aa05e", "#6e7f99", "#a1988a",
 ];
 
 // reasonColorMap assigns each unblock reason a stable colour from the palette
@@ -3464,6 +3464,9 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
         ctx.font = "10px Courier Prime, monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "bottom";
+        // Greedy placement: skip any label whose box would overlap one already
+        // drawn, so neighbouring day totals never collide (short bars sit close).
+        const placed = [];
         for (let i = 0; i < topLabels.length; i++) {
           if (!topLabels[i]) continue;
           let topY = Infinity, x = null;
@@ -3472,7 +3475,12 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
             if (!bar || !datasets[di].data[i]) continue;
             if (bar.y < topY) { topY = bar.y; x = bar.x; }
           }
-          if (x != null) ctx.fillText(topLabels[i], x, topY - 3);
+          if (x == null) continue;
+          const w = ctx.measureText(topLabels[i]).width;
+          const box = { x1: x - w / 2 - 3, x2: x + w / 2 + 3, y1: topY - 15, y2: topY - 3 };
+          if (placed.some((p) => !(box.x2 < p.x1 || box.x1 > p.x2 || box.y2 < p.y1 || box.y1 > p.y2))) continue;
+          ctx.fillText(topLabels[i], x, topY - 3);
+          placed.push(box);
         }
         ctx.restore();
       },
