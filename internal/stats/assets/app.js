@@ -219,7 +219,7 @@ function promptPassphrase(errMsg) {
   return new Promise((resolve) => {
     const ov = document.createElement("div");
     ov.style.cssText =
-      "position:fixed;inset:0;background:rgba(7,9,13,.94);display:flex;align-items:center;justify-content:center;z-index:9999;";
+      "position:fixed;inset:0;background:rgba(34,50,78,.38);display:flex;align-items:center;justify-content:center;z-index:9999;";
     ov.innerHTML = `
       <form style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:24px;width:min(420px,90vw);color:var(--ink);font-family:inherit;">
         <h2 style="margin:0 0 8px;font-size:1.1rem;">Unlock your data</h2>
@@ -256,7 +256,7 @@ function promptModal(opts = {}) {
   return new Promise((resolve) => {
     const ov = document.createElement("div");
     ov.style.cssText =
-      "position:fixed;inset:0;background:rgba(7,9,13,.94);display:flex;align-items:center;justify-content:center;z-index:9999;";
+      "position:fixed;inset:0;background:rgba(34,50,78,.38);display:flex;align-items:center;justify-content:center;z-index:9999;";
     const inputHTML = input
       ? `<input type="text" style="width:100%;padding:10px 12px;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;color:var(--ink);font-size:1rem;box-sizing:border-box;" />`
       : "";

@@ -13,8 +13,8 @@
   --line: #e4ddcc;      /* slip edges / hairlines */
   --line-2: #d6cdba;    /* stronger dividers */
   --ink: #22324e;       /* primary text — fountain-pen blue-black */
-  --ink-dim: #5b6a83;   /* secondary text */
-  --ink-faint: #93a0b4; /* least important text — readable, never decorative */
+  --ink-dim: #556480;   /* secondary text */
+  --ink-faint: #6e7c91; /* least important text — darker than before for paper contrast */
 
   --safe: #5f8169;     /* clean / quiet — sage, deepened for paper */
   --signal: #c0564a;   /* the one accent: the margin red (marks, active, focus) */
@@ -27,8 +27,8 @@
   --on-accent: #fbfaf6; /* text/glyphs sitting on a filled accent */
 
   --mono: "Courier Prime", ui-monospace, monospace;
-  --sans: "Crimson Pro", Georgia, serif;
-  --display: "Crimson Pro", Georgia, serif;
+  --sans: "Inter", system-ui, sans-serif;      /* body / dense UI text — readable small */
+  --display: "Crimson Pro", Georgia, serif;    /* headings keep the editorial serif */
 
   --r: 4px;
 }
@@ -44,7 +44,7 @@ html, body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--sans);
-  font-size: 17px;          /* the serif reads smaller than the old sans — bump the base */
+  font-size: 15px;
   line-height: 1.5;
 }
 
@@ -381,9 +381,8 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
   gap: 3px;
   font-family: var(--mono);
   min-width: 0;
-  /* Keep the map to roughly one calendar-month card's footprint rather than
-     stretching across the whole panel. */
-  max-width: 460px;
+  /* The vulnerability map is the centrepiece — give it room to read at a glance. */
+  max-width: 680px;
 }
 .hm-corner { }
 .hm-hour, .hm-day {
@@ -546,7 +545,7 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
   /* Stay on top: pin the tab bar so it stays visible while scrolling and doesn't
      shift when the Range strip below it hides for Tags. */
   position: sticky; top: 0; z-index: 20;
-  background: var(--bg);
+  background: var(--panel);   /* blend with the sheet, not a tan desk band */
   padding: 14px 0 10px;
 }
 .subtabs button {
@@ -1044,7 +1043,7 @@ canvas { max-height: 260px; }
 .collapse[open] > summary::before { transform: rotate(90deg); }
 .collapse > summary h2 { margin: 0; }
 .collapse-count { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--ink-dim); }
-.collapse > .panel-sub { margin-top: 8px; }
+.collapse > .panel-sub { margin-top: 8px; padding-left: 24px; }  /* align under the heading, past the disclosure triangle */
 
 /* ── Per-tag colour pickers ────────────────────────────── */
 .tag-colors { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-bottom: 14px; }
