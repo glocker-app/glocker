@@ -1064,10 +1064,9 @@ function render() {
   renderReadout(violations, unblocks, unmanaged, heat, b);
   renderHeatmap(heat);
   renderCalendar(violations, b);
-  renderHistorySummary(violations, unblocks, b);
+  renderHistorySummary(violations, unblocks, unmanaged, downtime, b);
   renderTimeline();
   resetDayDetail();
-  renderExposure(unmanaged, downtime, b);
   renderUnblockList(unblocks);
   renderUsage(b);
   renderIgnored();
@@ -1360,17 +1359,25 @@ function renderStreak(violations) {
 // scoped to the selected window. The standing streak lives on the Overview, since
 // it's all-history and wouldn't change with the window (which read as confusing
 // sitting next to windowed figures).
-function renderHistorySummary(violations, unblocks, b) {
+function renderHistorySummary(violations, unblocks, unmanaged, downtime, b) {
   const el = document.getElementById("history-summary");
   if (!el) return;
   const days = Math.max(1, Math.round((b.end - b.start) / DAY));
   const cleanDays = Math.max(0, days - new Set(violations.map((v) => dayKey(v.ts))).size);
   const rs = (c, v, l, sub) =>
     `<div class="rs"><span class="n ${c}">${v}</span><span class="l">${l}</span>${sub ? `<span class="rs-sub">${sub}</span>` : ""}</div>`;
+  // Exposure: time glocker wasn't guarding, split by cause — removed (uninstalled)
+  // vs stopped (installed but not running). Spans arrive already window-clipped, so
+  // summing their length is the window total. Only shown when there's exposure.
+  const spanMs = (spans) => spans.reduce((s, p) => s + (p.end - p.start), 0);
+  const removed = spanMs(unmanaged), stopped = spanMs(downtime), exposed = removed + stopped;
+  const split = [removed > 0 ? `${fmtDur(removed)} removed` : "", stopped > 0 ? `${fmtDur(stopped)} stopped` : ""]
+    .filter(Boolean).join(" · ");
   el.innerHTML =
     rs("bad", violations.length, `violation${violations.length === 1 ? "" : "s"}`, "") +
     rs("", unblocks.length, `unblock${unblocks.length === 1 ? "" : "s"}`, "") +
-    rs("good", cleanDays, "clean days", `${Math.round((cleanDays / days) * 100)}% of window`);
+    rs("good", cleanDays, "clean days", `${Math.round((cleanDays / days) * 100)}% of window`) +
+    (exposed > 0 ? rs("bad", fmtDur(exposed), "unmanaged", split) : "");
 }
 
 // ── Renderers ───────────────────────────────────────────
@@ -2024,65 +2031,6 @@ function renderRanklist(id, items, color) {
       </div>`;
     })
     .join("");
-}
-
-// bucketize splits [start, end] into day/week/month buckets, reusing the same
-// day≤45 / week≤180 / month thresholds the timeline uses so the exposure bar
-// lines up with the rest of History.
-function bucketize(start, end) {
-  const endc = Math.min(end, state.data.now);
-  const days = Math.round((endc - start) / DAY) + 1;
-  const gran = days <= 45 ? "day" : days <= 180 ? "week" : "month";
-  const out = [];
-  if (gran === "day") {
-    for (let t = startOfDay(start); t <= endc; t += DAY) {
-      out.push({ start: t, end: t + DAY, label: new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" }) });
-    }
-  } else if (gran === "week") {
-    let t = startOfDay(start) - weekdayIndex(new Date(start)) * DAY; // Monday of the first week
-    while (t <= endc) {
-      out.push({ start: t, end: t + 7 * DAY, label: new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" }) });
-      t += 7 * DAY;
-    }
-  } else {
-    let d = new Date(start); d = new Date(d.getFullYear(), d.getMonth(), 1);
-    const last = new Date(endc);
-    while (d <= last) {
-      const ne = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-      out.push({ start: d.getTime(), end: ne.getTime(), label: d.toLocaleDateString(undefined, { month: "short", year: "2-digit" }) });
-      d = ne;
-    }
-  }
-  return out;
-}
-
-// renderExposure draws the stacked exposure bar: per bucket, hours glocker
-// wasn't guarding, split into unmanaged (uninstalled — from lifecycle events)
-// and downtime (installed but the heartbeat watchdog saw it stopped). Replaces
-// the old flat unmanaged/downtime lists. (Multi-device: both are the current
-// single-track signals; per-device semantics land in the liveness rework.)
-function renderExposure(unmanaged, downtime, b) {
-  const buckets = bucketize(b.start, b.end);
-  const now = state.data.now;
-  const overlapHrs = (periods, bs, be) => {
-    let ms = 0;
-    for (const p of periods) {
-      const pe = p.open ? now : p.end;
-      const s = Math.max(p.start, bs), e = Math.min(pe, be);
-      if (e > s) ms += e - s;
-    }
-    return ms / HOUR_MS;
-  };
-  const labels = buckets.map((bk) => bk.label);
-  const unm = buckets.map((bk) => overlapHrs(unmanaged, bk.start, bk.end));
-  const down = buckets.map((bk) => overlapHrs(downtime, bk.start, bk.end));
-  // Colours match the tab's shared language: --exposed (pink) is "unmanaged"
-  // everywhere (calendar hatch, timeline shading), and downtime is the same
-  // family one step back — so there's one "not guarding" colour to remember.
-  stackedBar("chart-exposure", labels, [
-    { label: "removed", data: unm, color: cssVar("var(--exposed)") },
-    { label: "stopped", data: down, color: cssVar("var(--exposed-dim)") },
-  ], { yUnit: "h", precision: 1, autoSkipX: true });
 }
 
 // renderUnblocksByHour: unblocks aggregated into 24 hour-of-day buckets, stacked
