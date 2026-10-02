@@ -1073,7 +1073,6 @@ function render() {
   const allViolations = state.data.violations.filter(inDevice);
   renderScore(allViolations, state.data.unmanaged, { start: startOfDay(earliestTs()), end: state.data.now });
   renderStreak(allViolations); // standing, all-history — not windowed
-  renderReadout(violations, unblocks, unmanaged, heat, b);
   renderHeatmap(heat);
   renderCalendar(violations, b);
   renderHistorySummary(violations, unblocks, b);
@@ -1347,21 +1346,18 @@ function renderStreak(violations) {
   const el = document.getElementById("streak");
   if (!el) return;
   const s = computeStreaks(violations, state.data.now);
-  const dLabel = (n) => `${n}<small> day${n === 1 ? "" : "s"}</small>`;
+  const dLabel = (n) => `${n}<span class="u">day${n === 1 ? "" : "s"}</span>`;
   const clean = s.current > 0;
-  const currentSub = clean ? "current clean run" : s.violationToday ? "violation today" : "glocker off today";
+  const currentSub = clean ? "current clean run" : s.violationToday ? "broken by a violation today" : "glocker off today";
   el.innerHTML = `
-    <div class="stat ${clean ? "safe" : "alarm"}">
-      <div class="k">Current streak</div>
-      <div class="v">${dLabel(s.current)}</div>
-      <div class="sub">${currentSub}</div>
-      <div class="desc">Consecutive clean days ending today — a day counts only if it had no violations and glocker ran more than half of it. Over all history, not the window.</div>
+    <div class="sh-current ${clean ? "safe" : "alarm"}">
+      <div class="sh-num">${dLabel(s.current)}</div>
+      <div class="sh-cap">Current streak</div>
+      <div class="sh-sub">${currentSub}</div>
     </div>
-    <div class="stat">
-      <div class="k">Best streak</div>
-      <div class="v">${dLabel(s.best)}</div>
-      <div class="sub">all-time best</div>
-      <div class="desc">Longest run of consecutive clean days ever recorded.</div>
+    <div class="sh-best">
+      <div class="sh-num">${dLabel(s.best)}</div>
+      <div class="sh-cap">Best ever</div>
     </div>`;
 }
 
@@ -1414,74 +1410,6 @@ function renderHistorySummary(violations, unblocks, b) {
 }
 
 // ── Renderers ───────────────────────────────────────────
-function renderReadout(violations, unblocks, unmanaged, heat, b) {
-  const days = Math.max(1, Math.round((b.end - b.start) / DAY));
-  const byDay = new Map();
-  for (const v of violations) byDay.set(dayKey(v.ts), (byDay.get(dayKey(v.ts)) || 0) + 1);
-  const deliberateDays = [...byDay.values()].filter((c) => c > 2).length; // glockpeek's "egregious" threshold
-  const cleanDays = days - byDay.size;
-
-  const unmanagedMs = unmanaged.reduce((s, p) => s + (p.end - p.start), 0);
-
-  // Computer-on coverage: how much of the window we have usage data for. Both
-  // active and idle samples mean the machine was powered on and being tracked,
-  // so trackedMs (active + idle) is a proxy for "computer was on".
-  const usageAvailable = !!(state.data.sources && state.data.sources.usage);
-  const onMs = usageAvailable
-    ? computeUsage((state.data.usage || []).filter((e) => within(e.ts, b) && inDevice(e))).trackedMs
-    : 0;
-  const windowMs = b.end - b.start;
-  const onPct = windowMs > 0 ? Math.round((onMs / windowMs) * 100) : 0;
-
-  const peakLabel = heat.peak
-    ? `${WEEKDAYS[heat.peak.wd]} ${String(heat.peak.hr).padStart(2, "0")}:00`
-    : "—";
-
-  const stats = [
-    {
-      k: "Violations", v: violations.length, sub: `${(violations.length / days).toFixed(1)}/day`,
-      help: "Total blocked-keyword hits (URL + page content) reported by the browser extension in the selected window.",
-    },
-    {
-      k: "Deliberate days", v: deliberateDays, sub: `>2 hits · of ${days}d`, cls: deliberateDays ? "alarm" : "",
-      help: "Days with more than 2 violations. glockpeek treats >2 hits in a day as a deliberate attempt rather than an accidental one.",
-      tip: true,
-    },
-    {
-      k: "Clean days", v: Math.max(0, cleanDays), sub: `${Math.round((Math.max(0, cleanDays) / days) * 100)}% of window`,
-      help: "Days in the window with zero recorded violations.",
-    },
-    {
-      k: "Peak exposure", v: peakLabel, sub: heat.peak ? `${heat.peak.count} hits` : "no data", cls: "peak", big: false,
-      help: "The weekday + hour slot with the most violations — the time you are statistically most vulnerable to failure.",
-    },
-    {
-      k: "Unmanaged", v: fmtDur(unmanagedMs), sub: `${unmanaged.length} span(s)`, cls: unmanagedMs ? "alarm" : "",
-      help: "Total time glocker was uninstalled (not enforcing) in the window. This counts as exposure — no blocking was active.",
-    },
-    {
-      k: "Unblocks", v: unblocks.length, sub: "deliberate grants",
-      help: "Number of temporary unblock grants you requested (e.g. glocker -unblock) in the window.",
-    },
-    {
-      k: "Computer on", v: usageAvailable ? fmtDur(onMs) : "—",
-      sub: usageAvailable ? `${onPct}% of ${fmtDur(windowMs)}` : "no usage data",
-      help: "Time the computer was on and being tracked (active + idle) in the window, from the usage log — i.e. how much of the total window there is activity data for.",
-    },
-  ];
-
-  document.getElementById("readout").innerHTML = stats
-    .map(
-      (s) => `<div class="stat ${s.cls || ""}" ${s.tip ? `title="${esc(s.help)}"` : ""}>
-        <div class="k">${s.k}</div>
-        <div class="v" ${s.big === false ? 'style="font-size:20px"' : ""}>${s.v}</div>
-        <div class="sub">${s.sub}</div>
-        <div class="desc">${esc(s.help)}</div>
-      </div>`
-    )
-    .join("");
-}
-
 function renderHeatmap(heat) {
   const el = document.getElementById("heatmap");
   const cells = [`<div class="hm-corner"></div>`];
