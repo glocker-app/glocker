@@ -1077,13 +1077,28 @@ function render() {
 }
 
 // ── Aggregation ─────────────────────────────────────────
-function tally(rows, field) {
+function tally(rows, keyOf) {
+  const fn = typeof keyOf === "function" ? keyOf : (r) => r[keyOf];
   const m = new Map();
   for (const r of rows) {
-    const k = r[field] || "—";
+    const k = fn(r) || "—";
     m.set(k, (m.get(k) || 0) + 1);
   }
   return [...m.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+}
+
+// A violation's meaningful target, by type: the killed program, the blocked
+// site/domain, or the keyword that matched — never mislabel a program as a
+// "keyword"/"domain". Also drives the day-detail breakdown + hit rows.
+function subjectOf(h) {
+  if (h.type === "forbidden_program") return h.keyword || "program";
+  if (h.type === "web_access") return h.domain || h.keyword || "site";
+  return h.keyword || h.domain || "—";
+}
+function hitKind(h) {
+  return h.type === "web_access" ? "blocked site"
+    : h.type === "forbidden_program" ? "program"
+    : h.type === "url-keyword" ? "url" : "page";
 }
 
 // Build the weekday × hour grid of violation counts, and the parallel grid of
@@ -1916,24 +1931,23 @@ function showDay(dayTs) {
 
   let body;
   if (hits.length) {
-    const kw = miniRank(tally(hits, "keyword"), "var(--danger)");
-    const dom = miniRank(tally(hits, "domain"), "var(--signal)");
+    const topRank = miniRank(tally(hits, subjectOf), "var(--danger)");
     const list = hits
       .map((h) => {
         const time = new Date(h.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
-        const kind = h.type === "web_access" ? "blocked site" : h.type === "forbidden_program" ? "program" : h.type === "url-keyword" ? "url" : "page";
+        const subj = subjectOf(h);
+        const where = h.domain && h.domain !== subj ? `${esc(h.domain)} ` : "";
         return `<div class="hit">
           <span class="ht">${time}</span>
-          <span class="hk">${esc(h.keyword)}</span>
-          <span class="hd" title="${esc(h.url)}">${esc(h.domain || "—")} <em>${kind}</em></span>
+          <span class="hk">${esc(subj)}</span>
+          <span class="hd" title="${esc(h.url)}">${where}<em>${hitKind(h)}</em></span>
           <button class="hit-x" type="button" title="Not a violation — hide it" data-rid="${esc(h.recordId || "")}" data-ts="${h.ts}" data-kw="${esc(h.keyword)}" data-url="${esc(h.url)}" data-dom="${esc(h.domain || "")}">&times;</button>
         </div>`;
       })
       .join("");
     body = coverage + `<div class="dd-grid">
       <div class="dd-sum">
-        <h4>Keywords</h4>${kw}
-        <h4>Domains</h4>${dom}
+        <h4>Most hit</h4>${topRank}
       </div>
       <div class="dd-hits"><h4>Hits (${hits.length})</h4><div class="hit-list">${list}</div></div>
     </div>`;
