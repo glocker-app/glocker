@@ -2473,7 +2473,9 @@ function renderUntagged(tu, available) {
   const hiddenNote = tu.hidden > 0
     ? `<div style="margin-top:10px;font-size:.82rem;color:var(--ink-dim);">${fmtDur(tu.hidden)} hidden by rules</div>`
     : "";
-  const items = tu.untaggedItems || [];
+  // Drop sub-minute windows — they round to "0m" and just clutter the list; the
+  // top 10 by time is what's worth tagging. Tag one and the next rolls up from below.
+  const items = (tu.untaggedItems || []).filter((it) => it.ms >= 30000);
   if (!items.length) {
     setTotal("none ✓");
     el.innerHTML = `<div class="empty">nothing untagged — full coverage ✓</div>` + hiddenNote;
