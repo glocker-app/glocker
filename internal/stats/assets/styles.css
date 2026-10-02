@@ -716,17 +716,20 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 
 .hit-list { display: flex; flex-direction: column; gap: 1px; padding-right: 4px; }
 .hit {
-  display: grid; grid-template-columns: 44px 1fr auto; gap: 2px 10px; align-items: baseline;
+  display: grid; grid-template-columns: 44px auto 1fr; gap: 2px 10px; align-items: baseline;
   font-family: var(--mono); font-size: 12.5px; padding: 6px 0;
   border-bottom: 1px solid rgba(34, 50, 78, 0.04);
 }
-.hit .ht { color: var(--ink-dim); }
+.hit .ht { grid-column: 1; grid-row: 1; color: var(--ink-dim); }
 .hit-x {
-  grid-column: 3; grid-row: 1 / span 2; align-self: center;
+  grid-column: 3; grid-row: 1; justify-self: start; align-self: center; margin-left: 2px;
   background: transparent; border: 0; color: var(--ink-faint); cursor: pointer;
-  font-size: 13px; line-height: 1; padding: 2px 4px; border-radius: 4px;
+  font-size: 13px; line-height: 1; padding: 1px 5px; border-radius: 4px;
 }
+.hit-x::after { content: ""; font-size: 10px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-faint); }
+.hit:hover .hit-x::after, .hit-x:focus::after { content: " not a violation"; }
 .hit-x:hover { color: var(--danger); background: var(--panel-2); }
+.hit-x:hover::after { color: var(--danger); }
 
 /* Ignored (false-positive) violations list. */
 .ign-list { display: flex; flex-direction: column; gap: 8px; }
@@ -742,9 +745,9 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
   font-size: 14px; line-height: 1; padding: 2px 6px; border-radius: 4px;
 }
 .ign-restore:hover { color: var(--safe); background: var(--panel-2); }
-.hit .hk { color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hit .hk { grid-column: 2; grid-row: 1; color: var(--danger); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hit .hd {
-  grid-column: 2; color: var(--ink-dim); font-size: 11.5px;
+  grid-column: 2 / 4; grid-row: 2; color: var(--ink-dim); font-size: 11.5px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .hit .hd em { color: var(--ink-faint); font-style: normal; text-transform: uppercase; }
