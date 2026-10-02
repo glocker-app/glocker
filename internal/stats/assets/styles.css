@@ -561,6 +561,8 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .um-group[open] > summary::before { transform: rotate(90deg); }
 .um-group > summary:hover { background: rgba(34, 50, 78, .04); }
 .umg-name { flex: 1; min-width: 0; font-family: var(--mono); font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.umg-tag { margin-left: 8px; padding: 1px 6px; border-radius: 3px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; vertical-align: 1px; }
+.umg-tag.extend { color: var(--ink-dim); background: var(--bg-2); box-shadow: inset 0 0 0 1px var(--line); }
 .umg-meta { font-family: var(--mono); font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
 .umg-bar { flex: none; width: 90px; height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
 .umg-bar > span { display: block; height: 100%; background: var(--exposed); }

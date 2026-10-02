@@ -2050,9 +2050,15 @@ function renderUnblockList(unblocks) {
         })
         .join("");
       const pct = Math.round((g.ms / max) * 100);
+      // A "program:<name>" key is a -extend grant (a one-hour program runtime
+      // grant logged through the unblock log), not a domain -unblock — show the
+      // bare program name with an "extend" tag so the two don't read alike.
+      const isExtend = g.key.startsWith("program:");
+      const name = isExtend ? g.key.slice("program:".length) : g.key;
+      const tag = isExtend ? `<span class="umg-tag extend">extend</span>` : "";
       return `<details class="um-group">
         <summary>
-          <span class="umg-name">${esc(g.key)}</span>
+          <span class="umg-name">${esc(name)}${tag}</span>
           <span class="umg-meta">${g.count}× · ${fmtDur(g.ms)}</span>
           <span class="umg-bar"><span style="width:${pct}%"></span></span>
         </summary>
