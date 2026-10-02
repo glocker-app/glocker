@@ -125,6 +125,8 @@
               <span class="tl-key"><span class="tl-sw tl-line2"></span> unblocks/day</span>
               <span class="tl-key"><span class="tl-sw tl-band"></span> unmanaged</span>
             </div>
+            <!-- The window's headline numbers live with the selector that defines it. -->
+            <div class="range-summary" id="history-summary"></div>
           </section>
 
           <nav class="subtabs" id="analytics-subtabs">
@@ -134,24 +136,19 @@
           </nav>
 
           <div class="subview active" data-subtab="history">
-            <!-- Hero: the calendar leads with its day-detail right beneath it;
-                 streak + key numbers sit alongside. -->
-            <div class="hist-hero">
-              <div class="hist-cal-col">
-                <section class="panel">
-                  <div class="panel-head">
-                    <h2>History calendar</h2>
-                    <p class="panel-sub">Each cell is a day: clean, violations, or unmanaged (glocker off). Click a day for detail.</p>
-                  </div>
-                  <div id="calendar" class="calendar"></div>
-                </section>
-                <section class="panel day-detail-panel">
-                  <div class="panel-head"><h2>Day detail</h2></div>
-                  <div id="day-detail" class="day-detail"></div>
-                </section>
+            <!-- Calendar leads full-width; its day-detail sits right beneath it.
+                 The window summary lives in the Range widget above. -->
+            <section class="panel">
+              <div class="panel-head">
+                <h2>History calendar</h2>
+                <p class="panel-sub">Each cell is a day: clean, violations, or unmanaged (glocker off). Click a day for detail.</p>
               </div>
-              <aside class="panel hist-summary" id="history-summary"></aside>
-            </div>
+              <div id="calendar" class="calendar"></div>
+            </section>
+            <section class="panel day-detail-panel">
+              <div class="panel-head"><h2>Day detail</h2></div>
+              <div id="day-detail" class="day-detail"></div>
+            </section>
 
             <!-- Where attention slips (full width) -->
             <section class="panel">

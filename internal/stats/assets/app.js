@@ -1364,19 +1364,13 @@ function renderHistorySummary(allViolations, violations, unblocks, b) {
   const clean = s.current > 0;
   const days = Math.max(1, Math.round((b.end - b.start) / DAY));
   const cleanDays = Math.max(0, days - new Set(violations.map((v) => dayKey(v.ts))).size);
-  const note = clean
-    ? `best run was ${s.best} day${s.best === 1 ? "" : "s"}.`
-    : s.violationToday ? "a slip today — restart the run." : "glocker was off today.";
-  const n = (c, v, l) => `<div class="kpi"><span class="n ${c}">${v}</span><span class="l">${l}</span></div>`;
-  el.innerHTML = `
-    <div class="streak-n ${clean ? "" : "cold"}">${s.current}</div>
-    <div class="streak-l">day streak</div>
-    <div class="streak-note">${note}</div>
-    <div class="kpis">
-      ${n("bad", violations.length, `violation${violations.length === 1 ? "" : "s"} in window`)}
-      ${n("", unblocks.length, `unblock${unblocks.length === 1 ? "" : "s"}`)}
-      ${n("good", cleanDays, `clean days · ${Math.round((cleanDays / days) * 100)}%`)}
-    </div>`;
+  const rs = (c, v, l, sub) =>
+    `<div class="rs"><span class="n ${c}">${v}</span><span class="l">${l}</span>${sub ? `<span class="rs-sub">${sub}</span>` : ""}</div>`;
+  el.innerHTML =
+    rs(clean ? "good" : "cold", s.current, `day streak`, s.best ? `best ${s.best}` : "") +
+    rs("bad", violations.length, `violation${violations.length === 1 ? "" : "s"}`, "") +
+    rs("", unblocks.length, `unblock${unblocks.length === 1 ? "" : "s"}`, "") +
+    rs("good", cleanDays, "clean days", `${Math.round((cleanDays / days) * 100)}%`);
 }
 
 // ── Renderers ───────────────────────────────────────────
