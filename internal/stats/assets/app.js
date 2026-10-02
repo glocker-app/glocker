@@ -827,6 +827,18 @@ const startOfDay = (ts) => {
   return d.getTime();
 };
 
+// windowDayStarts lists the start-of-day timestamp for every calendar date the
+// window [startTs, endTs] touches, never counting past now. This is the single
+// definition of "days in the window" — the range readout's "Nd" and the history
+// summary's managed/unmanaged split both count it, so they always agree.
+const windowDayStarts = (startTs, endTs) => {
+  const end = Math.min(endTs, state.data.now);
+  const out = [];
+  for (let t = startOfDay(startTs); t < end; t += DAY) out.push(t);
+  if (!out.length) out.push(startOfDay(startTs));
+  return out;
+};
+
 // ── Window: an arbitrary [winStart, winEnd] range brushed on the strip ──────
 // allBounds is the full data extent (the strip's domain); windowBounds is the
 // current selection every detail view renders.
@@ -939,7 +951,7 @@ function updateRangeReadout() {
       ? fmt(state.winEnd)
       : `${fmt(state.winEnd)} ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
   }
-  const days = Math.round((state.winEnd - state.winStart) / DAY);
+  const days = windowDayStarts(state.winStart, state.winEnd).length;
   const html = `<span class="rr-from">${fmt(state.winStart)}</span><span class="rr-arrow">→</span><span class="rr-to">${to}</span><span class="rr-days">${days}d</span>`;
   document.querySelectorAll(".range-readout").forEach((el) => { el.innerHTML = html; el.hidden = false; });
 }
@@ -1378,9 +1390,8 @@ function renderHistorySummary(violations, unblocks, b) {
     return ms;
   };
   const vdays = new Set(violations.map((v) => dayKey(v.ts)));
-  const lastDay = Math.min(startOfDay(b.end), startOfDay(state.data.now));
   let managed = 0, cleanDays = 0, unmDays = 0, uninstalledDays = 0, stoppedDays = 0;
-  for (let t = startOfDay(b.start); t <= lastDay; t += DAY) {
+  for (const t of windowDayStarts(b.start, b.end)) {
     const removed = dayOffMs(state.data.unmanaged, t), stopped = dayOffMs(state.data.downtime || [], t);
     if (removed + stopped >= DAY / 2) {
       unmDays++;
