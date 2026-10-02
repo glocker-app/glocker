@@ -1063,7 +1063,6 @@ function render() {
   renderStreak(allViolations); // standing, all-history — not windowed
   renderReadout(violations, unblocks, unmanaged, heat, b);
   renderHeatmap(heat);
-  renderUnblocksByHour(unblocks);
   renderCalendar(violations, b);
   renderHistorySummary(violations, unblocks, b);
   renderTimeline();
@@ -1893,6 +1892,7 @@ function showDay(dayTs) {
   highlightSelectedDay();
   const k = dayKey(dayTs);
   const hits = (state.dayIndex.get(k) || []).slice().sort((a, b) => a.ts - b.ts);
+  const dayUnblocks = (state.data.unblocks || []).filter((u) => dayKey(u.ts) === k).sort((a, b) => a.ts - b.ts);
   const dateLabel = new Date(dayTs).toLocaleDateString(undefined, {
     weekday: "long", month: "long", day: "numeric", year: "numeric",
   });
@@ -1945,6 +1945,16 @@ function showDay(dayTs) {
     body = coverage + `<div class="dd-note clean-note">No violations during the managed part of the day ✓</div>`;
   } else {
     body = `<div class="dd-note clean-note">No violations — clean day ✓</div>`;
+  }
+
+  if (dayUnblocks.length) {
+    const rows = dayUnblocks.map((u) => {
+      const time = new Date(u.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+      const dur = u.restoreTs ? fmtDur(u.restoreTs - u.ts) : "—";
+      const what = [u.domain, u.reason].filter(Boolean).map(esc).join(" — ") || "unblock";
+      return `<div class="um"><span class="when">${time}</span><span class="why">${what}</span><span class="dur">${dur}</span></div>`;
+    }).join("");
+    body += `<div class="dd-unb"><h4>Unblocks (${dayUnblocks.length})</h4><div class="unmanaged-list">${rows}</div></div>`;
   }
 
   document.getElementById("day-detail").innerHTML = head + dayHourTimeline(t, hits) + body;
@@ -2094,6 +2104,8 @@ function renderUnblocksByHour(unblocks) {
 
 // renderUnblockList shows deliberate temporary grants dated (was a reason→count
 // ranklist): date · domain · reason · duration, newest first.
+// Grouped by site — what you keep letting yourself back into — ranked by total
+// time, each expandable to its instances. (The Insights tab covers the impact.)
 function renderUnblockList(unblocks) {
   const el = document.getElementById("unblock-list");
   if (!el) return;
@@ -2103,17 +2115,36 @@ function renderUnblockList(unblocks) {
     el.innerHTML = `<div class="empty">no unblocks in window</div>`;
     return;
   }
-  el.innerHTML = [...unblocks]
-    .sort((a, b) => b.ts - a.ts)
-    .map((u) => {
-      const when = new Date(u.ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-      const what = [u.domain, u.reason].filter(Boolean).map(esc).join(" — ") || "unblock";
-      const dur = u.restoreTs ? fmtDur(u.restoreTs - u.ts) : "—";
-      return `<div class="um">
-        <span class="when">${when}</span>
-        <span class="why">${what}</span>
-        <span class="dur">${dur}</span>
-      </div>`;
+  const groups = new Map();
+  for (const u of unblocks) {
+    const key = u.domain || u.reason || "unblock";
+    let g = groups.get(key);
+    if (!g) { g = { key, count: 0, ms: 0, items: [] }; groups.set(key, g); }
+    g.count++;
+    g.ms += u.restoreTs ? Math.max(0, u.restoreTs - u.ts) : 0;
+    g.items.push(u);
+  }
+  const ranked = [...groups.values()].sort((a, b) => b.ms - a.ms || b.count - a.count);
+  const max = ranked[0].ms || 1;
+  el.innerHTML = ranked
+    .map((g) => {
+      const insts = g.items
+        .sort((a, b) => b.ts - a.ts)
+        .map((u) => {
+          const when = new Date(u.ts).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+          const dur = u.restoreTs ? fmtDur(u.restoreTs - u.ts) : "—";
+          return `<div class="um"><span class="when">${when}</span><span class="why">${esc(u.reason || "")}</span><span class="dur">${dur}</span></div>`;
+        })
+        .join("");
+      const pct = Math.round((g.ms / max) * 100);
+      return `<details class="um-group">
+        <summary>
+          <span class="umg-name">${esc(g.key)}</span>
+          <span class="umg-meta">${g.count}× · ${fmtDur(g.ms)}</span>
+          <span class="umg-bar"><span style="width:${pct}%"></span></span>
+        </summary>
+        <div class="um-insts">${insts}</div>
+      </details>`;
     })
     .join("");
 }
