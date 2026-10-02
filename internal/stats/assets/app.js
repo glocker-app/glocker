@@ -1445,6 +1445,7 @@ function renderReadout(violations, unblocks, unmanaged, heat, b) {
     {
       k: "Deliberate days", v: deliberateDays, sub: `>2 hits · of ${days}d`, cls: deliberateDays ? "alarm" : "",
       help: "Days with more than 2 violations. glockpeek treats >2 hits in a day as a deliberate attempt rather than an accidental one.",
+      tip: true,
     },
     {
       k: "Clean days", v: Math.max(0, cleanDays), sub: `${Math.round((Math.max(0, cleanDays) / days) * 100)}% of window`,
@@ -1471,7 +1472,7 @@ function renderReadout(violations, unblocks, unmanaged, heat, b) {
 
   document.getElementById("readout").innerHTML = stats
     .map(
-      (s) => `<div class="stat ${s.cls || ""}">
+      (s) => `<div class="stat ${s.cls || ""}" ${s.tip ? `title="${esc(s.help)}"` : ""}>
         <div class="k">${s.k}</div>
         <div class="v" ${s.big === false ? 'style="font-size:20px"' : ""}>${s.v}</div>
         <div class="sub">${s.sub}</div>
