@@ -1364,13 +1364,16 @@ function renderHistorySummary(allViolations, violations, unblocks, b) {
   const clean = s.current > 0;
   const days = Math.max(1, Math.round((b.end - b.start) / DAY));
   const cleanDays = Math.max(0, days - new Set(violations.map((v) => dayKey(v.ts))).size);
-  const rs = (c, v, l, sub) =>
-    `<div class="rs"><span class="n ${c}">${v}</span><span class="l">${l}</span>${sub ? `<span class="rs-sub">${sub}</span>` : ""}</div>`;
+  const rs = (c, v, l, sub, title) =>
+    `<div class="rs"${title ? ` title="${esc(title)}"` : ""}><span class="n ${c}">${v}</span><span class="l">${l}</span>${sub ? `<span class="rs-sub">${sub}</span>` : ""}</div>`;
+  const dLbl = (n) => `${n} day${n === 1 ? "" : "s"}`;
   el.innerHTML =
-    rs(clean ? "good" : "cold", s.current, `day streak`, s.best ? `best ${s.best} day${s.best === 1 ? "" : "s"}` : "") +
-    rs("bad", violations.length, `violation${violations.length === 1 ? "" : "s"}`, "") +
-    rs("", unblocks.length, `unblock${unblocks.length === 1 ? "" : "s"}`, "") +
-    rs("good", cleanDays, "clean days", `${Math.round((cleanDays / days) * 100)}%`);
+    rs(clean ? "good" : "cold", s.current, `current streak`,
+       `best ever ${dLbl(s.best)}`,
+       "Consecutive clean days ending today — no violations and glocker running more than half the day. Over all history, not the selected window.") +
+    rs("bad", violations.length, `violation${violations.length === 1 ? "" : "s"}`, "in window") +
+    rs("", unblocks.length, `unblock${unblocks.length === 1 ? "" : "s"}`, "in window") +
+    rs("good", cleanDays, "clean days", `${Math.round((cleanDays / days) * 100)}% of window`);
 }
 
 // ── Renderers ───────────────────────────────────────────
