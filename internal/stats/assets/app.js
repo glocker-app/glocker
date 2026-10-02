@@ -1064,7 +1064,7 @@ function render() {
   renderReadout(violations, unblocks, unmanaged, heat, b);
   renderHeatmap(heat);
   renderCalendar(violations, b);
-  renderHistorySummary(violations, unblocks, unmanaged, downtime, b);
+  renderHistorySummary(violations, unblocks, b);
   renderTimeline();
   resetDayDetail();
   renderUnblockList(unblocks);
@@ -1359,34 +1359,47 @@ function renderStreak(violations) {
 // scoped to the selected window. The standing streak lives on the Overview, since
 // it's all-history and wouldn't change with the window (which read as confusing
 // sitting next to windowed figures).
-function renderHistorySummary(violations, unblocks, unmanaged, downtime, b) {
+function renderHistorySummary(violations, unblocks, b) {
   const el = document.getElementById("history-summary");
   if (!el) return;
-  // A clean day is one glocker actually guarded and you didn't slip. Days with a
-  // violation are slips; days glocker was mostly off (same unmanaged signal the
-  // calendar hatches) aren't wins either — they're exposure, not a clean record.
+  // Classify each day in the window. A violation makes it a slip. A day glocker
+  // was mostly off (same unmanaged signal the calendar hatches) is unmanaged, not
+  // a clean record — so clean days is measured against MANAGED days, not the whole
+  // window (the window total is already in the range readout above). Unmanaged days
+  // are attributed to the cause that dominated them: uninstalled (glocker removed)
+  // vs stopped (installed but not running).
+  const dayOffMs = (spans, t) => {
+    let ms = 0;
+    for (const p of spans) {
+      const pe = p.open ? state.data.now : p.end;
+      const s = Math.max(p.start, t), e = Math.min(pe, t + DAY);
+      if (e > s) ms += e - s;
+    }
+    return ms;
+  };
   const vdays = new Set(violations.map((v) => dayKey(v.ts)));
   const lastDay = Math.min(startOfDay(b.end), startOfDay(state.data.now));
-  let days = 0, cleanDays = 0;
+  let managed = 0, cleanDays = 0, unmDays = 0, uninstalledDays = 0, stoppedDays = 0;
   for (let t = startOfDay(b.start); t <= lastDay; t += DAY) {
-    days++;
-    if (!vdays.has(dayKey(t)) && dayUnmanagedMs(t) < DAY / 2) cleanDays++;
+    const removed = dayOffMs(state.data.unmanaged, t), stopped = dayOffMs(state.data.downtime || [], t);
+    if (removed + stopped >= DAY / 2) {
+      unmDays++;
+      if (removed >= stopped) uninstalledDays++; else stoppedDays++;
+    } else {
+      managed++;
+      if (!vdays.has(dayKey(t))) cleanDays++;
+    }
   }
-  days = Math.max(1, days);
+  const pct = managed > 0 ? Math.round((cleanDays / managed) * 100) : 0;
+  const split = [uninstalledDays ? `${uninstalledDays} uninstalled` : "", stoppedDays ? `${stoppedDays} stopped` : ""]
+    .filter(Boolean).join(" · ");
   const rs = (c, v, l, sub) =>
     `<div class="rs"><span class="n ${c}">${v}</span><span class="l">${l}</span>${sub ? `<span class="rs-sub">${sub}</span>` : ""}</div>`;
-  // Exposure: time glocker wasn't guarding, split by cause — removed (uninstalled)
-  // vs stopped (installed but not running). Spans arrive already window-clipped, so
-  // summing their length is the window total. Only shown when there's exposure.
-  const spanMs = (spans) => spans.reduce((s, p) => s + (p.end - p.start), 0);
-  const removed = spanMs(unmanaged), stopped = spanMs(downtime), exposed = removed + stopped;
-  const split = [removed > 0 ? `${fmtDur(removed)} removed` : "", stopped > 0 ? `${fmtDur(stopped)} stopped` : ""]
-    .filter(Boolean).join(" · ");
   el.innerHTML =
     rs("bad", violations.length, `violation${violations.length === 1 ? "" : "s"}`, "") +
     rs("", unblocks.length, `unblock${unblocks.length === 1 ? "" : "s"}`, "") +
-    rs("good", cleanDays, "clean days", `${Math.round((cleanDays / days) * 100)}% of window`) +
-    (exposed > 0 ? rs("bad", fmtDur(exposed), "unmanaged", split) : "");
+    rs("good", `${cleanDays}/${managed}`, "clean days", `${pct}% of managed`) +
+    (unmDays > 0 ? rs("bad", unmDays, `day${unmDays === 1 ? "" : "s"} unmanaged`, split) : "");
 }
 
 // ── Renderers ───────────────────────────────────────────
