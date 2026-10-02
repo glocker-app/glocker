@@ -529,14 +529,14 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
    view, so the trend line just needs to show shape, not fill a tall panel. */
 .spark-wrap { position: relative; height: 108px; }
 .tl-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px;
-  font-family: var(--mono); font-size: 11px; color: var(--ink-faint); }
+  font-family: var(--mono); font-size: 11px; color: var(--ink-dim); }
 .tl-key { display: inline-flex; align-items: center; gap: 6px; }
 .tl-sw { display: inline-block; flex: 0 0 auto; }
 .tl-line { width: 16px; height: 2px; background: var(--danger); }
 .tl-band { width: 14px; height: 11px; border-radius: 2px; background: rgba(169, 156, 130, 0.3); }
 .tl-tick { width: 3px; height: 12px; border-radius: 1px; background: linear-gradient(var(--signal), var(--safe)); }
 .tl-sel { width: 12px; height: 11px; border-radius: 2px; background: rgba(34, 50, 78, 0.14); }
-.tl-line2 { width: 16px; height: 2px; background: var(--safe); }
+.tl-line2 { width: 16px; height: 2px; background: #6b8cb0; }  /* unblocks: distinct blue, not sage (too close to red at a glance) */
 
 /* Analytics sub-tabs (History / Usage) beneath the shared range strip. */
 .subtabs {
@@ -1451,8 +1451,9 @@ canvas { max-height: 260px; }
 .svc-list { display: flex; flex-direction: column; gap: 7px; }
 .svc-item { display: flex; align-items: center; gap: 9px; font-size: 0.86rem; color: var(--ink-dim); }
 .svc-item.off { color: var(--ink-faint); }
-.svc-dot { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; background: var(--line-2); }
-.svc-item.on .svc-dot { background: var(--safe); box-shadow: 0 0 0 3px color-mix(in srgb, var(--safe) 16%, transparent); }
+.svc-dot { width: 14px; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
+.svc-item .svc-dot::before { content: "\2013"; color: var(--ink-faint); font-size: 14px; }            /* off: en-dash */
+.svc-item.on .svc-dot::before { content: "\2713"; color: var(--safe); font-weight: 700; font-size: 13px; }  /* on: check */
 .svc-tag { color: var(--ink-faint); font-size: 0.72rem; }
 
 /* label → value pairs in a two-track grid so every value aligns in one column

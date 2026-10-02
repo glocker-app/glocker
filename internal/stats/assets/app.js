@@ -1498,7 +1498,7 @@ function renderTimeline(canvasId = "chart-timeline") {
 
   stripChart(canvasId, labels, [
     { label: "violations", data: vday, color: cssVar("var(--danger)"), fill: true },
-    { label: "unblocks", data: uday, color: cssVar("var(--safe)"), fill: false },
+    { label: "unblocks", data: uday, color: "#6b8cb0", fill: false },
   ], { underlay, overlay });
 
   wireBrush(document.getElementById(canvasId));
@@ -1528,7 +1528,7 @@ function stripChart(id, labels, series, { underlay, overlay } = {}) {
         label: s.label, data: s.data,
         borderColor: s.color,
         backgroundColor: s.fill ? s.color + "33" : "transparent",
-        fill: s.fill, tension: 0.3, pointRadius: 0, borderWidth: 1.5,
+        fill: s.fill, tension: 0.3, pointRadius: 0, borderWidth: 2.25,
       })),
     },
     options: opts,
