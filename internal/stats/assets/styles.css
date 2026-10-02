@@ -534,7 +534,8 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .range-summary .rs .n.bad, .range-summary .rs .n.cold { color: var(--danger); }
 .range-summary .rs .n.good { color: var(--safe); }
 .range-summary .rs .l { font-size: 14px; color: var(--ink-dim); }
-.range-summary .rs .rs-sub { font-size: 12px; color: var(--ink-faint); margin-left: 2px; }
+.range-summary .rs .rs-sub { font-size: 12px; color: var(--ink-faint); }
+.range-summary .rs .rs-sub::before { content: "· "; }  /* clear separator: "day streak · best 10 days" */
 #chart-timeline { cursor: pointer; }
 /* Timeline is a compact sparkline — the calendar carries the detailed per-day
    view, so the trend line just needs to show shape, not fill a tall panel. */

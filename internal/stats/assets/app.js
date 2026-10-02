@@ -1367,7 +1367,7 @@ function renderHistorySummary(allViolations, violations, unblocks, b) {
   const rs = (c, v, l, sub) =>
     `<div class="rs"><span class="n ${c}">${v}</span><span class="l">${l}</span>${sub ? `<span class="rs-sub">${sub}</span>` : ""}</div>`;
   el.innerHTML =
-    rs(clean ? "good" : "cold", s.current, `day streak`, s.best ? `best ${s.best}` : "") +
+    rs(clean ? "good" : "cold", s.current, `day streak`, s.best ? `best ${s.best} day${s.best === 1 ? "" : "s"}` : "") +
     rs("bad", violations.length, `violation${violations.length === 1 ? "" : "s"}`, "") +
     rs("", unblocks.length, `unblock${unblocks.length === 1 ? "" : "s"}`, "") +
     rs("good", cleanDays, "clean days", `${Math.round((cleanDays / days) * 100)}%`);
