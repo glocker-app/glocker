@@ -2630,7 +2630,8 @@ function renderTagContributors(tagName, tu) {
     p.ms += w.ms;
     p.wins.push(w);
   }
-  const apps = [...progs.values()].sort((a, b) => b.ms - a.ms);
+  // Drop sub-minute apps — they round to "0m" and are just noise.
+  const apps = [...progs.values()].filter((a) => a.ms >= 30000).sort((a, b) => b.ms - a.ms);
 
   if (!apps.length) {
     el.innerHTML = `<div class="empty">nothing recorded</div>`;
@@ -2643,7 +2644,8 @@ function renderTagContributors(tagName, tu) {
     const open = state.expandedApps.has(app.program);
     const selected = app.program === state.selectedProgram;
     const pct = Math.round((app.ms / max) * 100);
-    const wins = app.wins.slice().sort((a, b) => b.ms - a.ms);
+    // Top 10 windows by time, sub-minute ones dropped (they show as "0m").
+    const wins = app.wins.filter((w) => w.ms >= 30000).sort((a, b) => b.ms - a.ms).slice(0, 10);
     const children = open
       ? wins.map((w) => `<div class="tt-win">
           <span class="tt-wtitle" title="${esc(w.title)}">${esc(w.title)}</span>
