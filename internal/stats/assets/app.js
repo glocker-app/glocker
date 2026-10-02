@@ -3468,7 +3468,10 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
   const cfg = { type: "bar", data: { labels, datasets: shaded }, options: opts };
 
   if (topLabels) {
-    opts.layout = { padding: { top: 18 } }; // room for the labels above the tallest bar
+    // Labels are drawn vertically (reading bottom-to-top) just above each bar, so
+    // neighbouring day totals never collide however close the bars are. Reserve
+    // top padding for the longest rotated label.
+    opts.layout = { padding: { top: 96 } };
     cfg.plugins = [{
       id: "topPct",
       afterDatasetsDraw(chart) {
@@ -3476,11 +3479,8 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
         ctx.save();
         ctx.fillStyle = cssVar("var(--ink-dim)");
         ctx.font = "10px Courier Prime, monospace";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "bottom";
-        // Greedy placement: skip any label whose box would overlap one already
-        // drawn, so neighbouring day totals never collide (short bars sit close).
-        const placed = [];
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
         for (let i = 0; i < topLabels.length; i++) {
           if (!topLabels[i]) continue;
           let topY = Infinity, x = null;
@@ -3490,11 +3490,11 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
             if (bar.y < topY) { topY = bar.y; x = bar.x; }
           }
           if (x == null) continue;
-          const w = ctx.measureText(topLabels[i]).width;
-          const box = { x1: x - w / 2 - 3, x2: x + w / 2 + 3, y1: topY - 15, y2: topY - 3 };
-          if (placed.some((p) => !(box.x2 < p.x1 || box.x1 > p.x2 || box.y2 < p.y1 || box.y1 > p.y2))) continue;
-          ctx.fillText(topLabels[i], x, topY - 3);
-          placed.push(box);
+          ctx.save();
+          ctx.translate(x, topY - 6);
+          ctx.rotate(-Math.PI / 2); // text rises from the bar top
+          ctx.fillText(topLabels[i], 0, 0);
+          ctx.restore();
         }
         ctx.restore();
       },
