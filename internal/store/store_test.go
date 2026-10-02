@@ -104,7 +104,7 @@ func TestTenantIsolation(t *testing.T) {
 	}
 
 	// Rules are per-account too.
-	if err := db.SetRulesConfig(alice, []Rule{{Program: "Emacs", Tag: "work"}}, map[string]string{"work": "#4c9f70"}); err != nil {
+	if err := db.SetRulesConfig(alice, []Rule{{Program: "Emacs"}}, map[string]string{"work": "#4c9f70"}); err != nil {
 		t.Fatal(err)
 	}
 	ar, _ := db.Rules(alice)
@@ -270,7 +270,7 @@ func TestListUsersAndDeleteUserData(t *testing.T) {
 	if err := db.IngestViolations(victim.ID, 0, []Violation{{TS: 1, Keyword: "k", URL: "http://x"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SetRulesConfig(victim.ID, []Rule{{Program: "p", Title: "t", Tag: "Activity:x"}}, map[string]string{"Activity:x": "#fff"}); err != nil {
+	if err := db.SetRulesConfig(victim.ID, []Rule{{Program: "p", Title: "t"}}, map[string]string{"Activity:x": "#fff"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.CreateAPIToken(victim.ID, "dev"); err != nil {

@@ -82,7 +82,7 @@ func TestDeleteUserData_RemovesAllUserScoped(t *testing.T) {
 	if err := db.DB.Create(&TagOverride{UserID: uid, TagID: sys.ID, Distraction: true}).Error; err != nil {
 		t.Fatal(err)
 	}
-	rule := Rule{UserID: uid, Position: 99, Program: "z", Title: "Z", Tag: "x"}
+	rule := Rule{UserID: uid, Position: 99, Program: "z", Title: "Z"}
 	if err := db.DB.Create(&rule).Error; err != nil {
 		t.Fatal(err)
 	}

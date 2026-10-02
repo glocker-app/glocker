@@ -28,15 +28,15 @@ import "time"
 // constraint on existing databases is satisfied without a destructive migration.
 // It is not part of the API surface.
 type User struct {
-	ID           uint      `gorm:"primaryKey" json:"id"`
-	Email        string    `gorm:"uniqueIndex" json:"email"`
-	Username     string    `gorm:"uniqueIndex;not null" json:"-"`
-	PasswordHash string    `gorm:"not null" json:"-"`
-	Verified     bool      `json:"verified"` // email confirmed; false until the verify link is clicked
+	ID           uint   `gorm:"primaryKey" json:"id"`
+	Email        string `gorm:"uniqueIndex" json:"email"`
+	Username     string `gorm:"uniqueIndex;not null" json:"-"`
+	PasswordHash string `gorm:"not null" json:"-"`
+	Verified     bool   `json:"verified"` // email confirmed; false until the verify link is clicked
 	// DeviceLimit caps how many ingest API tokens (connected devices) this account
 	// may hold. 0 (the zero value / free tier) means DefaultFreeDevices; a negative
 	// value means unlimited. Raised for paid accounts.
-	DeviceLimit int       `json:"deviceLimit"`
+	DeviceLimit int `json:"deviceLimit"`
 	// RulesSeeded is set once the account has had the Glocker starter rules seeded
 	// (on activation/creation), so it never re-seeds and deleted starters stay gone.
 	RulesSeeded bool      `json:"-"`
@@ -144,8 +144,8 @@ type LifecycleEvent struct {
 	DeviceID uint   `gorm:"index;uniqueIndex:ux_lifecycle,priority:2" json:"-"`
 	TS       int64  `gorm:"index;uniqueIndex:ux_lifecycle,priority:3" json:"ts"`
 	Type     string `gorm:"uniqueIndex:ux_lifecycle,priority:4" json:"type"`
-	Reason string `json:"reason"`
-	Note   string `json:"note"`
+	Reason   string `json:"reason"`
+	Note     string `json:"note"`
 }
 
 // UsageSample is one focused-window sample from the usage tracker. One row per
@@ -174,16 +174,14 @@ type Heartbeat struct {
 
 // Rule is one usage-categorization rule (optional program/title regex -> tags).
 // Dashboard-local state (created on glockpeek, not synced from glocker). Position
-// orders the rules for first-match-wins precedence (lower runs first). Tag is the
-// legacy single-tag column, kept for back-compat while the UI moves to the
-// namespaced registry (rule_tags); new rules populate both.
+// orders the rules for first-match-wins precedence (lower runs first). Tags are
+// attached through the rule_tags registry join, not stored on the rule itself.
 type Rule struct {
 	ID       uint   `gorm:"primaryKey" json:"-"`
 	UserID   uint   `gorm:"index" json:"-"`
 	Position int    `json:"position"`
 	Program  string `json:"program"`
 	Title    string `json:"title"`
-	Tag      string `json:"tag"`
 }
 
 // Tag is one entry in the tag registry. Two scopes: "system" (the shared,

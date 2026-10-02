@@ -151,9 +151,13 @@ func (db *DB) Migrate() error {
 	if err := db.SeedSystemTags(); err != nil {
 		return fmt.Errorf("store: seed system tags: %w", err)
 	}
-	// Migrate legacy single-tag rules into the registry model (idempotent).
-	if err := db.backfillRulesToTags(); err != nil {
-		return fmt.Errorf("store: rules->rule_tags backfill: %w", err)
+	// The legacy rules.tag column has been retired — tags live in the rule_tags
+	// registry join. Drop it if an older schema still carries it (idempotent;
+	// the historical backfill already moved its data into rule_tags).
+	if db.Migrator().HasColumn(&Rule{}, "tag") {
+		if err := db.Migrator().DropColumn(&Rule{}, "tag"); err != nil {
+			return fmt.Errorf("store: drop legacy rules.tag: %w", err)
+		}
 	}
 	return nil
 }

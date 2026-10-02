@@ -129,7 +129,7 @@ func (db *DB) SeedAccountRules(userID uint) error {
 	rules := db.accountStarterRules()
 	return db.Transaction(func(tx *DB) error {
 		for i, sr := range rules {
-			r := Rule{UserID: userID, Position: i, Program: sr.Program, Title: sr.Title, Tag: "Glocker:" + sr.Tag}
+			r := Rule{UserID: userID, Position: i, Program: sr.Program, Title: sr.Title}
 			if err := tx.Create(&r).Error; err != nil {
 				return err
 			}
