@@ -3419,8 +3419,8 @@ function hbarChart(id, { labels, pct, ms, colors, onSelect }) {
   });
 }
 
-// topLabels (optional): a string per bar index, drawn above each stack (used by
-// the per-day chart for the active-% annotation). Pass null/undefined to omit.
+// topLabels (optional): a string per bar index shown in the tooltip footer (the
+// per-day chart passes its "total (active-%)" there). Pass null/undefined to omit.
 // titles (optional): a string per bar index used as the tooltip title (e.g. the
 // full weekday + date), since the axis label is abbreviated.
 function stackedBarChart(id, labels, datasets, topLabels, titles) {
@@ -3467,38 +3467,12 @@ function stackedBarChart(id, labels, datasets, topLabels, titles) {
   }));
   const cfg = { type: "bar", data: { labels, datasets: shaded }, options: opts };
 
+  // The day's total + 24h share lives in the tooltip footer, not stamped on every
+  // bar (the annotations collided and cluttered the chart). topLabels[i] is the
+  // precomputed "7h 32m (43%)" string.
   if (topLabels) {
-    // Labels are drawn vertically (reading bottom-to-top) just above each bar, so
-    // neighbouring day totals never collide however close the bars are. Reserve
-    // top padding for the longest rotated label.
-    opts.layout = { padding: { top: 96 } };
-    cfg.plugins = [{
-      id: "topPct",
-      afterDatasetsDraw(chart) {
-        const { ctx } = chart;
-        ctx.save();
-        ctx.fillStyle = cssVar("var(--ink-dim)");
-        ctx.font = "10px Courier Prime, monospace";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "middle";
-        for (let i = 0; i < topLabels.length; i++) {
-          if (!topLabels[i]) continue;
-          let topY = Infinity, x = null;
-          for (let di = 0; di < datasets.length; di++) {
-            const bar = chart.getDatasetMeta(di).data[i];
-            if (!bar || !datasets[di].data[i]) continue;
-            if (bar.y < topY) { topY = bar.y; x = bar.x; }
-          }
-          if (x == null) continue;
-          ctx.save();
-          ctx.translate(x, topY - 6);
-          ctx.rotate(-Math.PI / 2); // text rises from the bar top
-          ctx.fillText(topLabels[i], 0, 0);
-          ctx.restore();
-        }
-        ctx.restore();
-      },
-    }];
+    opts.plugins.tooltip.callbacks.footer = (items) =>
+      items.length && topLabels[items[0].dataIndex] ? `Total ${topLabels[items[0].dataIndex]}` : "";
   }
 
   state.charts[id] = new Chart(document.getElementById(id), cfg);
