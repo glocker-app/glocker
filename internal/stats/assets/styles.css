@@ -722,14 +722,11 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 }
 .hit .ht { grid-column: 1; grid-row: 1; color: var(--ink-dim); }
 .hit-x {
-  grid-column: 3; grid-row: 1; justify-self: start; align-self: center; margin-left: 2px;
-  background: transparent; border: 0; color: var(--ink-faint); cursor: pointer;
-  font-size: 13px; line-height: 1; padding: 1px 5px; border-radius: 4px;
+  grid-column: 3; grid-row: 1; justify-self: start; align-self: center; margin-left: 4px;
+  background: var(--bg-2); border: 1px solid var(--line); color: var(--ink-dim); cursor: pointer;
+  font-size: 13px; line-height: 1; padding: 2px 7px; border-radius: 4px;
 }
-.hit-x::after { content: ""; font-size: 10px; letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-faint); }
-.hit:hover .hit-x::after, .hit-x:focus::after { content: " not a violation"; }
-.hit-x:hover { color: var(--danger); background: var(--panel-2); }
-.hit-x:hover::after { color: var(--danger); }
+.hit-x:hover { color: var(--on-accent); background: var(--danger); border-color: var(--danger); }
 
 /* Ignored (false-positive) violations list. */
 .ign-list { display: flex; flex-direction: column; gap: 8px; }
