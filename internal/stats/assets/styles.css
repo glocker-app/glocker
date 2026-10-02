@@ -528,6 +528,7 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 /* ── Analytics: Range on top + calendar-led History hero ── */
 .range-top { border-left: 3px solid var(--signal); background: var(--panel-2); }
 .hist-hero { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 22px; align-items: start; }
+.hist-cal-col { display: flex; flex-direction: column; gap: 22px; min-width: 0; }  /* calendar + its day-detail, stacked */
 .hist-summary { align-self: stretch; }
 .hist-summary .streak-n { font-family: var(--display); font-weight: 700; font-size: 54px; line-height: .95; color: var(--safe); }
 .hist-summary .streak-n.cold { color: var(--danger); }
@@ -785,20 +786,19 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .empty { color: var(--ink-faint); font-family: var(--mono); font-size: 13px; padding: 8px 0; }
 
 /* ── Unmanaged list ───────────────────────────────────── */
-.unmanaged-list { display: flex; flex-direction: column; gap: 10px; max-height: 280px; overflow-y: auto; }
+.unmanaged-list { display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto; }
 .um {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: 12px;
-  padding: 9px 12px;
+  padding: 4px 10px;
   border-left: 2px solid var(--exposed);
-  background: rgba(169, 156, 130,0.06);
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 3px 3px 0;
 }
-.um .when { font-family: var(--mono); font-size: 12px; }
-.um .dur { font-family: var(--mono); font-size: 12px; color: var(--exposed); font-weight: 600; white-space: nowrap; }
-.um .why { font-size: 12px; color: var(--ink-dim); }
+.um:nth-child(even) { background: rgba(169, 156, 130, 0.06); }  /* zebra, not a box each */
+.um .when { font-family: var(--mono); font-size: 12px; white-space: nowrap; color: var(--ink-dim); }
+.um .dur { font-family: var(--mono); font-size: 12px; color: var(--exposed); font-weight: 600; white-space: nowrap; margin-left: auto; }
+.um .why { flex: 1; min-width: 0; font-size: 12.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .um.open .dur::after { content: " · ongoing"; color: var(--danger); }
 
 /* charts */

@@ -1881,10 +1881,6 @@ function highlightSelectedDay() {
 function showDay(dayTs) {
   state.openDay = dayTs; // remembered so re-fetches can re-open the same day
   highlightSelectedDay();
-  // Day detail now lives in a collapsible — open it (and scroll to it) so a
-  // calendar click reveals the detail it populated.
-  const det = document.getElementById("day-detail-collapse");
-  if (det && !det.open) { det.open = true; det.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
   const k = dayKey(dayTs);
   const hits = (state.dayIndex.get(k) || []).slice().sort((a, b) => a.ts - b.ts);
   const dateLabel = new Date(dayTs).toLocaleDateString(undefined, {

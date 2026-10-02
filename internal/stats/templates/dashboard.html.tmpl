@@ -134,15 +134,22 @@
           </nav>
 
           <div class="subview active" data-subtab="history">
-            <!-- Hero: the calendar (your record) leads, streak + key numbers beside it. -->
+            <!-- Hero: the calendar leads with its day-detail right beneath it;
+                 streak + key numbers sit alongside. -->
             <div class="hist-hero">
-              <section class="panel">
-                <div class="panel-head">
-                  <h2>History calendar</h2>
-                  <p class="panel-sub">Each cell is a day: clean, violations, or unmanaged (glocker off). Click a day for detail.</p>
-                </div>
-                <div id="calendar" class="calendar"></div>
-              </section>
+              <div class="hist-cal-col">
+                <section class="panel">
+                  <div class="panel-head">
+                    <h2>History calendar</h2>
+                    <p class="panel-sub">Each cell is a day: clean, violations, or unmanaged (glocker off). Click a day for detail.</p>
+                  </div>
+                  <div id="calendar" class="calendar"></div>
+                </section>
+                <section class="panel day-detail-panel">
+                  <div class="panel-head"><h2>Day detail</h2></div>
+                  <div id="day-detail" class="day-detail"></div>
+                </section>
+              </div>
               <aside class="panel hist-summary" id="history-summary"></aside>
             </div>
 
@@ -158,14 +165,8 @@
 
             <!-- Secondary detail, collapsed by default -->
             <section class="panel">
-              <details class="collapse" id="day-detail-collapse">
-                <summary><h2>Day detail</h2><span class="collapse-count">click a day on the calendar</span></summary>
-                <div id="day-detail" class="day-detail"></div>
-              </details>
-            </section>
-            <section class="panel">
               <details class="collapse">
-                <summary><h2>Unblocks by hour</h2></summary>
+                <summary><h2>Unblocks by hour</h2><span class="collapse-count">rough; may drop</span></summary>
                 <p class="panel-sub">When in the day you unblock, by reason.</p>
                 <div class="hour-chart"><canvas id="chart-unblock-hour"></canvas></div>
               </details>
