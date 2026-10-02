@@ -1065,6 +1065,7 @@ function render() {
   renderHeatmap(heat);
   renderUnblocksByHour(unblocks);
   renderCalendar(violations, b);
+  renderHistorySummary(allViolations, violations, unblocks, b);
   renderTimeline();
   resetDayDetail();
   renderExposure(unmanaged, downtime, b);
@@ -1336,6 +1337,30 @@ function renderStreak(violations) {
       <div class="v">${dLabel(s.best)}</div>
       <div class="sub">all-time best</div>
       <div class="desc">Longest run of consecutive clean days ever recorded.</div>
+    </div>`;
+}
+
+// The History hero summary beside the calendar: the standing streak (all-history,
+// like renderStreak) plus the window's headline numbers.
+function renderHistorySummary(allViolations, violations, unblocks, b) {
+  const el = document.getElementById("history-summary");
+  if (!el) return;
+  const s = computeStreaks(allViolations, state.data.now);
+  const clean = s.current > 0;
+  const days = Math.max(1, Math.round((b.end - b.start) / DAY));
+  const cleanDays = Math.max(0, days - new Set(violations.map((v) => dayKey(v.ts))).size);
+  const note = clean
+    ? `best run was ${s.best} day${s.best === 1 ? "" : "s"}.`
+    : s.violationToday ? "a slip today — restart the run." : "glocker was off today.";
+  const n = (c, v, l) => `<div class="kpi"><span class="n ${c}">${v}</span><span class="l">${l}</span></div>`;
+  el.innerHTML = `
+    <div class="streak-n ${clean ? "" : "cold"}">${s.current}</div>
+    <div class="streak-l">day streak</div>
+    <div class="streak-note">${note}</div>
+    <div class="kpis">
+      ${n("bad", violations.length, `violation${violations.length === 1 ? "" : "s"} in window`)}
+      ${n("", unblocks.length, `unblock${unblocks.length === 1 ? "" : "s"}`)}
+      ${n("good", cleanDays, `clean days · ${Math.round((cleanDays / days) * 100)}%`)}
     </div>`;
 }
 
@@ -1856,6 +1881,10 @@ function highlightSelectedDay() {
 function showDay(dayTs) {
   state.openDay = dayTs; // remembered so re-fetches can re-open the same day
   highlightSelectedDay();
+  // Day detail now lives in a collapsible — open it (and scroll to it) so a
+  // calendar click reveals the detail it populated.
+  const det = document.getElementById("day-detail-collapse");
+  if (det && !det.open) { det.open = true; det.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
   const k = dayKey(dayTs);
   const hits = (state.dayIndex.get(k) || []).slice().sort((a, b) => a.ts - b.ts);
   const dateLabel = new Date(dayTs).toLocaleDateString(undefined, {

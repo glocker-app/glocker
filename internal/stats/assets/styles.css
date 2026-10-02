@@ -435,8 +435,8 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 /* ── Calendar (real month grids) ──────────────────────── */
 .calendar {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
-  gap: 22px;
+  grid-template-columns: repeat(auto-fill, minmax(216px, 1fr));
+  gap: 20px;
 }
 .cal-month { min-width: 0; }
 .cal-month h3 {
@@ -524,6 +524,21 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .day-detail { display: flex; flex-direction: column; }
 /* Days/points are clicked (not hovered) to open the detail. */
 .cal-day[data-ts] { cursor: pointer; }
+
+/* ── Analytics: Range on top + calendar-led History hero ── */
+.range-top { border-left: 3px solid var(--signal); background: var(--panel-2); }
+.hist-hero { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 22px; align-items: start; }
+.hist-summary { align-self: stretch; }
+.hist-summary .streak-n { font-family: var(--display); font-weight: 700; font-size: 54px; line-height: .95; color: var(--safe); }
+.hist-summary .streak-n.cold { color: var(--danger); }
+.hist-summary .streak-l { font-size: 15px; color: var(--ink-dim); margin-top: 2px; }
+.hist-summary .streak-note { font-size: 13px; color: var(--ink-faint); margin-top: 8px; line-height: 1.4; }
+.hist-summary .kpis { display: flex; flex-direction: column; gap: 12px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+.hist-summary .kpi .n { font-family: var(--mono); font-weight: 700; font-size: 20px; color: var(--ink); }
+.hist-summary .kpi .n.bad { color: var(--danger); }
+.hist-summary .kpi .n.good { color: var(--safe); }
+.hist-summary .kpi .l { font-size: 13px; color: var(--ink-dim); margin-left: 6px; }
+@media (max-width: 820px) { .hist-hero { grid-template-columns: 1fr; } }
 #chart-timeline { cursor: pointer; }
 /* Timeline is a compact sparkline — the calendar carries the detailed per-day
    view, so the trend line just needs to show shape, not fill a tall panel. */

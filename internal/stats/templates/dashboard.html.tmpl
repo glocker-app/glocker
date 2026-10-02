@@ -109,20 +109,13 @@
 
         <!-- History (with Patterns widgets appended below) -->
         <section class="view" data-view="analytics">
-          <!-- Sub-tabs first (and sticky) so they stay on top and don't move when
-               the Range strip below hides for Tags. -->
-          <nav class="subtabs" id="analytics-subtabs">
-            <button data-subtab="history" class="active">History</button>
-            <button data-subtab="usage">Usage</button>
-            <button data-subtab="tags">Tags</button>
-          </nav>
-
-          <!-- Shared range selector (History/Usage): brush to pick the window. -->
-          <section class="panel strip-panel">
+          <!-- Range pinned on top (the master control — the window everything below
+               is measured over), then the sub-tabs. -->
+          <section class="panel strip-panel range-top">
             <div class="panel-head range-head">
               <div>
                 <h2>Range</h2>
-                <p class="panel-sub">Drag to pick the window.</p>
+                <p class="panel-sub">The window everything below is measured over — drag to change.</p>
               </div>
               <div id="range-readout" class="range-readout" hidden></div>
             </div>
@@ -134,75 +127,70 @@
             </div>
           </section>
 
+          <nav class="subtabs" id="analytics-subtabs">
+            <button data-subtab="history" class="active">History</button>
+            <button data-subtab="usage">Usage</button>
+            <button data-subtab="tags">Tags</button>
+          </nav>
+
           <div class="subview active" data-subtab="history">
-          <div class="history">
-            <div class="history-main">
+            <!-- Hero: the calendar (your record) leads, streak + key numbers beside it. -->
+            <div class="hist-hero">
               <section class="panel">
                 <div class="panel-head">
                   <h2>History calendar</h2>
-                  <p class="panel-sub">Each cell is a day: clean, violations, or unmanaged (glocker off). Click a day for details.</p>
+                  <p class="panel-sub">Each cell is a day: clean, violations, or unmanaged (glocker off). Click a day for detail.</p>
                 </div>
                 <div id="calendar" class="calendar"></div>
               </section>
+              <aside class="panel hist-summary" id="history-summary"></aside>
             </div>
 
-            <aside class="history-side">
-              <section class="panel day-inspector">
-                <div class="panel-head"><h2>Day detail</h2></div>
+            <!-- Where attention slips (full width) -->
+            <section class="panel">
+              <div class="panel-head">
+                <h2>Vulnerability map</h2>
+                <p class="panel-sub">Violations by hour &times; weekday.</p>
+              </div>
+              <div id="heatmap" class="heatmap"></div>
+              <div class="heatmap-legend" id="heatmap-legend"></div>
+            </section>
+
+            <!-- Secondary detail, collapsed by default -->
+            <section class="panel">
+              <details class="collapse" id="day-detail-collapse">
+                <summary><h2>Day detail</h2><span class="collapse-count">click a day on the calendar</span></summary>
                 <div id="day-detail" class="day-detail"></div>
-              </section>
-            </aside>
-          </div>
-
-          <!-- Vulnerability map + Unblocks-by-hour share one panel: the heatmap
-               is compact, so the by-hour chart fills the space beside it rather
-               than the map's cell stretching tall and empty. -->
-          <section class="panel">
-            <div class="vuln-row">
-              <div class="vuln-col vuln-col-heat">
-                <div class="panel-head">
-                  <h2>Vulnerability map</h2>
-                  <p class="panel-sub">Violations by hour &times; weekday.</p>
-                </div>
-                <div id="heatmap" class="heatmap"></div>
-                <div class="heatmap-legend" id="heatmap-legend"></div>
-              </div>
-              <div class="vuln-col vuln-col-unblock">
-                <div class="panel-head">
-                  <h2>Unblocks by hour</h2>
-                  <p class="panel-sub">When in the day you unblock, by reason.</p>
-                </div>
+              </details>
+            </section>
+            <section class="panel">
+              <details class="collapse">
+                <summary><h2>Unblocks by hour</h2></summary>
+                <p class="panel-sub">When in the day you unblock, by reason.</p>
                 <div class="hour-chart"><canvas id="chart-unblock-hour"></canvas></div>
-              </div>
-            </div>
-          </section>
-
-          <!-- Bypasses folded into History: exposure over time + deliberate grants -->
-          <div class="grid-2">
+              </details>
+            </section>
             <section class="panel">
-              <div class="panel-head">
-                <h2>Exposure over time</h2>
+              <details class="collapse">
+                <summary><h2>Exposure over time</h2></summary>
                 <p class="panel-sub">Time glocker wasn&rsquo;t guarding, split by cause &mdash; <strong>removed</strong> (uninstalled) vs <strong>stopped</strong> (installed but not running).</p>
-              </div>
-              <div class="tall-chart"><canvas id="chart-exposure"></canvas></div>
+                <div class="tall-chart"><canvas id="chart-exposure"></canvas></div>
+              </details>
             </section>
             <section class="panel">
-              <div class="panel-head">
-                <h2>Unblocks</h2>
+              <details class="collapse">
+                <summary><h2>Unblocks</h2></summary>
                 <p class="panel-sub">Deliberate temporary grants &mdash; most recent first.</p>
-              </div>
-              <div id="unblock-list" class="unmanaged-list"></div>
+                <div id="unblock-list" class="unmanaged-list"></div>
+              </details>
             </section>
-          </div>
-
-          <!-- False positives hidden from the day-detail hit list -->
-          <section class="panel">
-            <details class="collapse">
-              <summary><h2>Ignored violations</h2><span id="ignored-count" class="collapse-count"></span></summary>
-              <p class="panel-sub">Hits you marked &ldquo;not a violation&rdquo;. Hidden from every count; restore any to bring it back.</p>
-              <div id="ignored-list" class="ign-list"></div>
-            </details>
-          </section>
+            <section class="panel">
+              <details class="collapse">
+                <summary><h2>Ignored violations</h2><span id="ignored-count" class="collapse-count"></span></summary>
+                <p class="panel-sub">Hits you marked &ldquo;not a violation&rdquo;. Hidden from every count; restore any to bring it back.</p>
+                <div id="ignored-list" class="ign-list"></div>
+              </details>
+            </section>
           </div><!-- /subview history -->
 
           <div class="subview" data-subtab="usage">
