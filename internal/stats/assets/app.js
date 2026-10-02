@@ -4964,7 +4964,18 @@ async function renderSync() {
   const totals = s.totals || {};
   const totalRows = Object.values(totals).reduce((a, b) => a + b, 0);
   const last = s.last || {};
-  const parts = Object.entries(last).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k}`);
+  // Record sources carry terse keys over the wire; spell them out so a batch like
+  // "1 usage" reads as "1 usage sample" rather than leaving the unit a mystery.
+  const SRC_LABELS = {
+    usage: ["usage sample", "usage samples"],
+    violations: ["violation", "violations"],
+    unblocks: ["unblock", "unblocks"],
+    lifecycle: ["lifecycle event", "lifecycle events"],
+    heartbeat: ["heartbeat", "heartbeats"],
+    config: ["config snapshot", "config snapshots"],
+  };
+  const srcLabel = (k, n) => (SRC_LABELS[k] ? SRC_LABELS[k][n === 1 ? 0 : 1] : k);
+  const parts = Object.entries(last).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${srcLabel(k, n)}`);
   const when = s.lastSyncAt ? esc(fmtAgo(s.lastSyncAt)) : "never";
   el.innerHTML = `
     <div class="sync-row"><span class="sync-label">Last sync</span><span class="sync-val${s.lastSyncAt ? "" : " sync-stale"}">${when}</span></div>
