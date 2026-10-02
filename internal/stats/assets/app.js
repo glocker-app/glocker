@@ -2461,6 +2461,18 @@ function renderNamespacePills(namespaces) {
 
 // The active time no rule matched, grouped by program with an example title, so
 // the user can see what still needs a rule (and click to start one).
+// topByTime picks the items worth showing from a {ms}-bearing list: if any clear
+// the "meaningful" threshold (3m), show the top N of those; otherwise fall back to
+// the top N overall, so a list of only brief items isn't empty. Returns the chosen
+// slice plus the pool size it came from (for "top N of M" labels).
+const MEANINGFUL_MS = 3 * 60 * 1000;
+function topByTime(items, n = 10) {
+  const sorted = (items || []).slice().sort((a, b) => b.ms - a.ms);
+  const big = sorted.filter((it) => it.ms >= MEANINGFUL_MS);
+  const pool = big.length ? big : sorted;
+  return { shown: pool.slice(0, n), total: pool.length };
+}
+
 function renderUntagged(tu, available) {
   const el = document.getElementById("usage-untagged");
   const totalEl = document.getElementById("untagged-total");
@@ -2473,20 +2485,18 @@ function renderUntagged(tu, available) {
   const hiddenNote = tu.hidden > 0
     ? `<div style="margin-top:10px;font-size:.82rem;color:var(--ink-dim);">${fmtDur(tu.hidden)} hidden by rules</div>`
     : "";
-  // Drop sub-minute windows — they round to "0m" and just clutter the list; the
-  // top 10 by time is what's worth tagging. Tag one and the next rolls up from below.
-  const items = (tu.untaggedItems || []).filter((it) => it.ms >= 30000);
-  if (!items.length) {
+  // Show the top 10 worth tagging — prefer windows over 3m; only if none clear
+  // that do we fall back to the brief ones. Tag one and the next rolls up.
+  const { shown: top, total } = topByTime(tu.untaggedItems || []);
+  if (!top.length) {
     setTotal("none ✓");
     el.innerHTML = `<div class="empty">nothing untagged — full coverage ✓</div>` + hiddenNote;
     return;
   }
-  const top = items.slice(0, 10);
   const total10 = top.reduce((s, it) => s + it.ms, 0);
-  // Summary line (visible while collapsed): how much time the top 10 add up to,
-  // so a trivial amount can stay tucked away.
-  setTotal(`${fmtDur(total10)}${items.length > 10 ? ` · top 10 of ${items.length}` : ` · ${items.length} window${items.length === 1 ? "" : "s"}`}`);
-  const max = items[0].ms || 1;
+  // Summary line (visible while collapsed): how much the shown windows add up to.
+  setTotal(`${fmtDur(total10)}${total > top.length ? ` · top ${top.length} of ${total}` : ` · ${top.length} window${top.length === 1 ? "" : "s"}`}`);
+  const max = top[0].ms || 1;
   el.innerHTML = top
     .map((it) => {
       const pct = Math.round((it.ms / max) * 100);
@@ -2630,8 +2640,8 @@ function renderTagContributors(tagName, tu) {
     p.ms += w.ms;
     p.wins.push(w);
   }
-  // Drop sub-minute apps — they round to "0m" and are just noise.
-  const apps = [...progs.values()].filter((a) => a.ms >= 30000).sort((a, b) => b.ms - a.ms);
+  // Prefer apps over 3m (top 10); fall back to the brief ones only if none clear it.
+  const apps = topByTime([...progs.values()]).shown;
 
   if (!apps.length) {
     el.innerHTML = `<div class="empty">nothing recorded</div>`;
@@ -2644,8 +2654,8 @@ function renderTagContributors(tagName, tu) {
     const open = state.expandedApps.has(app.program);
     const selected = app.program === state.selectedProgram;
     const pct = Math.round((app.ms / max) * 100);
-    // Top 10 windows by time, sub-minute ones dropped (they show as "0m").
-    const wins = app.wins.filter((w) => w.ms >= 30000).sort((a, b) => b.ms - a.ms).slice(0, 10);
+    // Top 10 windows — prefer those over 3m, fall back to brief ones only if none.
+    const wins = topByTime(app.wins).shown;
     const children = open
       ? wins.map((w) => `<div class="tt-win">
           <span class="tt-wtitle" title="${esc(w.title)}">${esc(w.title)}</span>
