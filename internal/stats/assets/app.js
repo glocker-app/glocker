@@ -1362,8 +1362,17 @@ function renderStreak(violations) {
 function renderHistorySummary(violations, unblocks, unmanaged, downtime, b) {
   const el = document.getElementById("history-summary");
   if (!el) return;
-  const days = Math.max(1, Math.round((b.end - b.start) / DAY));
-  const cleanDays = Math.max(0, days - new Set(violations.map((v) => dayKey(v.ts))).size);
+  // A clean day is one glocker actually guarded and you didn't slip. Days with a
+  // violation are slips; days glocker was mostly off (same unmanaged signal the
+  // calendar hatches) aren't wins either — they're exposure, not a clean record.
+  const vdays = new Set(violations.map((v) => dayKey(v.ts)));
+  const lastDay = Math.min(startOfDay(b.end), startOfDay(state.data.now));
+  let days = 0, cleanDays = 0;
+  for (let t = startOfDay(b.start); t <= lastDay; t += DAY) {
+    days++;
+    if (!vdays.has(dayKey(t)) && dayUnmanagedMs(t) < DAY / 2) cleanDays++;
+  }
+  days = Math.max(1, days);
   const rs = (c, v, l, sub) =>
     `<div class="rs"><span class="n ${c}">${v}</span><span class="l">${l}</span>${sub ? `<span class="rs-sub">${sub}</span>` : ""}</div>`;
   // Exposure: time glocker wasn't guarding, split by cause — removed (uninstalled)
