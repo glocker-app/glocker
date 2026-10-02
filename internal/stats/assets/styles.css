@@ -536,6 +536,11 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 .range-summary .rs .l { font-size: 14px; color: var(--ink-dim); }
 .range-summary .rs .rs-sub { font-size: 12px; color: var(--ink-faint); }
 .range-summary .rs .rs-sub::before { content: "· "; }  /* clear separator: "day streak · best 10 days" */
+
+/* Unblocks: one panel, two columns — the by-hour graph beside the recent list. */
+.unblocks-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+.subhead { font-family: var(--mono); font-weight: 700; font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 10px; }
+@media (max-width: 820px) { .unblocks-grid { grid-template-columns: 1fr; } }
 #chart-timeline { cursor: pointer; }
 /* Timeline is a compact sparkline — the calendar carries the detailed per-day
    view, so the trend line just needs to show shape, not fill a tall panel. */

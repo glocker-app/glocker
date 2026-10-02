@@ -2096,6 +2096,8 @@ function renderUnblocksByHour(unblocks) {
 function renderUnblockList(unblocks) {
   const el = document.getElementById("unblock-list");
   if (!el) return;
+  const count = document.getElementById("unblock-count");
+  if (count) count.textContent = unblocks.length ? `${unblocks.length}` : "";
   if (!unblocks.length) {
     el.innerHTML = `<div class="empty">no unblocks in window</div>`;
     return;
