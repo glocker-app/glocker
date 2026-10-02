@@ -263,19 +263,18 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
 
 /* Streak hero: the standing current/best clean-day streak, given weight on the
    Overview (not a small readout tile). */
-.streak-hero { display: flex; align-items: center; flex-wrap: wrap; gap: 0; }
-.streak-hero .sh-best { margin-left: 52px; padding-left: 52px; border-left: 1px solid var(--line); }
+.streak-hero { display: grid; grid-template-columns: 1fr 1fr; align-items: center; }
+.streak-hero .sh-best { padding-left: 44px; border-left: 1px solid var(--line); }
 .streak-hero .sh-num { font-family: var(--display); font-weight: 700; line-height: 0.92; color: var(--ink); }
 .streak-hero .sh-current .sh-num { font-size: 72px; color: var(--safe); }
 .streak-hero .sh-current.alarm .sh-num { color: var(--danger); }
-.streak-hero .sh-best .sh-num { font-size: 44px; }
+.streak-hero .sh-best .sh-num { font-size: 72px; }
 .streak-hero .sh-num .u { font-family: var(--sans); font-weight: 600; font-size: 20px; color: var(--ink-dim); margin-left: 9px; }
-.streak-hero .sh-best .sh-num .u { font-size: 15px; margin-left: 7px; }
-.streak-hero .sh-cap { font-family: var(--mono); font-size: 12px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-faint); margin-top: 8px; }
-.streak-hero .sh-sub { font-family: var(--sans); font-size: 14px; color: var(--ink-dim); margin-top: 4px; }
+.streak-hero .sh-cap { font-family: var(--mono); font-size: 12px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-faint); margin-top: 10px; }
 @media (max-width: 560px) {
-  .streak-hero .sh-best { margin-left: 0; padding-left: 0; border-left: 0; margin-top: 20px; width: 100%; }
-  .streak-hero .sh-current .sh-num { font-size: 60px; }
+  .streak-hero { grid-template-columns: 1fr; gap: 22px; }
+  .streak-hero .sh-best { padding-left: 0; border-left: 0; padding-top: 22px; border-top: 1px solid var(--line); }
+  .streak-hero .sh-num, .streak-hero .sh-best .sh-num { font-size: 56px; }
 }
 .score-split {
   display: grid;

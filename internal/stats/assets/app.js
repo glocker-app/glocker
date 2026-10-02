@@ -1348,14 +1348,12 @@ function renderStreak(violations) {
   const s = computeStreaks(violations, state.data.now);
   const dLabel = (n) => `${n}<span class="u">day${n === 1 ? "" : "s"}</span>`;
   const clean = s.current > 0;
-  const currentSub = clean ? "current clean run" : s.violationToday ? "broken by a violation today" : "glocker off today";
   el.innerHTML = `
-    <div class="sh-current ${clean ? "safe" : "alarm"}">
+    <div class="sh-col sh-current ${clean ? "safe" : "alarm"}">
       <div class="sh-num">${dLabel(s.current)}</div>
       <div class="sh-cap">Current streak</div>
-      <div class="sh-sub">${currentSub}</div>
     </div>
-    <div class="sh-best">
+    <div class="sh-col sh-best">
       <div class="sh-num">${dLabel(s.best)}</div>
       <div class="sh-cap">Best ever</div>
     </div>`;
