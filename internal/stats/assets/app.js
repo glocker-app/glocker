@@ -1923,15 +1923,13 @@ function showDay(dayTs) {
     const spans = state.data.unmanaged.filter((p) => t < (p.open ? state.data.now : p.end) && t + DAY > p.start);
     const reasons = [...new Set(spans.map((p) => [p.reason, p.note].filter(Boolean).join(" — ")).filter(Boolean))].join(", ");
     coverage = `<div class="dd-cov">
-      <span class="cov-unm">Unmanaged <b>${fmtDur(unmMs)}</b> (${unmPct}%)</span>
+      <span class="cov-unm">Unmanaged <b>${fmtDur(unmMs)}</b> (${unmPct}%)${reasons ? ` · ${esc(reasons)}` : ""}</span>
       <span class="cov-man">Managed ${fmtDur(managedMs)} · ${hits.length} violation${hits.length === 1 ? "" : "s"}</span>
-      ${reasons ? `<span class="cov-why">Reason: ${esc(reasons)}</span>` : ""}
     </div>`;
   }
 
   let body;
   if (hits.length) {
-    const topRank = miniRank(tally(hits, subjectOf), "var(--danger)");
     const list = hits
       .map((h) => {
         const time = new Date(h.ts).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -1945,12 +1943,7 @@ function showDay(dayTs) {
         </div>`;
       })
       .join("");
-    body = coverage + `<div class="dd-grid">
-      <div class="dd-sum">
-        <h4>Most hit</h4>${topRank}
-      </div>
-      <div class="dd-hits"><h4>Hits (${hits.length})</h4><div class="hit-list">${list}</div></div>
-    </div>`;
+    body = coverage + `<div class="dd-hits"><h4>Violations (${hits.length})</h4><div class="hit-list">${list}</div></div>`;
   } else if (fullyUnmanaged) {
     body = coverage + `<div class="dd-note exposed-note">glocker was unmanaged all day — no activity was recorded.</div>`;
   } else if (unmMs > 0) {
