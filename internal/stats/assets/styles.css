@@ -755,14 +755,21 @@ main { padding: 24px clamp(16px, 3vw, 40px) 64px; min-width: 0; }
   transition: transform 0.1s;
 }
 .dd-hcell:hover { transform: scaleY(1.25); }
+.dd-hcell.guarded { background: rgba(95, 129, 105, 0.22); box-shadow: inset 0 0 0 1px rgba(95, 129, 105, 0.3); }
 .dd-hcell.unmanaged { background-image: repeating-linear-gradient(45deg, rgba(169, 156, 130,0.55) 0 3px, transparent 3px 6px); }
 .dd-hcell.future { opacity: 0.35; }
 .dd-hours-axis {
   display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px;
-  margin-top: 3px;
-  font-family: var(--mono); font-size: 9px; color: var(--ink-faint);
+  margin-top: 5px;
+  font-family: var(--mono); font-size: 10.5px; color: var(--ink-dim);
 }
-.dd-hours-axis span { text-align: left; }
+.dd-hours-axis span { text-align: left; white-space: nowrap; }
+.dd-hours-legend { display: flex; gap: 16px; margin-top: 8px; font-family: var(--sans); font-size: 12px; color: var(--ink-dim); }
+.dd-hours-legend .ddl { display: inline-flex; align-items: center; gap: 6px; }
+.dd-hours-legend .ddl::before { content: ""; width: 12px; height: 12px; border-radius: 2px; flex: none; }
+.dd-hours-legend .ddl.guarded::before { background: rgba(95, 129, 105, 0.22); box-shadow: inset 0 0 0 1px rgba(95, 129, 105, 0.4); }
+.dd-hours-legend .ddl.unmanaged::before { background-image: repeating-linear-gradient(45deg, rgba(169, 156, 130, 0.7) 0 3px, var(--panel-2) 3px 6px); }
+.dd-hours-legend .ddl.slip::before { background: var(--danger); }
 
 .dd-note { font-family: var(--mono); font-size: 13.5px; padding: 18px 4px; line-height: 1.6; }
 .dd-note .dim { color: var(--ink-faint); }

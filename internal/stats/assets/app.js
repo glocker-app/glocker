@@ -2016,7 +2016,11 @@ function dayHourTimeline(dayStart, hits) {
     const future = hStart >= now;
     const count = counts[h];
     const unm = !future && periods.some((p) => hStart < (p.open ? now : p.end) && hEnd > p.start);
-    const cls = `dd-hcell${future ? " future" : ""}${unm ? " unmanaged" : ""}`;
+    // Every hour reads as something: a violation (heat), unmanaged (hatch), a
+    // guarded clean hour (sage band), or later-today (dim) — so the strip is
+    // legible even on a clean day instead of a row of empty boxes.
+    const guarded = !future && !unm && count === 0;
+    const cls = `dd-hcell${future ? " future" : ""}${unm ? " unmanaged" : guarded ? " guarded" : ""}`;
     const bg = count > 0 && !future ? `background:${countColor(count)}` : "";
     const hh = String(h).padStart(2, "0");
     const title = future
@@ -2024,10 +2028,11 @@ function dayHourTimeline(dayStart, hits) {
       : `${hh}:00 · ${count} violation${count === 1 ? "" : "s"}${unm ? " · unmanaged" : ""}`;
     cells.push(`<div class="${cls}" style="${bg}" title="${title}"></div>`);
   }
-  const axis = Array.from({ length: 24 }, (_, h) => `<span>${h % 6 === 0 ? String(h).padStart(2, "0") : ""}</span>`).join("");
+  const axis = Array.from({ length: 24 }, (_, h) => `<span>${h % 6 === 0 ? `${String(h).padStart(2, "0")}:00` : ""}</span>`).join("");
   return `<div class="dd-hours">
     <div class="dd-hours-row">${cells.join("")}</div>
     <div class="dd-hours-axis">${axis}</div>
+    <div class="dd-hours-legend"><span class="ddl guarded">guarded</span><span class="ddl unmanaged">unmanaged</span><span class="ddl slip">violation</span></div>
   </div>`;
 }
 
