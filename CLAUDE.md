@@ -483,9 +483,15 @@ Server started by internal/web/server.go:StartWebTrackingServer()
   - `GET|POST|PATCH|DELETE /api/tags` - the tag registry: shared `Glocker:*`
     system tags (with per-account distraction overrides) + the account's own
     tags (session). See `docs/tags-and-rules.md`.
-  - `GET|POST|PATCH|DELETE /api/tags` - tag registry: shared system `Glocker:*`
-    tags (with per-account distraction overrides) + the account's own tags
-    (session; see docs/tags-and-rules.md)
+  - **User tag/rule content is client-sealed (E2E).** A user tag's
+    `namespace`/`name` and a rule's `program`/`title` are sealed in the browser
+    (`enc:v1:` via `sealReg`, `internal/stats/assets/app.js`) before they reach
+    `/api/tags` / `/api/rules`, with a one-time idempotent migration that seals
+    any still-cleartext rows. The DB columns are plain `string` but hold
+    ciphertext; matching runs in the browser, so glockpeek stays content-blind.
+    Sealing only applies once E2E is set up — without a master key the values are
+    stored cleartext (system `Glocker:*` tags stay cleartext; they're not user
+    content).
   - `GET|PUT /api/ignored` - false-positive overlay in the DB (session)
   - `POST /api/ingest` - batched idempotent upsert from the syncer (**bearer token**);
     also stamps the `sync_status` row (last-ingest time + last-batch counts).
