@@ -62,13 +62,37 @@ def _names_from_file(path: str) -> set:
             if (m := _MANUAL_NAME_RE.match(line))}
 
 
+def _names_from_conf_domains(path: str) -> set:
+    """Domain `name:` values from the top-level `domains:` stanza of conf.yaml
+    only — so forbidden-program names (under `programs:`) and other stanzas are
+    never mistaken for domains. conf.yaml can't be YAML-parsed here (it uses the
+    custom !include tag), so scope by indentation: track which top-level key we're
+    under and collect `name:` only while inside `domains:`."""
+    try:
+        lines = open(path).read().splitlines()
+    except OSError:
+        return set()
+    names = set()
+    in_domains = False
+    for raw in lines:
+        stripped = raw.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if raw[:1] not in (" ", "\t"):  # a top-level (indent-0) key
+            in_domains = stripped.split(":", 1)[0].strip() == "domains"
+            continue
+        if in_domains and (m := _MANUAL_NAME_RE.match(raw)):
+            names.add(m.group(1).lower())
+    return names
+
+
 def get_manual_domains() -> set:
-    """Hand-listed domain names, read once from the non-generated conf.d files.
-    conf.yaml itself is intentionally skipped: its `name:` keys also cover
-    forbidden programs, which must not be mistaken for domains."""
+    """Hand-listed domain names, read once: conf.yaml's `domains:` stanza plus the
+    non-generated conf.d files (e.g. the personal list; a file conf.yaml pulls in
+    via !include is read directly since the include isn't expanded here)."""
     global _manual_domains_cache
     if _manual_domains_cache is None:
-        manual = set()
+        manual = _names_from_conf_domains(CONFIG_FILE)
         if os.path.isdir(CONFD_DIR):
             for fn in sorted(os.listdir(CONFD_DIR)):
                 if fn.endswith((".yaml", ".yml")):
