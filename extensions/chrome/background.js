@@ -139,7 +139,17 @@ async function loadFromStorage() {
 // Apply a keyword payload (from /keywords or the stream). The rules are only
 // rebuilt when the url keywords or whitelist actually changed — the poll lands
 // every 30s and nearly always carries the same set.
-async function applyKeywords(data) {
+//
+// Updates run one at a time: on wake the /keywords fetch and the stream's first
+// message land together, and two overlapping rebuilds each read the old rule IDs
+// and then add the same new ones ("does not have a unique ID").
+let applyQueue = Promise.resolve();
+function applyKeywords(data) {
+  applyQueue = applyQueue.then(() => applyKeywordsNow(data), () => applyKeywordsNow(data));
+  return applyQueue;
+}
+
+async function applyKeywordsNow(data) {
   const before = JSON.stringify([urlKeywords, whitelist]);
   if (Array.isArray(data.url_keywords)) urlKeywords = data.url_keywords;
   if (Array.isArray(data.content_keywords)) contentKeywords = data.content_keywords;
