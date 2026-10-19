@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Glocker Content Monitor",
-  "version": "2.3",
-  "description": "Reports problematic content to Glocker",
+  "version": "2.6",
+  "description": "Blocks pages with a blocked keyword. Reports their URLs to your local Glocker service; page text is scanned locally, never sent.",
 
   "permissions": [
     "declarativeNetRequest",
@@ -11,6 +11,8 @@
     "alarms"
   ],
   "host_permissions": ["<all_urls>"],
+
+  "incognito": "spanning",
 
   "background": {
     "service_worker": "background.js"

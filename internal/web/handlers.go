@@ -397,8 +397,10 @@ func HandleSSERequest(cfg *config.Config, w http.ResponseWriter, r *http.Request
 			}
 		case <-r.Context().Done():
 			return
-		case <-time.After(30 * time.Second):
-			// Send keepalive ping
+		case <-time.After(20 * time.Second):
+			// Keepalive ping. Under Chrome's 30s service-worker idle limit: each
+			// chunk the Chrome extension reads resets that timer, so this is what
+			// keeps its stream (and worker) alive.
 			fmt.Fprintf(w, ": keepalive\n\n")
 			if flusher, ok := w.(http.Flusher); ok {
 				flusher.Flush()

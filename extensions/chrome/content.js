@@ -87,7 +87,9 @@ function analyzeContent() {
   if (host === "127.0.0.1" || host === "localhost" || host.endsWith(".localhost")) return;
   if (currentURLWhitelisted()) return;
 
-  const text = document.body ? document.body.textContent.toLowerCase() : "";
+  // The regexes are case-insensitive, so scan the raw textContent — no need to
+  // allocate a lowercased copy of the whole page.
+  const text = document.body ? document.body.textContent : "";
   const hash = contentHash(text);
   if (hash === lastContentHash) return;
   lastContentHash = hash;
