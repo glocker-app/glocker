@@ -17,8 +17,9 @@ That's what Glocker tries to do.
 ## Quick Start
 
 ```bash
-# Configure: copy the sample and edit it to taste
-cp conf/conf.yaml.sample conf/conf.yaml
+# Configure: run the setup wizard (writes conf/conf.yaml from the sample and
+# fills in your login; won't overwrite an existing file), then edit to taste
+make init
 $EDITOR conf/conf.yaml
 
 # Build, fetch the blocklists into conf.d/, and install as a systemd service.
@@ -81,18 +82,17 @@ emails to a buddy are configured in the same file (`accountability:`); see the
 
 ## What It Does
 
-Glocker uses **8 independent monitoring systems** that work together:
+Glocker uses **seven independent enforcement mechanisms** that work together:
 
-1. **Hosts File Blocking** - Redirects blocked domains to `127.0.0.1`
-2. **Web Tracking** - Intercepts HTTP/HTTPS requests, records violations
-3. **Browser Extension** - Monitors page content for forbidden keywords
-4. **Forbidden Programs** - Kills specified programs during time windows
-5. **Violation Tracking** - Triggers actions when threshold exceeded (e.g., screen lock)
-6. **Sudoers Control** - Restricts `sudo` access during blocking periods
-7. **Tamper Detection** - Self-healing when critical files are modified
-8. **Panic Mode** - Emergency system suspension with re-suspend on early wake
+1. **Hosts-file blocking** - Redirects blocked domains to `127.0.0.1` (the file is made immutable)
+2. **Browser extension** - Watches page URLs and content for forbidden keywords (Firefox), reporting hits to a local server
+3. **Forbidden programs** - Kills specified programs during time windows
+4. **Violation tracking** - Triggers an action when a threshold is crossed (e.g., screen lock)
+5. **Sudoers control** - Restricts `sudo` access outside the allowed windows
+6. **Mindful uninstall** - A paced typing challenge before `-uninstall` can complete
+7. **Panic mode** - Emergency system suspension, re-suspending on early wake
 
-Each system can be independently enabled/disabled and configured with time windows for fine-grained control.
+Each mechanism can be independently enabled/disabled and configured with time windows for fine-grained control.
 
 ## Architecture
 
@@ -104,21 +104,22 @@ Glocker is three cooperating processes:
   `-unblock`, …), and running the local web server the browser extension reports
   violations into. It records everything to log files under `/var/log/`.
 - **`glockpeek`** — the stats service and web dashboard, a **separate process**
-  (its own systemd service, localhost only). It reads the same
-  `/etc/glocker/config.yaml`, reads the logs directly, and serves the dashboard
-  at the root (default `http://127.0.0.1:4317/`). The glocker daemon no
-  longer serves the dashboard itself.
+  (its own systemd service, localhost by default). It's **DB-backed** (SQLite
+  locally): rather than parsing the logs, it ingests records the glocker daemon's
+  syncer pushes to it. It reads its own config at `/etc/glocker/glockpeek.yaml`
+  and serves the dashboard at the root (default `http://127.0.0.1:4317/`). The
+  glocker daemon no longer serves the dashboard itself.
 - **`glockdoc`** — the watchdog. Runs periodically and records whether glocker is
   alive to a heartbeat log, and is **deliberately left in place by an uninstall**
   so a silent teardown is still recorded.
 
 `glocker` and `glockdoc` watch the machine locally; `glockpeek` reads and
-displays. The longer-term direction — glocker syncing to a local *or hosted*
-glockpeek, mutual glocker/glockdoc monitoring, end-to-end encryption, and an
-open-core hosted tier — is captured in [`ROADMAP.md`](ROADMAP.md).
+displays. glocker syncs to a local *or* hosted glockpeek, with end-to-end
+encryption so a hosted dashboard only ever stores ciphertext.
 
 ## Documentation
 
+- **[User guide](docs/habits.md)** - The why and the how: habit psychology plus a walkthrough of every feature and config stanza
 - **[Installation & Usage Guide](docs/installation.md)** - Commands, utilities, development setup
 - **[Sample config](conf/conf.yaml.sample)** - Every option documented inline (the config reference)
 - **[Architecture](docs/architecture.md)** - System design, monitoring systems, technical details
@@ -148,60 +149,53 @@ open-core hosted tier — is captured in [`ROADMAP.md`](ROADMAP.md).
 
 ```yaml
 domains:
-  # Always blocked (permanent - default)
-  - {name: "reddit.com"}
+  enabled: true
+  hosts_path: "/etc/hosts"
+  # Browsers cache DNS internally, so a domain freshly added via `glocker -block`
+  # stays reachable until they restart. Killing them on every -block forces a
+  # fresh lookup against the updated /etc/hosts.
+  kill_on_block: [firefox, chromium, brave]
+  unblocking:
+    reasons: ["work", "research", "emergency"]
+    temp_unblock_time: 20     # minutes a domain stays unblocked
+    max_per_day: 3            # 0 = unlimited
+  list:
+    - name: "reddit.com"                      # always blocked (permanent)
+    - name: "youtube.com"
+      unblockable: true                       # can be temporarily unblocked
+    - name: "twitter.com"                     # blocked only during the windows
+      block_windows:
+        - start: "09:00"
+          end: "17:00"
+          days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
 
-  # Always blocked, but can be temporarily unblocked
-  - {name: "youtube.com", unblockable: true}
-
-  # Time-based blocking - only blocked during the listed windows
-  - name: "twitter.com"
-    block_windows:
-      - start: "09:00"
-        end: "17:00"
-        days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-
-# Kill programs during the listed windows
-forbidden_programs:
-  programs:
-    # Killed during the window (use kill_windows for "blocked during these hours")
-    - name: "chromium"
+programs:
+  enabled: true
+  check_interval_seconds: 5
+  list:
+    - name: "chromium"                        # killed DURING the window
       kill_windows:
         - start: "20:00"
           end: "05:00"
           days: ["Mon", "Tue", "Wed", "Thu", "Fri"]
-
-    # Allowed only during the window (use allow_windows for "permitted during these hours")
-    - name: "steam"
+    - name: "steam"                           # allowed ONLY during the window
       allow_windows:
         - start: "19:00"
           end: "22:00"
           days: ["Fri", "Sat"]
-
-    # Extendible: `glocker -extend firefox "client call"` grants one hour,
-    # max once per rolling 24 hours.
-    - name: "firefox"
-      extendible: true
+    - name: "firefox"                         # `glocker -extend firefox "reason"`
+      extendible: true                        #   grants 1h, max once per 24h
       kill_windows:
         - start: "22:00"
           end: "05:00"
           days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-# Browsers cache DNS internally, so a domain freshly added via `glocker -block`
-# stays reachable until they restart. Kill them on every -block to force a
-# fresh lookup against the updated /etc/hosts. Ignores time windows and is not
-# counted as a violation.
-kill_on_block:
-  - firefox
-  - chromium
-  - brave
 
 # Lifecycle accountability: -uninstall must cite one of these reasons
 lifecycle:
   log_file: "/var/log/glocker/lifecycle.log"
   reasons: ["maintenance", "hardware", "testing"]
 
-# Lock screen after 5 violations in 60 minutes
+# Lock the screen after 5 violations in 60 minutes
 violation_tracking:
   enabled: true
   max_violations: 5
@@ -229,8 +223,8 @@ glocker -info            # Static configuration: domains, programs,
 
 # Domain management
 glocker -unblock "youtube.com,reddit.com:work research"
-glocker -block "facebook.com,instagram.com"   # persisted to config; also kills
-                                              # kill_on_block browsers to flush DNS
+glocker -block "facebook.com,instagram.com"   # in-memory only (until restart);
+                                              # also kills kill_on_block browsers to flush DNS
 glocker -add-keyword "gambling,casino,poker"
 
 # Forbidden-program management
@@ -239,9 +233,9 @@ glocker -extend "firefox:client call with X"   # one hour, max once per 24h
                                                # (program must be extendible: true)
 
 # Control
-glocker -reload          # Reload config
 glocker -lock            # Lock sudo immediately
-glocker -panic 30        # Suspend for 30 minutes
+glocker -panic           # Suspend now for panic.duration minutes (set in config)
+# (No runtime reload — edit conf/conf.yaml and re-run `make install` to apply.)
 
 # Uninstall with accountability
 sudo glocker -uninstall "maintenance" -note "kernel upgrade"
@@ -270,7 +264,7 @@ you want shut. Keep at least one **break-glass**, though: recovery mode is flagg
 to keep, because it's how you'd uninstall glocker if it ever broke (see
 [manual-uninstall.md](manual-uninstall.md)).
 
-## Firefox extension (manual install)
+## Firefox extension
 
 Content monitoring runs as a Firefox extension that `glocker -install` sets up
 **automatically**: it fetches the Mozilla-signed `.xpi` from
@@ -303,16 +297,16 @@ hosted instance — via GORM, so switching is just a driver + DSN change) and
 **multi-tenant** under the hood, which lets the same code run as a zero-config
 personal desktop tool or as a shared/hosted instance. The glocker agent doesn't
 write to the dashboard directly; a syncer pushes local records into glockpeek's
-**ingest API**, so the two can live on different machines (see [`ROADMAP.md`](ROADMAP.md)).
+**ingest API**, so the two can live on different machines.
 
-glockpeek runs in one of two modes (`glockpeek_mode`, default `local`):
+glockpeek runs in one of two modes (`mode`, default `local`):
 
 **`local` (default) — personal desktop.** Binds `127.0.0.1` only (unreachable
 from other hosts), no login or account to create, and the ingest endpoint is open
 to same-machine clients (no token). Just run it and open the page:
 
 ```bash
-glockpeek                        # uses /etc/glocker/config.yaml
+glockpeek                        # uses /etc/glocker/glockpeek.yaml
 xdg-open http://127.0.0.1:4317/
 ```
 
@@ -330,9 +324,9 @@ glockpeek -passwd  admin     # change a password
 glockpeek -addtoken admin    # mint an ingest API token for the syncer (printed once)
 ```
 
-- **Config** (`conf.yaml`): `glockpeek_mode` (`local`/`hosted`), `glockpeek_listen`
-  (address, hosted mode), `database` (driver + DSN), `glockpeek_secure_cookies`
-  (set true when served over HTTPS).
+- **Config** (`/etc/glocker/glockpeek.yaml`, everything under the `glockpeek:`
+  stanza): `mode` (`local`/`hosted`), `listen` (address, hosted mode), `database`
+  (driver + DSN), `secure_cookies` (set true when served over HTTPS).
 
 **How data gets there.** The glocker daemon keeps recording to its `/var` logs
 (the source of truth) and enforcing offline; a **syncer** goroutine
@@ -426,7 +420,7 @@ valid signature holds even if GitHub or the website were compromised.
 
 ## License
 
-See [LICENSE](LICENSE) file for details.
+Glocker is free software under the **GNU AGPLv3** — see [LICENSE](LICENSE).
 
 ## Contributing
 
