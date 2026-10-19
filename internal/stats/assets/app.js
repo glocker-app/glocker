@@ -4523,6 +4523,10 @@ const argmax = (arr) => arr.reduce((best, v, i, a) => (v > a[best] ? i : best), 
 function insightKeywordHits(violations, idx) {
   const byKw = new Map(); // keyword -> { kw, hours[24], days:Set, count, domains:Map }
   for (const v of violations || []) {
+    // Only content/url keyword hits are "searches". forbidden_program kills and
+    // web_access hits carry the program/domain in `keyword`, not a search term —
+    // folding them in surfaced nonsense like "chrome keeps getting searched".
+    if (v.type === "forbidden_program" || v.type === "web_access") continue;
     const kw = (v.keyword || "").trim();
     if (!kw || kw === "🔒") continue; // blank or still-encrypted
     const key = kw.toLowerCase();
