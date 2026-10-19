@@ -130,7 +130,7 @@ capabilities of the program are.
 
 ### Blocking 
 
-Glocker essentially does two thing. One - It blocks certain domains,
+Glocker essentially does two things. One - It blocks certain domains,
 keywords and applications. Two - It gathers statistics about usage so
 that behaviour patterns can be identified and acted upon. 
 
@@ -180,7 +180,7 @@ specified in `max_per_day`. A typical `unblocking` section looks like
       max_per_day: 3               # max unblocks per calendar day (0 = unlimited)
 
 Going back to the list of domains, you might want to block domains
-only during some times of the day, you specify that like so
+only during some times of the day. You specify that like so
 (e.g. block `twitter.com` from 9:00 to 17:00 and again from 21:00 to 2:00)
 during weekdays but relax the schedule on weekends.
 
@@ -291,7 +291,7 @@ windows and will apply to all FF browser profiles.
 
 One of the problems with any of these things is that if you have
 `root` on the system, you will be able to bypass them thereby making
-the whole thing just an inconvenient rather than a
+the whole thing just an inconvenience rather than a
 restriction. glocker has a feature where it can lock you out of sudo
 for a period of time. When you're locked out, you can interact with
 glocker only via. the command line (ie. glocker commands). Some of
@@ -300,7 +300,7 @@ enforce blocking are not editable unless you have root. This is
 controlled with the `sudoers` stanza. It also has an `enabled` key to
 turn it on. It does its work by swapping out the
 `allowed_sudoers_line` with the `blocked_sudoers_line` outside of the
-the `allow_windows`. Inside the window, `allowed_sudoers_line` will be
+`allow_windows`. Inside the window, `allowed_sudoers_line` will be
 in your `/etc/sudoers` and outside the window, it will be
 `blocked_sudoers_line`. A line like 
 
@@ -347,7 +347,7 @@ out. Remember, any resistance to the easiness of the habit means that
 it won't form or amplify.
 
 The `enabled` key is all you need — the timings ship with sensible
-built-in defaults. If you want to tune it, the knobs are still there:
+built-in defaults. If you want to tune it, there are a few knobs.
 `interval_ms` is how fast the characters of the sentence are revealed,
 one at a time; `deadline_ms` is how long you have after a character
 appears to type it before it counts as a miss; `grace_ms` is the pause
@@ -359,27 +359,30 @@ uninstalled within the last `recency_hours`, you have to type
 `recent_lines` sentences instead of `lines`. You can also set
 `sentences` to your own pool instead of the built-in one.
 
+### Lifecycle events
+Uninstalls will be recorded in the file specified in
+`lifecycle.log_file`. `lifecycle.reasons` is a list of strings which
+you can provide as reasons for the `-uninstall` command. This is
+recorded so that you know why you're uninstalling for analysis after
+the fact.
+
 ### Violation tracking
 Anytime you visit a blocked site or a page with blocked content or
 launch a forbidden program, glocker records it as a violation. If you
-have more than `violation_tracking.max_violations` within 
+have more than `violation_tracking.max_violations` within
 `violation_tracking.time_window_minutes`, it will execute
-`violation_tracking.command`. 
-
-#### Glocklock
-
-Glocklock is a helper program that can lock the screen for a given
-amount of time like a screen saver but which you cannot unlock. You
-have to wait for the time specified in
+`violation_tracking.command`. `glocklock` is a helper program that can
+lock the screen for a given amount of time like a screen saver but
+which you cannot unlock. You have to wait for the time specified in
 `violation_tracking.lock_duration`. Glocklock will pick up
 `violation_tracking.background` to display on the screen when it locks
-(this is X11 only. On Gnome/Wayland, you simply get a lock screen). 
+(this is X11 only. On Gnome/Wayland, you simply get a lock screen).
 The `violation_tracking.command` is what will run when you cross the
-violation threshold. My own is 
+violation threshold. My own is
 
     sudo -u john DISPLAY=:1 /usr/local/bin/glocklock
 
-Since glocker runs as root so just running glocklock won't work.
+`glocker` runs as root so just running glocklock won't work.
 
 
 ### Usage monitor
@@ -388,7 +391,7 @@ currently focused in. It will then save this information to a
 file. These can then be tagged (e.g. you could say that all time spent
 inside VSCode is work and all time spent inside discord is
 entertainment). Glocker's dashboards will give you insights about
-where you spend you time during the day. Over a long period, this will
+where you spend your time during the day. Over a long period, this will
 be useful to understand what applications or domains to block at what
 times. 
 
@@ -425,7 +428,7 @@ usage.
 
 ### Panic
 We'll skip to the last stanza - panic mode. This is something that's
-important if you enable it, then doing a `glocker -panic` will make
+important. If you enable it, then doing a `glocker -panic` will make
 glocker run `panic.command` and will hold it for `panic.duration`. 
 Typically, you set the `command` to something like
 pm-suspend and the delay to something like `30`. This forces you off
@@ -443,10 +446,13 @@ while so that you can recover your senses.
 ### Sync
 Glocker records statistics like violations, usage information
 etc. into plain text files. A companion (web) application called *glockpeek*
-is available which can be given this information. It will create a
-dashboard which you can use to review your performance and behaviour
-easily. We will discuss this in detail in a separate section at the
-end. 
+is available which can be given this information. Enabling the `sync`
+feature will enable this. The `glockpeek_url` is the location of the
+glockpeek instance. If you're using the hosted version of glocker, you
+will need an ingest bearer token for authentication. This is specified in
+`token`. You will also need to set `encrypt` to `true` so that the
+data will be encrypted before going to glockpeek. The sync frequency is
+specified in `interval_seconds`. 
 
 *glockpeek* has a separate config file in `conf/glockpeek.yaml` which
 we'll briefly talk about here
@@ -460,6 +466,21 @@ setup. `require_encryption` can be set to false. glockpeek will read
 information from the log files we've mentioned above into a
 database. The details of the database are stored inside the `database`
 key. The rest of the keys are not relevant to a local setup. 
+
+### Accountability
+This is where you configure your accountability buddy (or buddies). He
+or she will receive emails when you violate one of your rules. Their
+emails can be specified in `buddy_emails`. A summary of activity will
+be sent every `digest_every_hours` - usually set to 24 (daily) or 168
+(weekly). `digest_when_quiet` will suppress the message when there's
+no activity. `alerts.went_dark` will enable an alert if glocker gets
+uninstalled. Setting `high_violations` to a non-zero number will send
+emails if you've had more than these many violations. 
+
+::: margin-note
+Accountability requires the ability to send email. We use mailgun for
+this and this feature only works with the glocker [subscription](#subscription)
+:::
 
 ## Glocker usage
 
@@ -502,7 +523,7 @@ config file and restart glocker.
    `-uninstall`. 
 ### Informational 
 1. `-status` - Shows the current status (blocked sites, violations,
-   extension grants etc.). This is dynamic and changes. This the
+   extension grants etc.). This is dynamic and changes. This is the
    default if you just type `glocker` and hit enter when the glocker
    daemon is actually running.
 2. `-info` - Shows configuration information which is static. 
@@ -543,6 +564,11 @@ This is also how you apply changes after editing `conf/conf.yaml`.
 pulled in fresh; for everyday config edits, `make install` is enough since
 it skips the (slow) blocklist download.
 
+The install command also installs a prebuilt and signed browser
+extension for firefox. This will prevent you from opening incognito
+windows on all FF profiles and also block you from accessing sites
+that contain restricted keywords which we define in the config.
+
 A note on privileges. Glocker's binary is a normal, non-setuid
 program; the enforcement daemon runs as root under systemd. Everyday
 commands — `glocker -status`, `-unblock`, `-extend`, `-panic` and the
@@ -568,75 +594,180 @@ Uninstallation section above.
 
 # Glockpeek
 
-Glockpeek is a web application that you can run your machine. It can
+Glockpeek is a web application that you can run on your machine. It can
 read glocker's log files and produce output which you can use to
 analyse your usage and violation patterns. It can help you figure out
 when you're more vulnerable and what leads to that. You can tweak the
 config files to make these paths hard and thereby weaken the
 habits. It's mostly self explanatory but we'll cover the basics here.
 
-*This is, however, not the only way. I run `my.glockerapp.com` which
-is a hosted version of glockpeek which you can connect your running
+::: margin-note
+This is, however, not the only way. I run `my.glockerapp.com` which is
+a hosted version of glockpeek which you can connect your running
 glocker to. It will allow you to aggregate usage of multiple devices
 and get the insights that you want without any hassle. It can also
 send reports on violations to a buddy so that you can use it as an
-accountability aid. It's a paid service so your subscription helps me
-maintain glocker and keep it running. I'd appreciate the gesture if
-the program is useful for you.*
+accountability aid. It's a paid service so your [subscription](#subscription) helps me maintain glocker and keep it running. I'd
+appreciate the gesture if the program is useful for you.
+:::
 
-## Glockpeek UI
 
-### Overview
+## Overview
 The overview page gives you a single "score" for your digital
 health. 100 is perfect. We deduct points for violations, deliberate
 exposure (uninstalling glocker), If there are multiple violations, we
 treat it as a "deliberate" violation and deduct accordingly. 
 
-A few traditional numbers like streak count etc. are displayed as are
-some basic statistics about when your glocker synced last. 
+Your best and current streaks are also prominently displayed along
+with some statistics about your glocker agents syncing. 
 
-## History
-This shows your history of behaviour. You can adjust the window using
-the controls on the top bar. 
+## Analytics
+You can see your behaviour in this section. It starts with a date
+range picker. Select a range to get details. It gives you a quick
+overview of violations, unblocks, and unmanaged times. Once you pick a
+range, you can see the history or usage
 
-The first thing you get is a calendar. Dates will be marked in either
 
-- Full green - Indicating a clean day. No unmanaged time, no violations
-- Red - Indicating fully managed but with some violations. The
-intensity of the red will indicate how many violations occurred.  
-- Stipple pattern - Indicating unmanaged time (uninstalls). The amount
-  of stipple filling indicated what percentage of the day was
-  unmanaged. 
+### History
 
-Clicking on a day gives you "day detail" on the right which tells you
-what the violations were. You might have false positives (e.g. you
-forgot to whitelist wikipedia while having a blocked word gambling and
-you look up something about poker). You can mark a hit as a false
-positive in the day detail UI. It's expensive to have a lot of these
-so if you find yourself getting many false positives from a domain,
-consider whitelisting it.
+First, you get a *History Calendar* with statistics per calendar day - clean
+days, violations (more you have, the darker the day). The day gets
+hatch filled to indicate the time that the system was unmanaged
+(glocker uninstalled). The legend gives you these for quick reference. 
 
-The Timeline view shows the same data but with a graph so you can see
-spikes and good periods. 
+If you click on a day, you'll get the *Day Detail*. This gives you at
+what time you make the violation and which hours were not
+managed. Violations are listed too. Some times, there might be false
+positives (e.g. you're visiting site to help you with techniques to
+kick your gambling habit but glocker blocks them for the "gambling"
+tag). You can *ignore* these by hitting the `[x]`. You can "unignore"
+them by removing from the "Ignored violations" list below. 
 
-The next thing is the vulnerability map. This is a map of weekday x
-hour. You can get insights like "you tend to break your streak mostly
-on weekend nights" from this. The solution to that would be to
-increase restrictions at that time till you fix the problem.
+The *Vulnerability map* gives you a hour x day view of when you're
+most vulnerable. You get insights like you mostly mess up on weekend
+nights etc. 
 
-Finally, the ignored violations. These are things you've identified as
-false positives. They will be ignored when creating the above graphs
+*Unblocks* gives you a list of the times you used the `-unblock` or
+`-extend` commands. 
 
-## Usage
+*Ignored violations* shows the list of false positives. You can later
+whitelist these domains or something else to make it reflect your
+behaviour. 
 
-This tab records what you're doing. It will be populated only if you
-have usage statistics turned on in glocker. It's not compulsory but
-it's very very useful. 
+### Usage
+
+This is used to give you insights on what applications you're using,
+when you're using them and why. The usage tracker feature is very
+useful to understand what's sucking up your time and how to adjust
+glocker to prevent you from doing that.
+
+The first thing we need to understand is the tagging system. Glocker
+maintains the *Program* (e.g. `firefox-esr`) and *Title* (e.g. `Google Docs`) 
+in its usage tracking tables. Glocker allows you to tag these entries
+by matching either of these fields using regular expressions. 
+
+For example, you could say something like 
+
+> Tag all `firefox-esr` windows where the title matches `YouTube` with
+> the tag `entertainment`).
+
+Then, you can figure out how much time you spend on "entertainment"
+and make config changes to optimize how you work. 
+
+Tags themselves have some configurability too. Tags are of the form
+`namespace:name`. The `namespace` part lets you tag the same time along
+several independent axes. An entry gets at most one tag per namespace,
+and the *Usage* tab shows a separate breakdown for each namespace. So the
+same hours can be sliced by category, by project, by tool, and so on.
+
+`Glocker` is the built-in namespace (entertainment, social, games, dev,
+work, ...). You can add your own. Here are a few examples.
+
+| Namespace   | Example tags                        | The question it answers           |
+|-------------|-------------------------------------|-----------------------------------|
+| `Glocker`   | entertainment, social, games, work  | What kind of thing is this?       |
+| `Tool`      | editor, terminal, browser, comms    | Where does my time go by function?|
+| `Project`   | glocker, acme-client, personal      | Which project owns this time?     |
+| `Focus`     | deep, shallow, admin                | Deep work vs busywork?            |
+| `Life`      | health, finance, learning, chores   | Personal time, by area            |
+| `Billing`   | billable, nonbillable               | Which hours do I invoice?         |
+
+Any tag in any namespace can be flagged a *distraction*, which is used
+by the the work-hours which we'll describe later. 
+
+Because matching is on the *Program* or the *Title*, the same app splits
+by what it's doing. For example, consider a `firefox-esr` window
+titled `YouTube`. This can be classified on activity by assigning it a
+`Glocker:entertainment` tag. You can also classify it on a focus axis
+calling by tagging it `Focus:shallow`. Similarly, `firefox-esr` with a
+`Google Docs` title can be tagged using `Glocker:work` and
+`Focus:deep`. Now, you can find out independently how many hours you
+spend on deep work and how many hours you spend on entertainment by
+looking at the breakdowns on separate axes. 
+
+### Tags
+
+You can create and edit the available tags in the *Tags* tab which
+gives you the Tab registry. The `Glocker` namespace is fixed if you're
+using the hosted setup and you get a few pre configured rules so that
+you can get value immediately. 
+
+You can create new namespaces using the `+ Add namespace` button and
+inside a namespace, you can use the `+ Add tag` button to add a
+tag. Clicking on the tag colour allows you to configure the colour. 
+
+## Insights
+
+The *insights* tab is a nice feature that allows you to introspect on
+your behaviour. Even if you turn off the enforcement features and just
+use this, you can get really useful insights. 
+
+The range picker is still there on the top so you can analyse data for
+a small period of time. You can set your work hours and your bedtime
+hours using the sliders on the left. 
+
+Once you do these, you will get a list of suggestions. These are
+grouped into 
+1. Repeated searches - If you keep hitting a blocked word in your
+   browser (e.g. gambling), it will tell you when you're doing this
+   and make a suggestion to tighten the violation tracker to block you
+   out.
+1. Work hours apps - If you tag an app as a "distraction" and it shows
+   up excessively in the working hours, this will highlight it and
+   give you a snippet you can add to your config to stop the app from
+   interfering with your work. 
+1. Past bedtime - One of the things that I personally find most
+   useful. Where you "revenge procrastinate" in the night. Block these
+   in your bedtime window and you'll start sleeping earlier. 
+1. Uninstalls - If you uninstall too often, it will be highlighted
+   here. 
+1. Repeated unblocks - If you keep unblocking (say) Youtube and
+   wasting time, you'll notice it here. 
+1. Repeated extensions - If you grant extensions (`-extend`) multiple
+   times in this window, you'll notice it here and you'll get a
+   suggestion to disallow it for a period of time
+
+Going through the suggestions and making the fixes will reduce errant
+behaviour and give you control over yourself.
+
+If you have multiple machines connected to the hosted Glockpeek, you
+can switch between them. The Overview, Analytics, and Insight tabs are
+per machine. 
+
+## Config
+
+The config tab gives you a quick overview of the `conf.yaml` of each
+machine connected to glockpeek.
+
+## Devices
+
+The devices allows you to connect, revoke or rename devices for the
+hosted glockpeek setup.
 
 
 # Subscription
 
-While all of glocker is GPLv3 and free software, I do run a hosted
+While all of glocker is AGPLv3 and free software, I do run a hosted
 version of glockpeek for public use that's available at a modest
 monthly or yearly subscription. You can join at
 [my.glockerapp.com](https://my.glockerapp.com). The following are the
@@ -685,25 +816,6 @@ on each machine you want to sync. They all share the same key, so the
 dashboard can combine them into one picture. After that, glocker syncs on its
 own.
 
-### Accountability buddies
-
-If you're fighting something like pornography or gambling, having someone in
-the loop helps. Add one or more buddy emails and glockpeek will send them a
-rolling digest plus immediate alerts — a "went dark" alert if your machine
-stops reporting (a dead-man's switch), and a high-violation alert when you
-cross a threshold. The mails carry counts and liveness only ("14 violations,
-went dark 2h"); the server can't read your encrypted records, so it never
-tells them *what* you were doing.
-
-The wizard asks for a buddy email during `glocker -init`. To set it by hand,
-use the `accountability` stanza:
-
-    accountability:
-      enabled: true
-      buddy_emails:
-        - "friend@example.com"
-      digest_every_hours: 24
-
 
 ## Encryption
 
@@ -741,7 +853,7 @@ Storing the key on the server side inside the locked box allows you to
 use the same key on multiple devices. 
 
 The following fields are not encrypted. They don't reveal detailed
-usage information. The primary sensitive items the the program, title
+usage information. The primary sensitive items are the program, title
 etc. The ones that are not encrypted are listed below
 
 - **`ts`** (timestamps) and **`heartbeat.alive`** — the time-series and
@@ -760,15 +872,6 @@ etc. The ones that are not encrypted are listed below
 - **`record_id`** — a keyed HMAC over the plaintext. The server can't
   reverse it, but identical events hash identically, so it can tell the
   *same* violation recurred — not what it is.
-- **Rules and tags — structure only.** (updated 2026-10-01) The program
-  names and window titles in the rules you write, and your own tag names,
-  are now end-to-end encrypted as well: they're sealed in your browser
-  before they're saved, so the server stores only ciphertext for them and
-  the matching that applies a rule runs in your browser after it decrypts
-  them. What stays visible is the *shape* of your registry — how many
-  rules and tags you have, their order, the colours you pick, and the
-  shared `Glocker:*` system categories (those are the same for everyone,
-  so they were never yours to hide).
 
 The upshot is that glockerapp can't see your data. The app names and
 window titles you actually visit, and the rules and tags you write
