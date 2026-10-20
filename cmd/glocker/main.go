@@ -227,13 +227,12 @@ func main() {
 		return
 	}
 
-	// Connect this agent to the account's end-to-end encryption. It only writes the
-	// master key under /etc/glocker, which the setuid binary's effective root
-	// already permits — so, unlike install/uninstall, it is NOT gated on real root
-	// (the sudo window). The passphrase is the real gate on installing a key.
+	// Connect this agent to the account's end-to-end encryption. It writes the
+	// master key under /etc/glocker, so it needs root (sudo); the passphrase is the
+	// real gate on installing a key.
 	if *connectFlag {
 		if !install.RunningAsRoot(false) {
-			log.Fatal("Connect needs root to write the encryption key under /etc/glocker — run the installed glocker (setuid root), or use sudo")
+			log.Fatal("Connect needs root to write the encryption key under /etc/glocker — run it with sudo")
 		}
 		cfg, err := config.LoadConfig()
 		if err != nil {
@@ -445,7 +444,7 @@ func main() {
 		}
 
 		log.Printf("Response: %s", strings.TrimSpace(response))
-		log.Println("Domains will be permanently blocked.")
+		log.Println("Blocked until glocker restarts; add them to the config to keep them blocked.")
 		return
 	}
 

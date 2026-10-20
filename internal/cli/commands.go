@@ -25,8 +25,8 @@ const (
 	// ServiceOnline: the daemon answered over the socket (server-side render).
 	ServiceOnline ServiceState = iota
 	// ServiceUnknown: the client couldn't reach the socket — almost always
-	// because it lacks root (the socket dir is 0700 root), so the daemon may
-	// well be running; we simply can't query it from here.
+	// because it isn't in the glocker group (or hasn't logged in again since
+	// install), so the daemon may well be running; we can't query it from here.
 	ServiceUnknown
 	// ServiceDown: we had the rights to reach the socket but nothing was there.
 	ServiceDown
@@ -53,7 +53,7 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 	case ServiceDown:
 		f.row("service", alert("○")+" offline"+dim(" · daemon not running"))
 	default: // ServiceUnknown
-		f.row("service", accent("◌")+" unknown"+dim(" · this binary isn't setuid root — use the installed glocker"))
+		f.row("service", accent("◌")+" unknown"+dim(" · can't reach the daemon — join the glocker group (log out and in after install) or use sudo"))
 	}
 
 	// Get blocked domain count from enforcement state

@@ -3916,6 +3916,7 @@ function deviceConfig(token) {
     "  enabled: true",
     `  glockpeek_url: "${location.origin}"`,
     `  token: "${token}"`,
+    "  encrypt: true",
     "  interval_seconds: 300",
   ].join("\n");
 }

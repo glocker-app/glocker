@@ -25,10 +25,15 @@ DEPLOY_USER    ?= root
 DEPLOY_HOST    ?=
 # Fail fast on an unreachable host instead of hanging.
 SSH_OPTS       ?= -o ConnectTimeout=10
-GLOCKPEEK_CONF ?= conf/glockpeek.yaml   # server config with secrets (gitignored)
-TAGS_FILE      ?= tags.json             # curated starter rules (hosted-only, gitignored)
-DB_BACKUP_DIR  ?= deploy/backups        # local pg_dump destination (gitignored)
-DB_DSN         ?=                       # set → dump this DB (e.g. managed PG); empty → on-box postgres
+# (Comments sit on their own lines: a trailing `# …` would leave spaces in the value.)
+# Server config with secrets (gitignored).
+GLOCKPEEK_CONF ?= conf/glockpeek.yaml
+# Curated starter rules (hosted-only, gitignored).
+TAGS_FILE      ?= tags.json
+# Local pg_dump destination (gitignored).
+DB_BACKUP_DIR  ?= deploy/backups
+# Set → dump this DB (e.g. managed PG); empty → on-box postgres.
+DB_DSN         ?=
 
 # Internal build step (dependency of install / full-install); not surfaced in help.
 build-all:
@@ -155,7 +160,7 @@ sign-firefox-extension:
 release-firefox-extension: sign-firefox-extension deploy-firefox-extension
 
 deploy-firefox-extension:
-	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-extension DEPLOY_HOST=<node-ip>"; exit 1; }
+	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-firefox-extension DEPLOY_HOST=<node-ip>"; exit 1; }
 	@xpi=$$(ls -t extensions/firefox/web-ext-artifacts/*.xpi 2>/dev/null | head -1); \
 	 test -n "$$xpi" || { echo "no signed .xpi in extensions/firefox/web-ext-artifacts/ — run 'web-ext sign --channel unlisted' there first"; exit 1; }; \
 	 echo "shipping $$xpi"; \

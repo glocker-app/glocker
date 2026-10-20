@@ -32,7 +32,7 @@ const (
 	SudoersBackup              = "/etc/sudoers.glocker.backup"
 	SudoersMarker              = "# GLOCKER-MANAGED"
 	SystemdFile                = "./extras/glocker.service"
-	GlockerSock                = "/var/glocker/glocker.sock" // root-owned 0700 dir gates access
+	GlockerSock                = "/var/glocker/glocker.sock" // root:glocker socket; group members may use it
 	EmailCooldownMinutes       = 15                          // Minimum time between emails for the same event type
 )
 
