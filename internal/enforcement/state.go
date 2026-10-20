@@ -11,6 +11,7 @@ import (
 
 	"glocker/internal/config"
 	"glocker/internal/state"
+	"glocker/internal/utils"
 )
 
 // EnforcementState tracks the current state of enforcement to avoid unnecessary rewrites.
@@ -422,17 +423,11 @@ func buildTimeWindowState(now time.Time) map[string]bool {
 	return result
 }
 
-// isSudoersAllowed checks if sudoers should be in "allowed" state based on time windows.
+// isSudoersAllowed checks if sudoers should be in "allowed" state based on time
+// windows. Uses the shared window check so an overnight window (e.g. 22:00-02:00)
+// stays open after midnight, matching IsSudoAllowed and the -status preview.
 func isSudoersAllowed(cfg *config.Config, now time.Time) bool {
-	currentDay := now.Weekday().String()[:3]
-	currentTime := now.Format("15:04")
-
-	for _, window := range cfg.Sudoers.AllowWindows {
-		if containsDay(window.Days, currentDay) && isInTimeWindow(currentTime, window.Start, window.End) {
-			return true
-		}
-	}
-	return false
+	return utils.InAnyWindow(cfg.Sudoers.AllowWindows, now)
 }
 
 // containsDay checks if a day is in the list of days.
