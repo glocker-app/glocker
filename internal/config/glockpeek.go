@@ -54,6 +54,9 @@ type GlockpeekConfig struct {
 	// AdminEmail names the account granted user-management powers in the dashboard.
 	// Hosted mode only; empty means no admin account.
 	AdminEmail string `yaml:"admin_email"`
+	// TermsURL is the operator's privacy & terms page. When set, the dashboard
+	// links it from the sidebar and the signup form; empty shows no link.
+	TermsURL string `yaml:"terms_url"`
 	// Captcha turns on the proof-of-work captcha on the signup endpoint (hosted).
 	Captcha bool `yaml:"captcha"`
 	// RequireEncryption, when true, makes the ingest endpoint REJECT any batch not

@@ -85,6 +85,7 @@ func main() {
 	var mailCfg config.MailConfig
 	appURL := ""
 	adminEmail := ""
+	termsURL := ""
 	captcha := false
 	requireEncryption := false
 	var billingOpts stats.BillingOptions
@@ -112,6 +113,7 @@ func main() {
 		mailCfg = gp.Mail
 		appURL = gp.AppURL
 		adminEmail = gp.AdminEmail
+		termsURL = gp.TermsURL
 		captcha = gp.Captcha
 		requireEncryption = gp.RequireEncryption
 		if gp.Billing.Enabled {
@@ -209,6 +211,7 @@ func main() {
 		Billing:           billingOpts,
 		Version:           version,
 		CDNBase:           cdnBase,
+		TermsURL:          termsURL,
 	}
 	desc := "hosted: login required"
 	if !hosted {

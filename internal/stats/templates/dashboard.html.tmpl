@@ -60,6 +60,7 @@
         <button id="refresh-btn" class="refresh-btn" type="button" title="Refresh data"></button>
         <hr class="foot-sep" />
         <span id="footer-version" class="src">{{ if .Version }}<span class="ver">{{ .Version }}</span>{{ end }}</span>
+        {{ if .TermsURL }}<a class="src" href="{{ .TermsURL }}" target="_blank" rel="noopener">Privacy &amp; terms</a>{{ end }}
       </div>
     </nav>
 
@@ -428,6 +429,7 @@
         <input id="reg-pass2" name="password2" type="password" autocomplete="new-password" minlength="8" required />
       </label>
       <button type="submit" class="btn-primary" id="register-submit">Create account</button>
+      {{ if .TermsURL }}<p class="login-alt">Creating an account accepts the <a href="{{ .TermsURL }}" target="_blank" rel="noopener">privacy &amp; terms</a>.</p>{{ end }}
       <p class="login-error" id="register-error" hidden></p>
       <p class="login-note" id="register-note" hidden></p>
       <p class="login-alt">Already have an account? <a href="#" id="show-login">Sign in</a></p>

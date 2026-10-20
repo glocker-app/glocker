@@ -50,6 +50,8 @@ glockpeek:
   #
   # admin_email: "you@example.com"          # account granted user-management powers
   #
+  # terms_url: "https://example.com/privacy.html"  # linked from the sidebar + signup (empty = no link)
+  #
   # captcha: true                           # proof-of-work captcha on signup
   #
   # cdn_base: "https://<bucket>.<region>.cdn.digitaloceanspaces.com"

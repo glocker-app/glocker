@@ -64,7 +64,12 @@ type Options struct {
 	// from this base URL with content-hashed names + SRI. Empty keeps every asset
 	// same-origin (local/dev). The E2E crypto JS is never CDN-served.
 	CDNBase string
+	// TermsURL, when set, is linked from the sidebar and the signup form.
+	TermsURL string
 }
+
+// termsURL is the operator's privacy & terms page (empty → no link).
+var termsURL string
 
 // requireEncryption, when true, makes /api/ingest refuse plaintext batches.
 var requireEncryption bool
@@ -88,6 +93,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	adminEmail = strings.TrimSpace(o.AdminEmail)
 	requireEncryption = o.RequireEncryption
 	buildVersion = o.Version
+	termsURL = o.TermsURL
 	buildAssetManifest(o.CDNBase)
 	initBilling(o.Billing)
 	initCaptcha(o.Captcha)
@@ -113,7 +119,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	// just renders the chrome and injects the build version. Any other path under
 	// "/" is a static asset served by fileServer.
 	serveShell := func(w http.ResponseWriter, r *http.Request) {
-		renderPage(w, "dashboard.html.tmpl", struct{ Version string }{buildVersion})
+		renderPage(w, "dashboard.html.tmpl", struct{ Version, TermsURL string }{buildVersion, termsURL})
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
