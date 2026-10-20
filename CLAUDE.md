@@ -117,6 +117,8 @@ glocker -uninstall "reason"
   - `RunningAsRoot()` - Privilege checks
   - Setuid permission setup
   - File immutability management
+- **`firefox.go`** - Firefox xpi fetch + policy merged into `/etc/firefox/policies/policies.json` (prior values restored on uninstall)
+- **`chrome.go`** - Chrome/Chromium/Brave/Edge managed policy (`glocker.json`): force-installs the extension from `https://glockerapp.com/chrome/update.xml`, disables incognito/guest/secure DNS
 
 ### Monitoring (`internal/monitoring/`)
 - **`forbidden.go`** - Forbidden program monitoring
@@ -191,6 +193,13 @@ glocker -uninstall "reason"
 - **`content.js`** - Page content scanning
 - **`blocked.html`** - Blocked page template
 
+### Chrome Extension (`extensions/chrome/`)
+- MV3 port of the Firefox extension: `declarativeNetRequest` redirect rules do the
+  URL-keyword blocking, a streaming fetch of `/keywords-stream` replaces EventSource
+- Signed with `extensions/chrome-signing.pem` (gitignored; fixes the extension ID)
+  by `make sign-chrome-extension`; `make deploy-chrome-extension` publishes the crx
+  + `update.xml` to the site
+
 ### Configuration & Resources
 - **`conf/conf.yaml`** - Working configuration (small; pulls in blocklists via includes)
 - **`conf/conf.yaml.sample`** - Sample config committed alongside `conf.yaml`; "the sample" means BOTH
@@ -201,7 +210,8 @@ glocker -uninstall "reason"
 ### Documentation
 - **`CLAUDE.md`** - This file - developer guidance
 - **`docs/`** - `architecture.md`, `installation.md`, `bypasses.md`, `e2e-design.md`, and
-  **`docs/openapi.yaml`** (the OpenAPI spec for the HTTP APIs)
+  **`docs/openapi.yaml`** (the OpenAPI spec for glockpeek's HTTP API) and
+  **`docs/agent-openapi.yaml`** (the agent's loopback API used by the extensions)
 
 ## Quick Reference: Common Tasks
 

@@ -52,6 +52,13 @@ func RestoreSystemChanges(cfg *config.Config) error {
 		log.Println("✓ Firefox extension removed")
 	}
 
+	log.Println("Removing Chrome extension policies...")
+	if err := UninstallChromeExtension(); err != nil {
+		log.Printf("   Warning: couldn't remove Chrome extension: %v", err)
+	} else {
+		log.Println("✓ Chrome extension policies removed")
+	}
+
 	// Clean up the GNOME window-bridge extension (self-skips if not installed).
 	RemoveGnomeExtension(cfg)
 

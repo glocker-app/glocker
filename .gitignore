@@ -52,3 +52,7 @@ tags.json
 
 # Marketing logo source art lives in the private hosted repo, not here.
 /logo.png
+
+# Chrome extension signing key — fixes the extension ID; back it up, never commit
+extensions/chrome-signing.pem
+extensions/chrome-artifacts/

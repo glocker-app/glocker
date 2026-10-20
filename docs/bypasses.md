@@ -17,12 +17,13 @@ a checkbox in Settings.
 
 `internal/install/firefox.go` writes `/etc/firefox/policies/policies.json` to
 install the extension, but sets **no `DNSOverHTTPS` policy and no locked
-`Preferences`**. Nothing is installed for Chrome at all.
+`Preferences`**. For Chrome-family browsers, `internal/install/chrome.go` writes a
+managed policy with `DnsOverHttpsMode: "off"` (Chrome, Chromium, Brave, Edge).
 
-**Status:** open. The largest hole — it voids the entire hosts layer in seconds.
+**Status:** open for Firefox, closed for Chrome-family browsers. The largest hole
+— it voids the entire hosts layer in seconds.
 **Close it with:** `"DNSOverHTTPS": {"Enabled": false, "Locked": true}` in the
-Firefox policy, plus a Chrome/Chromium managed-policy file
-(`/etc/opt/chrome/policies/managed/`, `DnsOverHttpsMode: "off"`).
+Firefox policy.
 
 ## 2. Subdomains
 
@@ -101,19 +102,18 @@ scheduled — it's so the cheap wins aren't lost among the structural ones.
 
 | Item | Fix |
 |---|---|
-| 1 (partial) | Add `chrome`, `chromium`, `brave` to `programs.list`. Doesn't touch Firefox DoH, but closes "use the other browser with secure DNS" — and non-Firefox browsers are already a content-monitoring blind spot, since the extension is Firefox-only. |
+| 1 (partial) | Add `chrome`, `chromium`, `brave` to `programs.list`. Doesn't touch Firefox DoH, but closes "use the other browser with secure DNS" for browsers glocker writes no policy for. |
 | 2 | List `old.reddit.com`, `m.youtube.com` etc. as their own `domains.list` entries. Tedious and unbounded, but available now. |
 | 3 | `programs.list` with `tor-browser`, `mullvad-browser`. Subject to the item-5 caveat. |
-| 4 | `content.keywords.url_keywords` — `nitter`, `archive.`, `redd.it`, `piped`. Firefox-only, but the right layer for a set nobody can enumerate. |
+| 4 | `content.keywords.url_keywords` — `nitter`, `archive.`, `redd.it`, `piped`. Extension browsers only, but the right layer for a set nobody can enumerate. |
 
 ### Needs implementing
 
 | Item | Change | Size |
 |---|---|---|
-| 1 | `"DNSOverHTTPS": {"Enabled": false, "Locked": true}` in the policy JSON `internal/install/firefox.go` already writes, plus a Chrome managed-policy file at `/etc/opt/chrome/policies/managed/`. | Small — best value on this page |
+| 1 | `"DNSOverHTTPS": {"Enabled": false, "Locked": true}` in the policy JSON `internal/install/firefox.go` already writes (Chrome-family is done). | Small — best value on this page |
 | 5 | Match `/proc/<pid>/exe` (resolved path or inode) alongside `comm` in `internal/monitoring/forbidden.go`. Makes every config-only program restriction above actually stick. | Small–medium |
 | 2 | A `subdomains:` field on `Domain`, or prefix expansion from a common list. Caps the problem rather than solving it — hosts files can't wildcard. | Medium |
-| 4 | A Chrome build of the extension. | Large |
 | 1, 3, 7 | The structural fix below. | v2 |
 
 ### Detectable by `precheck`

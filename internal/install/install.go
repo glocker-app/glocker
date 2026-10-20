@@ -325,6 +325,23 @@ func InstallGlocker(confPath string) error {
 		firefoxExtensionOK = true
 	}
 
+	// Step 5a: Chrome-family policies. Chrome fetches the extension itself from
+	// glockerapp.com; the policies also close incognito, guest mode and secure
+	// DNS, so they go in even if the site can't be reached right now.
+	chromeExtensionOK := true
+	if err := InstallChromePolicies(); err != nil {
+		chromeExtensionOK = false
+		log.Println()
+		log.Printf("⚠️  Chrome policies NOT fully installed: %v", err)
+		log.Println()
+	}
+	if err := CheckChromeUpdateURL(); err != nil {
+		log.Println()
+		log.Printf("⚠️  Couldn't reach the Chrome extension: %v", err)
+		log.Println("⚠️  Chrome will install it once glockerapp.com is reachable.")
+		log.Println()
+	}
+
 	// Step 5b: Install the GNOME Shell window-bridge extension (GNOME/Wayland
 	// only; self-skips elsewhere) so usage tracking works there too.
 	InstallGnomeExtension(&cfg)
@@ -386,6 +403,10 @@ func InstallGlocker(confPath string) error {
 	log.Println("   Run 'glocker -status' to check the current status.")
 	log.Println("   Re-run 'sudo glocker -check' anytime to re-audit bypass routes + capabilities.")
 
+	if !chromeExtensionOK {
+		log.Println()
+		log.Println("⚠️  Chrome policies are NOT fully installed (see the warning above).")
+	}
 	if !firefoxExtensionOK {
 		log.Println()
 		log.Println("⚠️  Firefox content monitoring is NOT active.")

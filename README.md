@@ -290,6 +290,18 @@ sudo glocker -install
 or Flatpak does **not** read `/etc/firefox/policies/`, so the enterprise install
 can't reach it. Use the distro `.deb` Firefox for the extension to force-install.
 
+### Chrome / Chromium
+
+`glocker -install` also writes a managed policy (`glocker.json`) into the Chrome,
+Chromium, Brave and Edge policy dirs (`/etc/opt/chrome/policies/managed/`,
+`/etc/chromium/policies/managed/`, …). It force-installs the same extension from
+`https://glockerapp.com/chrome/update.xml` in every profile, where it can't be
+disabled, and turns off incognito, guest windows, secure DNS and Brave's Tor
+windows. Chrome re-checks that URL every few hours for updates. If the installer
+can't reach it, it warns; the policy stays and Chrome installs the extension once
+it can. Uninstall removes only glocker's policy file. Tested on Chrome and
+Chromium; snap / Flatpak builds ignore `/etc` policies, as with Firefox.
+
 ## Stats Dashboard (glockpeek)
 
 `glockpeek` runs as its own systemd service and serves a web dashboard of your
