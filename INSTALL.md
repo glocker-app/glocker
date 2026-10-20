@@ -68,14 +68,18 @@ This builds every binary, pulls the blocklists, and installs and starts the
 services. (Under the hood: `make build-all`, then `scripts/update_domains.py all`, then
 `sudo ./glocker -install`.) You'll be asked for `sudo`.
 
-## 5. Load the Firefox extension
+## 5. Browser extensions
 
-The content monitor is a Firefox extension in `extensions/firefox/`:
+The installer force-installs the content-monitor extension in Firefox and
+Chrome/Chromium through browser policy; restart the browser to pick it up.
+`about:policies` (Firefox) and `chrome://policy` (Chrome) show what's applied.
 
-1. Open `about:debugging#/runtime/this-firefox`
-2. **Load Temporary Add-on** → choose `extensions/firefox/manifest.json`
+To work on the extension itself, load it unpacked instead:
 
-(For a permanent install, sign it through Mozilla AMO.)
+- Firefox: `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on** →
+  `extensions/firefox/manifest.json`
+- Chrome: `chrome://extensions` → Developer mode → **Load unpacked** →
+  `extensions/chrome/`
 
 ## 6. Verify
 

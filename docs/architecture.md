@@ -93,7 +93,7 @@ web_tracking:
 **What it does:** Content monitoring for keywords and URL patterns in browsers
 
 **How it works:**
-- Firefox extension (in `extensions/firefox/`) monitors page URLs and content
+- Browser extension (Firefox: `extensions/firefox/`, Chrome/Chromium: `extensions/chrome/`) monitors page URLs and content
 - Fetches keyword lists from `http://127.0.0.1/keywords` API
 - Scans page content for forbidden keywords
 - Reports violations to `http://127.0.0.1/report` API
@@ -500,7 +500,7 @@ lsattr /etc/hosts
 ### 7. Browser Extension Communication
 
 ```
-Firefox Extension (background.js)
+Browser Extension (background.js)
          |
          v
   GET http://127.0.0.1/keywords

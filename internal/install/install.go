@@ -70,7 +70,7 @@ func logOpenBypassRoutes(managedUser string) {
 
 // InstallGlocker performs the complete installation of Glocker on the system.
 // This includes copying the binary, config file, setting up systemd service,
-// and installing the Firefox extension.
+// and installing the browser extensions (Firefox and Chrome policies).
 // confPath is the source config to install (its directory also holds conf.d/).
 // Callers pass a path so the config can live outside the source tree (e.g. a
 // private ops repo) while code assets (extras/*.service) stay relative to CWD.

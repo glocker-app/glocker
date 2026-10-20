@@ -102,7 +102,7 @@ scheduled — it's so the cheap wins aren't lost among the structural ones.
 
 | Item | Fix |
 |---|---|
-| 1 (partial) | Add `chrome`, `chromium`, `brave` to `programs.list`. Doesn't touch Firefox DoH, but closes "use the other browser with secure DNS" for browsers glocker writes no policy for. |
+| 1 (partial) | Add browsers glocker writes no policy for (Vivaldi, Opera, …) to `programs.list`. Doesn't touch Firefox DoH, but closes "use the other browser with secure DNS". |
 | 2 | List `old.reddit.com`, `m.youtube.com` etc. as their own `domains.list` entries. Tedious and unbounded, but available now. |
 | 3 | `programs.list` with `tor-browser`, `mullvad-browser`. Subject to the item-5 caveat. |
 | 4 | `content.keywords.url_keywords` — `nitter`, `archive.`, `redd.it`, `piped`. Extension browsers only, but the right layer for a set nobody can enumerate. |

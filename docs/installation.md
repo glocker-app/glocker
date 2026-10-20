@@ -160,12 +160,15 @@ violation_tracking:
 
 ## Browser Extension Installation
 
-The Firefox extension lives in `extensions/firefox/`. To install:
+`glocker -install` force-installs the extension in Firefox (`extensions/firefox/`)
+and Chrome/Chromium (`extensions/chrome/`) through browser policy, so there's
+nothing to load by hand. It monitors URLs and page content based on keywords from
+Glocker.
 
-1. Navigate to `about:debugging#/runtime/this-firefox`
-2. Click "Load Temporary Add-on"
-3. Select `extensions/firefox/manifest.json`
-4. Extension will monitor URLs and page content based on keywords from Glocker
+For development, load it unpacked: Firefox via
+`about:debugging#/runtime/this-firefox` → "Load Temporary Add-on" →
+`extensions/firefox/manifest.json`; Chrome via `chrome://extensions` → Developer
+mode → "Load unpacked" → `extensions/chrome/`.
 
 ## Development
 

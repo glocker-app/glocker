@@ -258,11 +258,11 @@ reinstall (`make install` / `make full-install`, which restarts the daemon).
 
 
 #### Testing Browser Extension
-The Firefox extension lives in `extensions/firefox/`. After making changes:
-1. Navigate to `about:debugging#/runtime/this-firefox`
-2. Load temporary extension from `extensions/firefox/manifest.json`
-3. Check browser console for extension logs
-4. Monitor `/var/log/glocker/reports.log` for content monitoring events
+The extensions live in `extensions/firefox/` and `extensions/chrome/`. After making changes:
+1. Firefox: `about:debugging#/runtime/this-firefox` → load `extensions/firefox/manifest.json`;
+   Chrome: `chrome://extensions` → Developer mode → Load unpacked → `extensions/chrome/`
+2. Check the extension's console (Firefox: Inspect; Chrome: the "service worker" link)
+3. Monitor `/var/log/glocker/reports.log` for content monitoring events
 
 ## Architecture
 
@@ -278,9 +278,9 @@ The Firefox extension lives in `extensions/firefox/`. After making changes:
 1. **Hosts file blocking** - Modifies `/etc/hosts` with immutable flag
 2. **Forbidden programs** - Kills processes during configured time windows
 3. **Sudoers modification** - Restricts sudo access during blocking periods
-4. **Browser extension** - Content/keyword monitoring via Firefox extension
+4. **Browser extension** - Content/keyword monitoring via the Firefox and Chrome extensions
 
-**Firefox Extension** (`extensions/firefox/`)
+**Browser Extensions** (`extensions/firefox/`, `extensions/chrome/` — same behaviour)
 - `background.js` - Monitors URL navigation, fetches keywords from glocker service
 - `content.js` - Scans page content for problematic keywords
 - Reports violations to glocker via HTTP POST to `http://127.0.0.1/report`

@@ -133,7 +133,7 @@ encryption so a hosted dashboard only ever stores ciphertext.
 - **Accountability** - Violations, unblocks, extension grants, and lifecycle events are synced to glockpeek; email notifications and the daily report are handled there, per-account, not by the agent (the agent sends no email and needs no Mailgun key)
 - **DNS Cache Flushing** - Configured browsers (`kill_on_block`) are killed right after `glocker -block` applies, forcing a fresh lookup so a newly blocked domain isn't still reachable from a browser's internal DNS cache
 - **Lifecycle Logging** - Install and uninstall events are recorded with a required reason and optional note; valid reasons are gated by config
-- **Content Monitoring** - Firefox extension watches for keywords on any page
+- **Content Monitoring** - Browser extension (Firefox, Chrome/Chromium) watches for keywords on any page
 - **Screen Locker** - Timed auto-unlock, on X11 or Wayland (GNOME via the shell extension; wlroots/KDE via `ext-session-lock`)
 - **Stats Dashboard** - Web dashboard (`glockpeek`) with violations, clean streaks, usage analytics, and exposure patterns
 - **Panic Mode** - Nuclear option: suspend system and re-suspend on early wake
@@ -363,7 +363,7 @@ Glocker is a **Go application** that runs as a systemd service with setuid root 
 
 - **Daemon:** Runs enforcement loop every 60s, manages protections
 - **CLI:** Communicates with daemon via Unix socket (`/var/glocker/glocker.sock`)
-- **Browser Extension:** Firefox extension in [`extensions/firefox/`](extensions/firefox/)
+- **Browser Extensions:** Firefox in [`extensions/firefox/`](extensions/firefox/), Chrome/Chromium in [`extensions/chrome/`](extensions/chrome/)
 - **Config:** YAML at `/etc/glocker/config.yaml` ([sample](conf/conf.yaml.sample)), with generated blocklists in `conf.d/` pulled in via `!include`
 
 See [architecture documentation](docs/architecture.md) for detailed design.
