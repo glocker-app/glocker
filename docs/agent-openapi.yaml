@@ -1,0 +1,99 @@
+openapi: 3.0.3
+info:
+  title: glocker agent local API
+  version: 0.1.0
+  description: >
+    The glocker daemon's loopback HTTP server (internal/web), used by the
+    Firefox and Chrome extensions. Bound to 127.0.0.1:80 and [::1]:80 only. Any
+    other path serves the blocked page, since hosts-blocked domains resolve here.
+servers:
+  - url: http://127.0.0.1
+paths:
+  /keywords:
+    get:
+      summary: Current keyword lists and whitelist
+      operationId: getKeywords
+      responses:
+        "200":
+          description: Keyword lists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Keywords"
+  /keywords-stream:
+    get:
+      summary: Live keyword updates (server-sent events)
+      description: >
+        Sends the current Keywords object on connect and again on every change,
+        each as one `data:` event. A `: keepalive` comment every 20s keeps
+        Chrome's extension service worker (30s idle limit) alive.
+      operationId: streamKeywords
+      responses:
+        "200":
+          description: Event stream of Keywords objects
+          content:
+            text/event-stream:
+              schema:
+                type: string
+  /report:
+    post:
+      summary: Report a keyword match from an extension
+      operationId: postReport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContentReport"
+      responses:
+        "200":
+          description: Recorded
+        "400":
+          description: Malformed JSON
+        "503":
+          description: Content monitoring is disabled
+  /blocked:
+    get:
+      summary: Blocked page
+      operationId: getBlockedPage
+      parameters:
+        - { name: domain, in: query, schema: { type: string }, description: Host shown as "Access to X" }
+        - { name: reason, in: query, schema: { type: string } }
+        - { name: matched, in: query, schema: { type: string }, description: Matched domain rule }
+        - { name: url, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: HTML page
+          content:
+            text/html:
+              schema:
+                type: string
+components:
+  schemas:
+    Keywords:
+      type: object
+      properties:
+        url_keywords:
+          type: array
+          items: { type: string }
+        content_keywords:
+          type: array
+          description: Content keywords plus the URL keywords
+          items: { type: string }
+        whitelist:
+          type: array
+          description: Domains never scanned or blocked; "*.example.com" matches subdomains
+          items: { type: string }
+    ContentReport:
+      type: object
+      required: [url, trigger, timestamp]
+      properties:
+        url: { type: string }
+        domain: { type: string }
+        trigger:
+          type: string
+          description: "url-keyword:<kw> or content-keyword:<kw>"
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix milliseconds
