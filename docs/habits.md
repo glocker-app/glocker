@@ -123,6 +123,9 @@ capabilities of the program are.
 
 ## The glocker config file. 
 
+We will cover the config file below. It's quite detailed. To get a
+quick initial file with decent basics, use `glocker -init`
+
 ### System behaviour
 - `log_level` - This is just to set the logging level of glocker. "info" is usually sufficient for personal use. "debug" if you're doing feature development. 
 - `user` - This tells Glocker who you are. Glocker runs as root so it needs to be told this explicitly. Several things below use it so make sure you set it correctly. 
@@ -424,7 +427,9 @@ We will discuss how to use this later.
 The heartbeat stanza is best left enabled. It is used by the
 `glockdoc` program to check whether `glocker` is running at regular
 intervals. This information is used when we create statistics about
-usage. 
+usage. The `interval_minutes` is how frequently this runs and
+`timeout_seconds` is how long it waits for a response from glocker to
+decide whether it's up or not. The defaults are reasonable here.
 
 ### Panic
 We'll skip to the last stanza - panic mode. This is something that's
@@ -541,7 +546,10 @@ config file and restart glocker.
 1. `-connect` - This is used to connect with the glocker cloud platform
    so that your usage information can be saved for you to look at
    later. We'll discuss this below. 
-2. `-force` - With `-connect`: replace an existing key even if it differs from your vault                                
+2. `-force` - With `-connect`: replace an existing key even if it differs from your vault
+3. `-resync` is used to send all the data locally again to the
+server. This is not something that most users will need. It was added
+to facilitate pushing data during development. You can ignore it.    
 
 ## Installation
 
@@ -876,10 +884,14 @@ etc. The ones that are not encrypted are listed below
 The upshot is that glockerapp can't see your data. The app names and
 window titles you actually visit, and the rules and tags you write
 against them, are all ciphertext; the server only ever sees the fixed
-shape (timings, counts, categories, and the structure of your registry)
-and the handful of fields above. The downside of the encryption is that
-if you lose your passphrase and recovery key, your data won't be
-recoverable. Whenever you hit the site, you need to enter your passphrase
-so that decryption can happen.
+shape (timings, counts, categories, and the structure of your
+registry) and the handful of fields above. The downside of the
+encryption is that if you lose your passphrase and recovery key, your
+data won't be recoverable. Whenever you hit the site, you need to
+enter your passphrase so that decryption can happen. The recovery key
+is currently implemented but not exposed on glockpeek. It will be
+available in the next release.
 
 # Additional notes on maintaining healthy routines
+
+The basic idea of 
