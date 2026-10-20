@@ -25,7 +25,7 @@ content. Zero-knowledge is a *feature we sell*, not just hygiene.
 | **3. Client + hosted (paid)** | install, then **sign up** | hosted | agent → hosted + token | **E2E on** |
 
 The entire E2E feature is **additive and Path-3-gated**. Paths 1 & 2 never generate
-a key, never make a vault, never sign up: `sync.encrypt` defaults off, there's no
+a key, never make a vault, never sign up: `sync.encrypt: false` (it must be set explicitly whenever sync is on), there's no
 `/etc/glocker/e2e.key`, nothing changes from today. The free experience is untouched.
 
 **Hosted = E2E from the first byte.** A paid account is created *with* the vault, so
@@ -94,15 +94,16 @@ key (the master key, which the server never has) is what makes the id safe.
 
 ## 5. Key management
 
-- **Master key (MK):** random 256 bytes. Minted **in the browser at signup** ("Set up
+- **Master key (MK):** random 32 bytes (256 bits). Minted **in the browser at signup** ("Set up
   encryption") — that's the natural place, and where Path-3 onboarding starts.
 - **Vault = passphrase-wrapped MK:** `KEK = PBKDF2-HMAC-SHA256(passphrase, salt, iters)`;
   `WrappedMK = AES-GCM(KEK, MK)`. Plus `WrappedMK_Recovery = AES-GCM(HKDF(recoveryCode), MK)`
   under a printed one-time code. The server stores only the vault (wrapped blobs +
   salt + params) — never MK or the passphrase.
-- **Agent gets MK** via a one-time `glocker -e2e-setup`: prompts the passphrase,
-  fetches the vault (authed by the ingest token), unwraps MK, writes it to
-  **`/etc/glocker/e2e.key`** (root, 0600), and sets `sync: {url, token, encrypt: true}`.
+- **Agent gets MK** via a one-time `sudo glocker -connect`: prompts the passphrase,
+  fetches the vault (authed by the ingest token), unwraps MK and writes it to
+  **`/etc/glocker/e2e.key`** (root, 0600). The `sync` stanza (`glockpeek_url`,
+  `token`, `encrypt: true`) is set in the config beforehand; `-connect` doesn't edit it.
 - **Browser gets MK** by re-deriving from the passphrase per session; held in memory
   (never a cookie, never localStorage of the raw key).
 - **Fail closed:** if `sync.encrypt` is on but the key can't load, the syncer refuses to
@@ -152,7 +153,7 @@ key (the master key, which the server never has) is what makes the id safe.
 
 The **agent** holds the master key *and* the plaintext logs, so decrypted export is
 agent-native and needs no browser:
-- `glocker -export` — dump the local `/var` logs (plaintext; no crypto), or
+- `glocker -export` (not built yet) — dump the local `/var` logs (plaintext; no crypto), or
   decrypt-from-server for the full account.
 - Browser "Export" (decrypt-in-browser → download) is a **secondary** convenience for
   agent-less devices — later.
@@ -176,8 +177,8 @@ agent-native and needs no browser:
    bool to `/api/me`.
 3. **Browser "Set up encryption" UI.** Passphrase → generate MK → wrap → `PUT /api/vault`
    → show recovery code once.
-4. **Agent `-e2e-setup`.** Prompt passphrase → fetch vault → unwrap → write
-   `/etc/glocker/e2e.key` + `sync {url, token, encrypt:true}`.
+4. **Agent `-connect`.** Prompt passphrase → fetch vault → unwrap → write
+   `/etc/glocker/e2e.key` (the `sync` stanza is configured separately).
 5. **HMAC `RecordID` dedup (§4).** Agent computes it; store unique index → `(user,
    RecordID)`; ingest/store updated.
 6. **Browser unlock + decrypt.** Decrypt fields before the Phase-1 aggregation, gated

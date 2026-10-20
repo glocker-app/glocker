@@ -64,8 +64,8 @@ domains:
     max_per_day: 0                               # cap on unblocks per calendar day (0 = unlimited)
 
   # The block list. Generated blocklists live in conf.d/ (kept out of this file
-  # for size) — populate them with `make full-install` or `python3
-  # update_domains.py all`, then they're pulled in via !include. Comment a line
+  # for size) — populate them with `make full-install` or
+  # `scripts/update_domains.py all`, then they're pulled in via !include. Comment a line
   # out to disable that source. These files must exist before install.
   list:
     # Your own blocked sites live in conf.d/personal-domains.yaml — `glocker -init`
@@ -84,7 +84,7 @@ domains:
 # Programs killed on sight during their windows (matched on process name). Use
 # kill_windows (killed DURING the window) or allow_windows (killed OUTSIDE it);
 # no windows means killed 24/7. Mark a program `extendible: true` to allow a
-# one-hour `glocker -extend <name> "reason"`, capped to once per rolling 24h.
+# one-hour `glocker -extend "<name>:reason"`, capped to once per rolling 24h.
 programs:
   enabled: true
   check_interval_seconds: 5
@@ -93,7 +93,7 @@ programs:
     - name: "steam"
 
     # Killed during work hours, but grant a one-hour pass on demand with
-    # `glocker -extend hexchat "quick question"` (capped to once per 24h).
+    # `glocker -extend "hexchat:quick question"` (capped to once per 24h).
     - name: "hexchat"
       extendible: true
       kill_windows:
@@ -230,12 +230,12 @@ accountability:
   buddy_emails: []              # who gets the digest + alerts, e.g. ["friend@example.com"]
   digest_every_hours: 24        # rolling summary cadence: 3, 6, 12, or 24. 0 = no periodic digest
   digest_when_quiet: false      # true = also send an "all clear" when nothing happened
-  alerts:                       # fire immediately, not held for the next digest
-    went_dark: true             # agent uninstalled / heartbeat gap during use (the dead-man's switch)
-    high_violations: 0          # email once a window crosses N violations (0 = off)
+  alerts:
+    went_dark: true             # emailed immediately: agent uninstalled / heartbeat gap during use (the dead-man's switch)
+    high_violations: 0          # flag the digest when a window reaches N violations (0 = off)
 
 # ── Panic mode ────────────────────────────────────────────────────────────────
-# `glocker -panic N`: emergency offline enforcement — suspends the machine and
+# `glocker -panic`: emergency offline enforcement for `duration` minutes — suspends the machine and
 # re-suspends on any early wake until the duration elapses. `systemctl suspend`
 # works on any systemd system; older setups can use "pm-suspend". Disable to
 # refuse -panic. (`glocker -init` picks whichever your system has.)
@@ -248,13 +248,14 @@ panic:
 # Blocklist generation
 # ============================================================================
 # The !include lines under domains.list pull in curated blocklists (adult
-# content, ads, malware, proxy-bypass). Manage them with update_domains.py, which
-# writes one file per source into conf.d/ (it does NOT touch this file):
+# content, ads, malware, proxy-bypass). Manage them with scripts/update_domains.py
+# (run from the repo root), which writes one file per source into conf.d/ and
+# adds or removes the matching !include line in conf/conf.yaml:
 #
-#   ./update_domains.py              # list sources and their status
-#   ./update_domains.py all          # fetch/update every source into conf.d/
-#   ./update_domains.py 1            # update just source #1
-#   ./update_domains.py strip        # delete the generated conf.d/ files
+#   scripts/update_domains.py              # list sources and their status
+#   scripts/update_domains.py all          # fetch/update every source into conf.d/
+#   scripts/update_domains.py 1            # update just source #1
+#   scripts/update_domains.py strip        # delete the generated conf.d/ files
 #
 # `make full-install` runs `update_domains.py all` for you. There is no runtime
 # reload — after editing config or blocklists, reinstall to apply: `make install`.

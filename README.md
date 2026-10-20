@@ -183,7 +183,7 @@ programs:
         - start: "19:00"
           end: "22:00"
           days: ["Fri", "Sat"]
-    - name: "firefox"                         # `glocker -extend firefox "reason"`
+    - name: "firefox"                         # `glocker -extend "firefox:reason"`
       extendible: true                        #   grants 1h, max once per 24h
       kill_windows:
         - start: "22:00"
@@ -222,7 +222,7 @@ glocker -info            # Static configuration: domains, programs,
                          # time windows, keywords
 
 # Domain management
-glocker -unblock "youtube.com,reddit.com:work research"
+glocker -unblock "youtube.com:research"     # reason must be one of domains.unblocking.reasons
 glocker -block "facebook.com,instagram.com"   # in-memory only (until restart);
                                               # also kills kill_on_block browsers to flush DNS
 glocker -add-keyword "gambling,casino,poker"
@@ -248,9 +248,7 @@ still reach root by other routes. Auditing (and closing) those is a personal
 choice, so it's a separate read-only step — **not** part of install:
 
 ```bash
-make security-check          # builds, then runs the check under sudo
-# or directly:
-sudo glocker -security-check
+sudo glocker -check
 ```
 
 It reports the ways glocker could still be bypassed or recovered from — a root
@@ -332,9 +330,9 @@ which identifies its account) + isolation. Manage accounts with admin subcommand
 (they touch the DB, so run them on the DB host as the service user):
 
 ```bash
-glockpeek -adduser admin     # create a dashboard account (prompts for a password)
-glockpeek -passwd  admin     # change a password
-glockpeek -addtoken admin    # mint an ingest API token for the syncer (printed once)
+glockpeek -adduser you@example.com     # create a dashboard account (prompts for a password)
+glockpeek -passwd  you@example.com     # change a password
+glockpeek -addtoken you@example.com    # mint an ingest API token for the syncer (printed once)
 ```
 
 - **Config** (`/etc/glocker/glockpeek.yaml`, everything under the `glockpeek:`
@@ -359,7 +357,7 @@ planned hardening step before self-hosting ships to others).
 
 ## Implementation
 
-Glocker is a **Go application** that runs as a systemd service with setuid root privileges:
+Glocker is a **Go application** that runs as a root systemd service; the `glocker` command reaches it through a socket owned by the `glocker` group (install adds you to it — log out and in once):
 
 - **Daemon:** Runs enforcement loop every 60s, manages protections
 - **CLI:** Communicates with daemon via Unix socket (`/var/glocker/glocker.sock`)
@@ -427,8 +425,8 @@ valid signature holds even if GitHub or the website were compromised.
 ## System Requirements
 
 - Linux with systemd
-- Go 1.25+ (for building)
-- Firefox (for browser extension)
+- Go 1.26+ (for building)
+- Firefox or Chrome/Chromium (for the browser extension)
 - Root access (for installation)
 
 ## License

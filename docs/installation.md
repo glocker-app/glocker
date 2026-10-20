@@ -37,38 +37,38 @@ glocker -version
 ### Domain Management
 
 ```bash
-# Temporarily unblock domains (20 minutes by default)
-glocker -unblock "youtube.com,reddit.com:work research"
+# Temporarily unblock domains (domains.unblocking.temp_unblock_time minutes,
+# 30 if unset); the reason must be one of domains.unblocking.reasons
+glocker -unblock "youtube.com:research"
 
-# Permanently block additional domains (persisted to config; also kills any
-# kill_on_block browsers so the new block isn't masked by their DNS cache)
+# Block additional domains until glocker restarts (in memory only; also kills
+# any kill_on_block browsers so the new block isn't masked by their DNS cache)
 glocker -block "facebook.com,instagram.com"
 
-# Add keywords to monitoring lists (URL and content)
+# Add keywords to monitoring lists (URL and content; in memory only)
 glocker -add-keyword "gambling,casino,poker"
 
-# Add programs to the forbidden list (killed on sight, 24/7)
+# Add programs to the forbidden list (killed on sight, 24/7; in memory only)
 glocker -block-app "steam,chromium"
 ```
 
 ### Control Commands
 
 ```bash
-# Reload configuration from disk
-glocker -reload
+# Config edits apply on reinstall (there's no live reload)
+make install
 
 # Immediately lock sudo access (ignores time windows)
 glocker -lock
 
-# Enter panic mode - suspend system for N minutes
-# System re-suspends if woken early (requires accountability partner to disable)
-glocker -panic 30
+# Enter panic mode: suspend for panic.duration minutes, re-suspending if woken early
+glocker -panic
 ```
 
 ### Installation
 
 ```bash
-# Install as systemd service with setuid privileges
+# Install as a systemd service (needs sudo)
 sudo ./glocker -install
 
 # Uninstall and revert all system changes
@@ -209,13 +209,6 @@ sudo ./glocker -install
 glocker -status
 ```
 
-### Test Enforcement Cycle
-
-```bash
-# Run a single enforcement cycle without installing
-sudo glocker -once
-```
-
 ### Things to Verify During Testing
 
 1. Killing of forbidden programs
@@ -233,15 +226,14 @@ After making changes:
 
 ## System Requirements
 
-- Go 1.21+ for building
+- Go 1.26+ for building
 - Linux with systemd
-- iptables (optional, for firewall blocking)
-- Firefox (for browser extension)
+- Firefox or Chrome/Chromium (for the browser extension)
 - Root access for installation
 
 ## File Locations
 
-- **Binary:** `/usr/local/bin/glocker` (setuid root)
+- **Binary:** `/usr/local/bin/glocker` (0755, immutable)
 - **Config:** `/etc/glocker/config.yaml`
 - **Service:** `/etc/systemd/system/glocker.service`
 - **Socket:** `/var/glocker/glocker.sock`
@@ -293,9 +285,12 @@ sudo chattr -i /etc/hosts
 
 ### Permission Issues
 
-Glocker requires setuid root privileges. After installation, verify:
+The daemon runs as root under systemd; the `glocker` command talks to it over a
+socket owned by the `glocker` group. Install adds your user to that group — log
+out and back in (or run `newgrp glocker`) before using `glocker` without sudo.
+`-install`, `-uninstall`, `-resync`, `-connect` and `-check` still need sudo.
 
 ```bash
-ls -l /usr/local/bin/glocker
-# Should show: -rwsr-xr-x (note the 's' in permissions)
+id -nG | grep -w glocker        # you're in the group
+ls -l /var/glocker/glocker.sock # srw-rw---- root glocker
 ```

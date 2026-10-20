@@ -7,15 +7,14 @@ your system immutable, it's worth understanding each step.
 ## Requirements
 
 - Linux with **systemd**
-- **Go 1.25+** (to build)
-- **Root access** (`sudo`) — for the setuid binary, the systemd service, and the immutable files
-- **Firefox** — for the content-monitoring extension
-- **iptables** (optional) — for firewall-level blocking on top of the hosts file
+- **Go 1.26+** (to build), **python3** (for the blocklist script)
+- **Root access** (`sudo`) — for the install, the systemd service, and the immutable files
+- **Firefox or Chrome/Chromium** — for the content-monitoring extension
 
 ## 1. Get the code
 
 ```bash
-git clone https://github.com/nibrahim/glocker
+git clone https://github.com/glocker-app/glocker
 cd glocker
 ```
 
@@ -27,17 +26,17 @@ commands like `glocker -block` change things *in memory only*; for anything
 permanent, edit `conf/conf.yaml`.) A fully commented reference lives in
 `conf/conf.yaml.sample`.
 
-Open `conf/conf.yaml` and set what applies to you:
+`conf/conf.yaml` isn't in the repo; create a starting one with `make init`.
+Then open it and set what applies to you:
 
 | Section | What to set |
 |---|---|
 | `domains` | Sites to block. Add your own, and/or use the automated blocklists (step 3). |
-| `forbidden_programs` | Programs to close, with `kill_windows` / `allow_windows`. |
-| `sudoers` | The `user:` whose `sudo` is held back during focus hours, and the `allow_windows` when it's permitted. |
+| `user` | Your login name: whose `sudo` is held back and whose desktop is tracked. |
+| `programs` | Programs to close, with `kill_windows` / `allow_windows`. |
+| `sudoers` | The `allow_windows` when `sudo` is permitted. |
 | `usage_monitor` | `display` (e.g. `:0`) and `xauthority` so the root daemon can see your X session for usage tracking. |
-| `glockpeek_mode` | `local` (default — dashboard on `127.0.0.1:4317`, no login) or `hosted`. |
-| `database` | `sqlite` by default; point at `postgres` for a hosted setup. |
-| `sync` | `enabled`, `glockpeek_url`, `interval_seconds` — the agent → glockpeek sync. |
+| `sync` | `enabled`, `glockpeek_url`, `token`, `encrypt`, `interval_seconds` — the agent → glockpeek sync. `encrypt` must be set when sync is on. |
 | `violation_tracking` | Screen-lock threshold and command. |
 | `mindful_uninstall` | The typing-gate friction for uninstalling. |
 | `lifecycle` | Allowed `-uninstall` reasons. |
@@ -55,7 +54,7 @@ Time windows follow the same `HH:MM` + `days` shape everywhere; the key name
 
 ```bash
 ./scripts/update_domains.py        # list the available sources
-./scripts/update_domains.py all    # pull them all into conf/conf.yaml
+./scripts/update_domains.py all    # pull them all into conf/conf.d/ (included by conf/conf.yaml)
 ```
 
 ## 4. Build and install
@@ -96,10 +95,10 @@ resolves to `127.0.0.1`.
 ```bash
 glocker -status                          # runtime state
 glocker -info                            # configured domains/programs/windows
-sudo glocker -unblock "youtube.com:research"   # temporary unblock, logged
-sudo glocker -extend "firefox:client call"     # one-hour program grant, once/24h
-sudo glocker -reload                     # reload config after editing
-sudo glocker -uninstall "maintenance"    # uninstall (mindful gate, unless "maintenance")
+glocker -unblock "youtube.com:research"   # temporary unblock, logged
+glocker -extend "firefox:client call"     # one-hour program grant, once/24h
+make install                             # apply config edits (there's no live reload)
+sudo glocker -uninstall "maintenance"    # uninstall; reason required, mindful gate first
 ```
 
 ## Updating

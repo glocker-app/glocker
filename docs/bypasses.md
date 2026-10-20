@@ -40,7 +40,7 @@ the local-resolver approach (see "The structural fix" below).
 Tor Browser, or `ssh -D 8080` plus a browser proxy setting. Name resolution
 happens at the far end, so the hosts file is never consulted.
 
-**Status:** mitigatable today via `forbidden_programs` — add `tor-browser`,
+**Status:** mitigatable today via `programs.list` — add `tor-browser`,
 `mullvad-browser` etc. so they're killed on sight. See caveat in item 5: the
 match is on process name, so this holds only against the honest-mistake case,
 not against someone who renames the binary.

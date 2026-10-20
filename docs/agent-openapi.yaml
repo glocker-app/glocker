@@ -4,8 +4,10 @@ info:
   version: 0.1.0
   description: >
     The glocker daemon's loopback HTTP server (internal/web), used by the
-    Firefox and Chrome extensions. Bound to 127.0.0.1:80 and [::1]:80 only. Any
-    other path serves the blocked page, since hosts-blocked domains resolve here.
+    Firefox and Chrome extensions. Bound to loopback only: HTTP on 127.0.0.1:80 and
+    [::1]:80, plus HTTPS on :443 with an in-memory self-signed cert. Any other path
+    is the catch-all: a request for a hosts-blocked domain is redirected to
+    /blocked, anything else gets 200 "OK". glockerapp.com is always whitelisted.
 servers:
   - url: http://127.0.0.1
 paths:

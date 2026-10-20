@@ -38,7 +38,7 @@ E2E is a **hosted-only** thing. The free paths never make a key, never sign up.
 
 ## Export / opt-out
 
-- `glocker -export` dumps your data **decrypted** — the agent has both the key and the
+- `glocker -export` (not built yet) will dump your data **decrypted** — the agent has both the key and the
   local plaintext logs. Take your data and leave anytime; no lock-in.
 
 ## Plain-language concept explanations (these landed well — reuse)
