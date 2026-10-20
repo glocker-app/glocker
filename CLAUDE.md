@@ -198,7 +198,7 @@ glocker -uninstall "reason"
   URL-keyword blocking, a streaming fetch of `/keywords-stream` replaces EventSource
 - Signed with `extensions/chrome-signing.pem` (gitignored; fixes the extension ID)
   by `make sign-chrome-extension`; `make deploy-chrome-extension` publishes the crx
-  + `update.xml` to the site
+  + `update.xml` to the site (`make release-extensions` does both browsers)
 
 ### Configuration & Resources
 - **`conf/conf.yaml`** - Working configuration (small; pulls in blocklists via includes)

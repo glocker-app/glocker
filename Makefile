@@ -1,4 +1,4 @@
-.PHONY: build-all init install full-install update-blocklists test release migrate deploy deploy-full deploy-rules sign-extension release-extension deploy-extension sign-chrome-extension release-chrome-extension deploy-chrome-extension db-backup help
+.PHONY: build-all init install full-install update-blocklists test release migrate deploy deploy-full deploy-rules sign-extensions deploy-extensions release-extensions sign-firefox-extension deploy-firefox-extension release-firefox-extension sign-chrome-extension deploy-chrome-extension release-chrome-extension db-backup help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -63,10 +63,10 @@ test: ## Run tests
 # provisioning — postgres, caddy, the service user — is managed in a private ops
 # repo (this repo is consumed there as a git subtree); see deploy/README.md.
 #   make deploy-full DEPLOY_HOST=<node-ip>               # binary + extension
-#   make deploy | deploy-extension                       # just one piece
+#   make deploy | deploy-extensions                      # just one piece
 # (Deploy knobs — DEPLOY_HOST/USER, GLOCKPEEK_CONF — are defined up top.)
 
-deploy-full: deploy deploy-extension ## Full deploy: dashboard binary + extension
+deploy-full: deploy deploy-extensions ## Full deploy: dashboard binary + browser extensions
 
 # Apply DB migrations as an EXPLICIT step, run BEFORE `deploy` — the hosted server
 # no longer migrates on boot (N nodes would race on DDL). Installs the current
@@ -134,9 +134,9 @@ db-backup: ## Pull a compressed pg_dump of the glockpeek DB to DB_BACKUP_DIR (lo
 #   - AMO_JWT_ISSUER / AMO_JWT_SECRET in the env
 #     (addons.mozilla.org → Developer Hub → Manage API Keys; keep them out of git)
 # AMO rejects a version it has already signed, so the "version" in
-# extensions/firefox/manifest.json must be bumped first — `make sign-extension`
-# does that check for you. Then `make deploy-extension` ships it.
-sign-extension:
+# extensions/firefox/manifest.json must be bumped first — `make sign-firefox-extension`
+# does that check for you. Then `make deploy-firefox-extension` ships it.
+sign-firefox-extension:
 	@command -v web-ext >/dev/null || { echo "web-ext not found — install with: npm i -g web-ext"; exit 1; }
 	@test -n "$$AMO_JWT_ISSUER" -a -n "$$AMO_JWT_SECRET" || { echo "set AMO_JWT_ISSUER and AMO_JWT_SECRET (addons.mozilla.org → Developer Hub → Manage API Keys)"; exit 1; }
 	@ver=$$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' extensions/firefox/manifest.json | head -1); \
@@ -152,9 +152,9 @@ sign-extension:
 	@git checkout -- extensions/firefox/build-info.js 2>/dev/null || true
 
 # Sign then publish in one step.
-release-extension: sign-extension deploy-extension ## Sign the Firefox extension and publish it
+release-firefox-extension: sign-firefox-extension deploy-firefox-extension
 
-deploy-extension: ## Publish the signed Firefox extension xpi to the site
+deploy-firefox-extension:
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-extension DEPLOY_HOST=<node-ip>"; exit 1; }
 	@xpi=$$(ls -t extensions/firefox/web-ext-artifacts/*.xpi 2>/dev/null | head -1); \
 	 test -n "$$xpi" || { echo "no signed .xpi in extensions/firefox/web-ext-artifacts/ — run 'web-ext sign --channel unlisted' there first"; exit 1; }; \
@@ -172,7 +172,7 @@ deploy-extension: ## Publish the signed Firefox extension xpi to the site
 # extensions/chrome/manifest.json first. Then `make deploy-chrome-extension`.
 CHROME_KEY ?= extensions/chrome-signing.pem
 
-sign-chrome-extension: ## Pack and sign the Chrome extension (.crx)
+sign-chrome-extension:
 	@test -f $(CHROME_KEY) || { echo "no signing key at $(CHROME_KEY) — restore it from backup (a new key changes the extension ID)"; exit 1; }
 	@id=$$(openssl rsa -in $(CHROME_KEY) -pubout -outform DER 2>/dev/null | sha256sum | cut -c1-32 | tr '0-9a-f' 'a-p'); \
 	 grep -q "chromeExtensionID = \"$$id\"" internal/install/chrome.go || { echo "$(CHROME_KEY) gives extension ID $$id, which isn't chromeExtensionID in internal/install/chrome.go"; exit 1; }
@@ -190,13 +190,13 @@ sign-chrome-extension: ## Pack and sign the Chrome extension (.crx)
 	 mkdir -p extensions/chrome-artifacts && mv "$$tmp/ext.crx" $$out && echo "signed $$out ($$tag)"
 
 # Sign then publish in one step.
-release-chrome-extension: sign-chrome-extension deploy-chrome-extension ## Sign the Chrome extension and publish it
+release-chrome-extension: sign-chrome-extension deploy-chrome-extension
 
 # Publishes the newest signed crx plus the update manifest Chrome's policy points
 # at (chromeUpdateURL in internal/install/chrome.go), both under the apex web root
 # — DEPLOY_HOST is just the box to ssh to.
 # Installed browsers pick up the new version on their next update check.
-deploy-chrome-extension: ## Publish the signed Chrome extension + update manifest to the site
+deploy-chrome-extension:
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-chrome-extension DEPLOY_HOST=<node-ip>"; exit 1; }
 	@crx=$$(ls -t extensions/chrome-artifacts/*.crx 2>/dev/null | head -1); \
 	 test -n "$$crx" || { echo "no .crx in extensions/chrome-artifacts/ — run 'make sign-chrome-extension' first"; exit 1; }; \
@@ -210,6 +210,13 @@ deploy-chrome-extension: ## Publish the signed Chrome extension + update manifes
 	 set -x; \
 	 scp $(SSH_OPTS) "$$tmp/glocker.crx" "$$tmp/update.xml" $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/ && \
 	 ssh $(SSH_OPTS) $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -D -o caddy -g caddy -m 0644 /tmp/glocker.crx /var/www/glocker-landing/chrome/glocker.crx && sudo install -D -o caddy -g caddy -m 0644 /tmp/update.xml /var/www/glocker-landing/chrome/update.xml && rm -f /tmp/glocker.crx /tmp/update.xml && echo "extension published at /chrome/update.xml"'
+
+# Both browsers at once. The per-browser targets above (sign-/deploy-/release-
+# firefox-extension, …-chrome-extension) work on their own too, e.g. to ship one
+# browser's update without bumping the other's version.
+sign-extensions: sign-firefox-extension sign-chrome-extension ## Sign both browser extensions (bump both manifest versions first)
+deploy-extensions: deploy-firefox-extension deploy-chrome-extension ## Publish both signed browser extensions
+release-extensions: sign-extensions deploy-extensions ## Sign and publish both browser extensions
 
 # ── Release: signed binaries for a GitHub release (source stays the main path). ──
 # Builds static linux/amd64 binaries + a SHA256SUMS file, then signs SHA256SUMS
