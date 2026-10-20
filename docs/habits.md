@@ -290,6 +290,18 @@ the `monitoring.log_file` above), and it also counts as a
 violation. The extension also prevents you from opening incognito
 windows and will apply to all FF browser profiles. 
 
+Chrome and Chromium are supported similarly. The installer sets up a
+browser policy that installs the extension automatically for all
+profiles, and it can't be disabled or removed. Chrome doesn't allow an
+extension to be forced into incognito windows, so glocker turns off
+incognito and guest windows completely. It also turns off "secure DNS"
+(and Brave's Tor windows) since those skip the local DNS lookup that
+domain blocking relies on. Chrome, by design, checks glockerapp.com
+every few hours for updates to the extension so that it stays current.
+
+I do want to highlight that my own browser is Firefox so it's better
+tested than the Chrome family.
+
 #### Sudo restriction
 
 One of the problems with any of these things is that if you have
