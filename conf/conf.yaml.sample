@@ -161,9 +161,10 @@ lifecycle:
   reasons: ["maintenance", "work", "entertainment"]
 
 # ── Accountability & telemetry ────────────────────────────────────────────────
-# Violation tracking: after max_violations blocked-access attempts within the
-# window, run command (typically a screen lock). glocklock locks for a fixed
-# duration then auto-unlocks. The command runs as root and is split on
+# Violation tracking: after max_violations violations within the window (blocked
+# domain loads, extension content reports, forbidden-program kills), run
+# command (typically a screen lock). glocklock locks for a fixed duration then
+# auto-unlocks. The command runs as root and is split on
 # whitespace (no shell), so run glocklock as yourself with `sudo -u <you>`.
 # glocklock finds your session on its own (a live Wayland socket in
 # /run/user/<uid> wins, else the local X display), so don't hardcode
@@ -181,8 +182,9 @@ violation_tracking:
 
 # Usage monitor: samples the focused window + idle time to a JSONL log that the
 # syncer ships to glockpeek. It runs as root, so it finds your session through
-# the top-level `user`: Hyprland and other Wayland sessions are found under
-# /run/user/<uid> with no extra settings (GNOME also needs extensions/gnome).
+# the top-level `user`. Supported sessions: X11, Hyprland (found under
+# /run/user/<uid> with no extra settings) and GNOME on Wayland (needs the shell
+# extension in extensions/gnome). Other Wayland compositors aren't supported.
 # `display`/`xauthority` only matter on X11 (echo $DISPLAY / $XAUTHORITY). If
 # no session is up yet (e.g. at boot), it retries every interval.
 usage_monitor:

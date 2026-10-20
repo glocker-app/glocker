@@ -6,8 +6,8 @@ system stays a friction device rather than a prison. This document tracks the
 narrower and more damaging class: **bypasses that need no root at all**, are
 near-zero effort, and leave nothing in the accountability log.
 
-Anything here that turns into actual work belongs in `ROADMAP.md`; this file is
-the reference list, not a status tracker.
+Anything here that turns into actual work belongs in the project's roadmap, not
+here; this file is the reference list, not a status tracker.
 
 ## 1. DNS-over-HTTPS
 
@@ -15,10 +15,14 @@ the reference list, not a status tracker.
 touches it. Firefox `network.trr.mode=3` and Chrome's "Use secure DNS" are both
 a checkbox in Settings.
 
-`internal/install/firefox.go` writes `/etc/firefox/policies/policies.json` to
-install the extension, but sets **no `DNSOverHTTPS` policy and no locked
-`Preferences`**. For Chrome-family browsers, `internal/install/chrome.go` writes a
-managed policy with `DnsOverHttpsMode: "off"` (Chrome, Chromium, Brave, Edge).
+`internal/install/firefox.go` merges its keys into the existing
+`/etc/firefox/policies/policies.json` (prior values restored on uninstall): it
+force-installs the extension and sets `DisablePrivateBrowsing`, but sets **no
+`DNSOverHTTPS` policy and no locked `Preferences`**. For Chrome-family browsers,
+`internal/install/chrome.go` writes a managed policy (Chrome, Chromium, Brave,
+Edge) with `DnsOverHttpsMode: "off"`, plus `IncognitoModeAvailability: 1`
+(incognito off) and `BrowserGuestModeEnabled: false`, so there's no extension-free
+window to use instead.
 
 **Status:** open for Firefox, closed for Chrome-family browsers. The largest hole
 — it voids the entire hosts layer in seconds.
@@ -39,6 +43,9 @@ the local-resolver approach (see "The structural fix" below).
 
 Tor Browser, or `ssh -D 8080` plus a browser proxy setting. Name resolution
 happens at the far end, so the hosts file is never consulted.
+
+Brave's built-in Tor windows are off via the Chrome-family policy's
+`TorDisabled: true`.
 
 **Status:** mitigatable today via `programs.list` — add `tor-browser`,
 `mullvad-browser` etc. so they're killed on sight. See caveat in item 5: the
@@ -111,7 +118,7 @@ scheduled — it's so the cheap wins aren't lost among the structural ones.
 
 | Item | Change | Size |
 |---|---|---|
-| 1 | `"DNSOverHTTPS": {"Enabled": false, "Locked": true}` in the policy JSON `internal/install/firefox.go` already writes (Chrome-family is done). | Small — best value on this page |
+| 1 | `"DNSOverHTTPS": {"Enabled": false, "Locked": true}` in the policy keys `internal/install/firefox.go` already merges (Chrome-family is done). | Small — best value on this page |
 | 5 | Match `/proc/<pid>/exe` (resolved path or inode) alongside `comm` in `internal/monitoring/forbidden.go`. Makes every config-only program restriction above actually stick. | Small–medium |
 | 2 | A `subdomains:` field on `Domain`, or prefix expansion from a common list. Caps the problem rather than solving it — hosts files can't wildcard. | Medium |
 | 1, 3, 7 | The structural fix below. | v2 |

@@ -29,12 +29,20 @@ Fields: `id, scope, user_id, namespace, name, color, distraction, behavior`.
 `behavior` is `""` or `"hide"` (a `Glocker:hide` tag whose windows are dropped
 from usage totals). Unique on `(scope, user_id, namespace, name)`.
 
+Once E2E is set up, a user tag's `namespace`/`name` (and a rule's
+`program`/`title`) are sealed in the browser (`enc:v1:` + base64(nonce‖ct)) before
+they reach the server. Each seal uses a fresh nonce, so the server's unique index
+and its reserved-`Glocker`-namespace check can't see sealed values; the browser
+does both checks against its decrypted registry instead. System tags stay
+cleartext.
+
 ### `tag_overrides` — per-account override of a system tag
 The only editable bit of a system tag is its distraction flag. An override row
 records an account's choice without forking the shared tag.
 Fields: `user_id, tag_id, distraction`. Unique `(user_id, tag_id)`.
 
-`tag_colors` is absorbed into `tags.color` and retired.
+`tag_colors` is absorbed into `tags.color` and retired. The table is still
+migrated (`AllModels`) but nothing outside tests reads or writes it.
 
 ### `rules` — per-account, fully owned
 Matcher → tags. Extend the existing table with `position` (order; lower = higher
@@ -81,8 +89,8 @@ ready stanza; apps (matched by class) suggest a forbidden-program kill window.
 
 - `GET/POST/PATCH/DELETE /api/tags` — user tags CRUD; toggle distraction
   (system tags via an override row, user tags in place).
-- `GET/PUT /api/rules` — rules + their tags + order. Replaces the current
-  `{rules, colors}` shape.
+- `GET/PUT /api/rules` — rules + their tags + order. (This replaced the older
+  `{rules, colors}` shape.)
 - Browser fetches system tags + the account's tags + rules, and classifies
   locally.
 
@@ -94,14 +102,17 @@ ready stanza; apps (matched by class) suggest a forbidden-program kill window.
 - **Analytics → Usage** sub-tab: the rules editor stays here. Matcher → one slot
   per namespace, values chosen from the registry; **drag to reorder** (precedence).
 
-## Migration (HARD GATE — validate on a prod dump before deploy)
+## Migration (historical)
+
+Done; kept for the record. The backfill code is gone, and `Migrate()` now drops
+the legacy `rules.tag` column if present.
 
 Additive + idempotent. New tables (`tags`, `tag_overrides`, `rule_tags`), new
 columns (`rules.position`, `users.rules_seeded`). Backfill:
 - `tag_colors` → user `tags` (namespace from the legacy tag string if it carries
   a `:`, else a default user namespace); legacy `"hidden"` → `Glocker:hide`.
-- Each legacy `rules.tag` → a tag + a `rule_tags` link; keep the old column
-  (unused) rather than dropping it.
+- Each legacy `rules.tag` → a tag + a `rule_tags` link. (The old column was
+  kept at first; it is now dropped.)
 Validate per the standard drill (restore prod dump → migrate → counts unchanged →
 spot-check) before it ships.
 
