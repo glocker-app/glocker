@@ -65,7 +65,7 @@ test: ## Run tests
 # ── Deploy: push updated artifacts to the already-provisioned VPS over SSH. ──
 # Mirrors the install targets: `deploy-full` is the whole thing (like
 # `full-install`); the rest ship one piece each (like `install`). One-time host
-# provisioning — postgres, caddy, the service user — is managed in a private ops
+# provisioning — caddy, the service user, the landing page — is managed in a private ops
 # repo (this repo is consumed there as a git subtree); see deploy/README.md.
 #   make deploy-full DEPLOY_HOST=<node-ip>               # binary + extension
 #   make deploy | deploy-extensions                      # just one piece
@@ -108,11 +108,13 @@ deploy-rules:
 	ssh $(SSH_OPTS) $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo /usr/local/bin/glockpeek -import-rules /tmp/glocker-tags.json && rm -f /tmp/glocker-tags.json'
 
 # ── Database backup ──────────────────────────────────────────
-# Restore relies on DigitalOcean's managed droplet backups; this is a local
+# Restore relies on DigitalOcean's managed database backups; this is a local
 # pg_dump for debugging/inspection of data that can't be re-synced from the agent
 # logs (accounts, tokens, the key vault, rules, tag colours, the ignore overlay).
 # Dumps carry sensitive data (argon2 hashes, the wrapped master key), so
-# DB_BACKUP_DIR (defined up top) is gitignored.
+# DB_BACKUP_DIR (defined up top) is gitignored. With DB_DSN set (the managed DB),
+# pg_dump runs on the node against it, so the node needs postgresql-client; with
+# DB_DSN empty it falls back to a postgres running on the box itself.
 
 db-backup: ## Pull a compressed pg_dump of the glockpeek DB to DB_BACKUP_DIR (local, gitignored)
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST"; exit 1; }
@@ -127,11 +129,6 @@ db-backup: ## Pull a compressed pg_dump of the glockpeek DB to DB_BACKUP_DIR (lo
 	 echo "saved $$f ($$(du -h "$$f" | cut -f1))"
 
 
-# Publish the SIGNED Firefox extension to the apex web root, served at
-# https://glockerapp.com/glocker.xpi — where `glocker -install` fetches it on a
-# machine without a locally built artifact. Signing is a separate, manual, one-off
-# step (`web-ext sign --channel unlisted` in extensions/firefox/); this only ships
-# the newest signed .xpi already in web-ext-artifacts/. Re-run after re-signing.
 # Sign the Firefox extension via Mozilla's AMO API (unlisted self-distribution),
 # dropping the signed .xpi into extensions/firefox/web-ext-artifacts/. Automated —
 # no human review for unlisted. Needs:
@@ -159,6 +156,10 @@ sign-firefox-extension:
 # Sign then publish in one step.
 release-firefox-extension: sign-firefox-extension deploy-firefox-extension
 
+# Publish the SIGNED Firefox extension to the apex web root, served at
+# https://glockerapp.com/glocker.xpi — where `glocker -install` fetches it on a
+# machine without a locally built artifact. Ships the newest signed .xpi already
+# in web-ext-artifacts/ (from `make sign-firefox-extension`); re-run after re-signing.
 deploy-firefox-extension:
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-firefox-extension DEPLOY_HOST=<node-ip>"; exit 1; }
 	@xpi=$$(ls -t extensions/firefox/web-ext-artifacts/*.xpi 2>/dev/null | head -1); \
