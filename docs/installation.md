@@ -79,63 +79,22 @@ All commands communicate with the running daemon via Unix socket (`/var/glocker/
 
 ## Utility Tools
 
-### glockpeek - Log Analysis
+### glockpeek - Dashboard
 
-A read-only command-line tool for analyzing Glocker's violation, unblock, and
-lifecycle logs with visual summaries. Needs no daemon or root.
-
-**Summary View** (default)
-
-```bash
-# Violations summary (totals, by type, time of day, top keywords/domains)
-glockpeek
-
-# Unblocks summary (totals, top domains, reasons, day of week)
-glockpeek -unblocks
-```
-
-The violations summary also reports **unmanaged time** — periods when Glocker
-was uninstalled (from the lifecycle log). Because that is a bypass of the
-blocking regime, it is shown in red and counted as a violation, with the total
-duration, number of periods, and uninstall reasons. The window respects any
-`-from`/`-to` filter.
-
-**Date Filtering** — accepts `YYYY`, `YYYY-MM`, or `YYYY-MM-DD`:
-
-```bash
-glockpeek -from 2024
-glockpeek -from 2024-06
-glockpeek -from 2024-06-15 -to 2024-06-30
-glockpeek -unblocks -from 2024-06       # filtering works with -unblocks too
-```
-
-**Detailed Views** — `-detail` selects day/week/month/year granularity from the
-input and accepts exact dates or natural-language expressions:
-
-```bash
-glockpeek -detail 2024-06-15       # hour-by-hour breakdown for a day
-glockpeek -detail yesterday        # natural-language day
-glockpeek -detail 'last week'      # day-by-day, Mon–Sun
-glockpeek -detail 2024-06          # daily calendar for a month
-glockpeek -detail 2024             # month-by-month rollup for a year
-```
-
-The output includes:
-- Colored bar charts (red for above average, green for below)
-- Inverse video highlighting for egregious periods (>2 violations)
-- Top offenders by frequency
-- Time-of-day patterns
-- `UNMANAGED` markers (from the lifecycle log) for periods when Glocker was
-  uninstalled, annotated with the recorded reason/note
+A database-backed web dashboard. It doesn't read the logs itself: the agent's
+syncer (`sync:` in the config) pushes records to it. `glocker -install` installs
+it as `glockpeek.service`, running in local mode on `http://127.0.0.1:4317/`
+(sqlite at `/var/lib/glocker/glockpeek.db`). Its own config, if any, is
+`/etc/glocker/glockpeek.yaml` (sample: `conf/glockpeek.yaml.sample`).
 
 ### glocklock - Screen Locker
 
-A standalone X11 screen locker with two modes, designed for mindful breaks.
+A standalone timed screen locker (X11 and Wayland), designed for mindful breaks.
 It will read the `violation_tracking` section from the config file and work
 accordingly. However, the settings can be overridden by command line flags
 listed below.
 
-**Time-based Mode** - Automatically unlocks after a timeout:
+It automatically unlocks after a timeout:
 
 ```bash
 # Lock using duration from config (default: 1 minute)
@@ -146,16 +105,17 @@ glocklock -duration 5m -message "Break time"
 
 # Use custom config file
 glocklock -conf /path/to/config.yaml
-```
 
-glocklock locks for a fixed duration and then auto-unlocks (X11 and Wayland).
+# Custom background image
+glocklock -background /path/to/image.png
+```
 
 **Configuration** (in `/etc/glocker/config.yaml`):
 
 ```yaml
 violation_tracking:
   lock_duration: "5m"  # Duration: "30s", "5m", or plain number (seconds)
-  background: "/path/to/image.png"  # Optional PNG/JPG background (X11 backend)
+  background: "/path/to/image.png"  # Optional PNG/JPG background
 ```
 
 ## Browser Extension Installation
@@ -175,7 +135,7 @@ mode → "Load unpacked" → `extensions/chrome/`.
 ### Building
 
 ```bash
-# Build all binaries (glocker, glocklock, glockpeek)
+# Build all binaries (glocker, glocklock, glockpeek, glockdoc, ...)
 make build-all
 
 # Build single binary
@@ -195,15 +155,14 @@ go test ./internal/enforcement -v
 
 ### Installing for Development
 
+Install upgrades in place, so there's no need to uninstall first:
+
 ```bash
-# Uninstall current version
-sudo glocker -uninstall "testing"
+# First time only: generate conf/conf.yaml from the sample
+make init
 
-# Build new version
-make build-all
-
-# Install new version
-sudo ./glocker -install
+# Rebuild and reinstall (stops, swaps and restarts the daemon)
+make install
 
 # Check status
 glocker -status
@@ -233,13 +192,25 @@ After making changes:
 
 ## File Locations
 
-- **Binary:** `/usr/local/bin/glocker` (0755, immutable)
-- **Config:** `/etc/glocker/config.yaml`
-- **Service:** `/etc/systemd/system/glocker.service`
+- **Binaries:** `/usr/local/bin/glocker` (0755, immutable), `glocklock`,
+  `glockpeek`, `glockdoc` (same dir)
+- **Config:** `/etc/glocker/config.yaml`, `/etc/glocker/conf.d/` (blocklists),
+  `/etc/glocker/glockpeek.yaml` (dashboard), `/etc/glocker/e2e.key` (sync
+  encryption key)
+- **Services:** `/etc/systemd/system/glocker.service`, `glockpeek.service`,
+  `glockdoc.service` + `glockdoc.timer` (heartbeat watchdog; or
+  `/etc/cron.d/glocker-doc` without systemd timers)
 - **Socket:** `/var/glocker/glocker.sock`
 - **Logs:**
   - `/var/log/glocker/reports.log` (content monitoring)
   - `/var/log/glocker/unblocks.log` (unblock requests)
+  - `/var/log/glocker/lifecycle.log` (install/uninstall)
+  - `/var/log/glocker/usage.jsonl` (usage monitor)
+  - `/var/log/glocker/heartbeat.jsonl` (glockdoc)
+- **State:** `/var/lib/glocker/extensions.json` (`-extend` grants),
+  `/var/lib/glocker/glockpeek.db` (dashboard DB),
+  `/var/lib/glocker/firefox-policies.json` (prior Firefox policy values)
+- **Shared files:** `/usr/local/share/glocker/` (Firefox xpi, glocklock background)
 - **systemd logs:** `journalctl -u glocker.service`
 
 ## Troubleshooting

@@ -21,9 +21,9 @@ cd glocker
 ## 2. Edit your config
 
 Everything is driven by **`conf/conf.yaml`** — this is the single source of truth.
-`make full-install` regenerates `/etc/glocker/config.yaml` from it. (Runtime
-commands like `glocker -block` change things *in memory only*; for anything
-permanent, edit `conf/conf.yaml`.) A fully commented reference lives in
+`make full-install` regenerates `/etc/glocker/config.yaml` from it. (The runtime
+commands `glocker -block`, `-block-app` and `-add-keyword` change things *in memory
+only*; for anything permanent, edit `conf/conf.yaml`.) A fully commented reference lives in
 `conf/conf.yaml.sample`.
 
 `conf/conf.yaml` isn't in the repo; create a starting one with `make init`.

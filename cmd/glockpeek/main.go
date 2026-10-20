@@ -1,5 +1,5 @@
 // Command glockpeek serves the glocker stats dashboard (the web interface) as a
-// standalone process, separate from the glocker daemon. It reads the same
+// standalone process, separate from the glocker daemon. It reads
 // /etc/glocker/glockpeek.yaml for its listen address and database, serves the
 // dashboard on a per-account login, and exposes a token-authenticated ingest API
 // the glocker syncer pushes local records into. Designed to be hosted remotely.

@@ -85,7 +85,7 @@ emails to a buddy are configured in the same file (`accountability:`); see the
 Glocker uses **seven independent enforcement mechanisms** that work together:
 
 1. **Hosts-file blocking** - Redirects blocked domains to `127.0.0.1` (the file is made immutable)
-2. **Browser extension** - Watches page URLs and content for forbidden keywords (Firefox), reporting hits to a local server
+2. **Browser extension** - Watches page URLs and content for forbidden keywords (Firefox, Chrome/Chromium), reporting hits to a local server
 3. **Forbidden programs** - Kills specified programs during time windows
 4. **Violation tracking** - Triggers an action when a threshold is crossed (e.g., screen lock)
 5. **Sudoers control** - Restricts `sudo` access outside the allowed windows
@@ -141,7 +141,7 @@ encryption so a hosted dashboard only ever stores ciphertext.
 ## Utilities
 
 - **[glocker](cmd/glocker/)** - Main daemon and CLI (enforcement + data collection)
-- **[glockpeek](cmd/glockpeek/)** - Standalone stats web dashboard; serves on localhost (default `:4317`), reading the logs
+- **[glockpeek](cmd/glockpeek/)** - Standalone stats web dashboard; serves on localhost (default `:4317`), ingesting the records the agent syncs to it
 - **[glockdoc](cmd/glockdoc/)** - Liveness watchdog; records whether glocker is running (survives uninstall)
 - **[glocklock](cmd/glocklock/)** - Screen locker (X11 and Wayland); locks for a fixed duration, then auto-unlocks
 
@@ -225,10 +225,11 @@ glocker -info            # Static configuration: domains, programs,
 glocker -unblock "youtube.com:research"     # reason must be one of domains.unblocking.reasons
 glocker -block "facebook.com,instagram.com"   # in-memory only (until restart);
                                               # also kills kill_on_block browsers to flush DNS
-glocker -add-keyword "gambling,casino,poker"
+glocker -add-keyword "gambling,casino,poker" # in-memory only (until restart)
 
 # Forbidden-program management
-glocker -block-app "steam,chromium"            # kill these on sight, 24/7
+glocker -block-app "steam,chromium"            # kill these on sight, 24/7;
+                                               # in-memory only (until restart)
 glocker -extend "firefox:client call with X"   # one hour, max once per 24h
                                                # (program must be extendible: true)
 
@@ -382,8 +383,11 @@ glocker/
 │   ├── monitoring/             # Background monitors
 │   ├── web/                    # HTTP server for extension
 │   └── ...
-├── extensions/firefox/         # Browser extension
-├── conf/conf.yaml.sample       # Sample config (lean; copy to conf.yaml)
+├── extensions/
+│   ├── firefox/                # Firefox extension
+│   ├── chrome/                 # Chrome/Chromium extension
+│   └── gnome/                  # GNOME Shell window-tracking extension
+├── conf/conf.yaml.sample       # Sample config (`make init` generates conf.yaml from it)
 ├── conf/conf.d/                # Generated blocklists, pulled in via !include
 ├── scripts/update_domains.py           # Fetches blocklists into conf.d/
 ├── extras/glocker.service      # Systemd service (daemon)
@@ -406,7 +410,8 @@ release ships a `SHA256SUMS` file signed with the project's
 [minisign](https://jedisct1.github.io/minisign/) key. The signature covers the
 checksums; the checksums cover the binaries.
 
-Public key (also at `https://glockerapp.com/minisign.pub`):
+Public key (to be published at `https://glockerapp.com/minisign.pub`; it isn't
+published yet, so releases can't be verified this way today):
 
 ```
 <paste the minisign public key here — the RWQ… line from minisign.pub>

@@ -40,8 +40,8 @@ systemctl stop glocker glockpeek
 systemctl disable glocker glockpeek
 ```
 
-The unit files are immutable, but stopping and disabling a service doesn't touch
-the file, so this still works. (`Restart=always` only re-runs a *crashed*
+Only `glocker.service` is immutable (`glockpeek.service` isn't), but stopping and
+disabling a service doesn't touch the file, so this still works either way. (`Restart=always` only re-runs a *crashed*
 service; an explicit `stop` stays stopped.)
 
 ## Step 2 — clear the immutable flags
@@ -101,12 +101,24 @@ systemctl disable --now glockdoc.timer 2>/dev/null   # the glockdoc heartbeat ti
 rm -f /etc/systemd/system/glockdoc.timer /etc/systemd/system/glockdoc.service
 rm -f /etc/cron.d/glocker-doc          # the glockdoc heartbeat cron (older installs / no systemd timer)
 rm -f /etc/sudoers.glocker.backup
-rm -f /var/glocker/glocker.sock
+rm -rf /var/glocker                    # the socket dir
 rm -rf /etc/glocker
+rm -f /etc/opt/chrome/policies/managed/glocker.json \
+      /etc/chromium/policies/managed/glocker.json \
+      /etc/brave/policies/managed/glocker.json \
+      /etc/opt/edge/policies/managed/glocker.json
+groupdel glocker
 systemctl daemon-reload
 ```
 
-Optional leftovers (just logs and browser bits, harmless to keep):
+`/var/lib/glocker/glockpeek.db` is the local dashboard's database (your synced
+history). Delete it only if you don't want that data:
+
+```bash
+rm -f /var/lib/glocker/glockpeek.db
+```
+
+Optional leftovers (logs, browser bits and small state files, harmless to keep):
 
 ```bash
 rm -rf /var/log/glocker/ /var/log/glocker-*.log /var/log/glocker-*.jsonl
@@ -114,7 +126,12 @@ rm -rf /var/log/glocker/ /var/log/glocker-*.log /var/log/glocker-*.jsonl
 #          ExtensionSettings entry and DisablePrivateBrowsing (any earlier values
 #          are in /var/lib/glocker/firefox-policies.json), then:
 rm -f /usr/local/share/glocker/glocker.xpi /var/lib/glocker/firefox-policies.json
-# GNOME:   rm -rf ~/.local/share/gnome-shell/extensions/glocker-usage@glocker.app
+rm -rf /usr/local/share/glocker/       # also holds lock-background.png
+rm -f /var/lib/glocker/extensions.json # -extend cooldown state
+# GNOME (as your user):
+#   rm -rf ~/.local/share/gnome-shell/extensions/glocker-usage@glocker.app
+#   then drop 'glocker-usage@glocker.app' from:
+#   gsettings get org.gnome.shell enabled-extensions
 ```
 
 ## Step 6 — verify
