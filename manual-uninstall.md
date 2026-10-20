@@ -110,7 +110,10 @@ Optional leftovers (just logs and browser bits, harmless to keep):
 
 ```bash
 rm -rf /var/log/glocker/ /var/log/glocker-*.log /var/log/glocker-*.jsonl
-# Firefox: remove the glocker extension from your profile
+# Firefox: in /etc/firefox/policies/policies.json delete the glocker@nibrahim.net.in
+#          ExtensionSettings entry and DisablePrivateBrowsing (any earlier values
+#          are in /var/lib/glocker/firefox-policies.json), then:
+rm -f /usr/local/share/glocker/glocker.xpi /var/lib/glocker/firefox-policies.json
 # GNOME:   rm -rf ~/.local/share/gnome-shell/extensions/glocker-usage@glocker.app
 ```
 

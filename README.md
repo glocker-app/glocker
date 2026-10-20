@@ -270,7 +270,8 @@ Content monitoring runs as a Firefox extension that `glocker -install` sets up
 **automatically**: it fetches the Mozilla-signed `.xpi` from
 `https://glockerapp.com/glocker.xpi` and force-installs it system-wide via a
 Firefox enterprise policy (`/etc/firefox/policies/policies.json`) — no store
-visit, and it can't be toggled off in `about:addons`.
+visit, and it can't be toggled off in `about:addons`. Policies already in that
+file are kept; the ones glocker changes are restored on uninstall.
 
 If the installer couldn't fetch it (e.g. no network during install), it prints a
 warning and Firefox content monitoring stays **inactive** — everything else

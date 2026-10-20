@@ -8,6 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/glebarez/sqlite v1.11.0
 	github.com/godbus/dbus/v5 v5.2.2
+	github.com/google/renameio/v2 v2.0.2
 	github.com/jezek/xgb v1.2.0
 	github.com/mailgun/mailgun-go/v4 v4.23.0
 	github.com/neurlang/wayland v0.4.4
