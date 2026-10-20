@@ -1,62 +1,66 @@
 openapi: 3.0.3
 info:
   title: glockpeek API
-  version: 0.1.0
+  version: 0.2.0
   description: >
-    Serves the parsed glocker log history (violations, unblocks, lifecycle
-    events, and computed unmanaged periods) to the dashboard frontend. All
-    aggregation and date-range filtering happens client-side; these endpoints
-    return the full parsed data set.
+    glockpeek's HTTP API (internal/stats, mounted by stats.Register). glockpeek
+    is DB-backed and multi-tenant: every row is scoped to an account, and the
+    data is fed by the glocker agent's syncer via POST /api/ingest. Sensitive
+    record content is sealed client-side under E2E; the server stores and
+    returns it opaquely.
+
+
+    Auth: in hosted mode browsers use the `glockpeek_session` cookie (from
+    POST /api/login) and agents use an ingest API bearer token. In local mode
+    (auth off) every request runs as the implicit local account and no cookie
+    or token is checked.
+
+
+    Errors are `text/plain` bodies written by http.Error unless stated
+    otherwise. Writes return 402 (text/plain, "subscription required ...") when
+    billing is enabled and the account has no active access (read-only).
+
+
+    HTML routes are not specified here: `/` and `/overview`, `/analytics`,
+    `/analytics/*`, `/insights`, `/config`, `/devices`, `/admin` serve the
+    dashboard shell; `/settings/encryption` serves the E2E setup page (303 to
+    `/` without a session); `/users` 302s to `/admin`; `/stats` and `/stats/*`
+    301 to `/`; other paths under `/` are static assets.
 servers:
   - url: http://localhost:4317
 paths:
-  /api/data:
+  /healthz:
     get:
-      summary: Full parsed glocker history
-      operationId: getData
+      summary: Unauthenticated liveness probe (pings the DB)
+      operationId: healthz
+      security: []
       responses:
         "200":
-          description: Parsed history
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Data"
-        "500":
-          description: Server error reading or parsing logs
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-  /api/rules:
-    get:
-      summary: The account's usage-categorization rules
-      description: >
-        Session-gated. Returns the account's rules in precedence order (first
-        match per namespace wins), each with the ids of the registry tags it
-        attaches. Tags themselves come from /api/tags. See docs/tags-and-rules.md.
-      operationId: getRules
-      responses:
-        "200":
-          description: Current rules
+          description: DB reachable
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  rules:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/UsageRule"
-        "401": { description: Not authenticated }
-    put:
-      summary: Replace the account's rules
-      operationId: putRules
-      description: >
-        Session-gated. Body is `{ rules: [...] }`, a full replace-all. Each rule
-        may carry at most one tag per namespace, and every tag id must be one the
-        account can use (a system `Glocker:*` tag or its own). The legacy `Tag`
-        column is dual-written from the first tag during the transition. Rejected
-        bodies leave the stored rules untouched.
+                  ok: { type: boolean }
+                  version: { type: string }
+        "503":
+          description: DB unreachable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  version: { type: string }
+                  error: { type: string }
+
+  /api/login:
+    post:
+      summary: Sign in and start a session
+      description: Public. Rate-limited to 10 requests/minute per client IP. Sets the `glockpeek_session` cookie.
+      operationId: login
+      security: []
       requestBody:
         required: true
         content:
@@ -64,71 +68,200 @@ paths:
             schema:
               type: object
               properties:
-                rules:
-                  type: array
-                  items:
-                    $ref: "#/components/schemas/UsageRule"
+                email: { type: string }
+                password: { type: string }
       responses:
         "200":
-          description: The saved rules (same shape as GET)
+          description: Signed in
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+              description: glockpeek_session (httpOnly, SameSite=Lax)
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  rules:
-                    type: array
-                    items:
-                      $ref: "#/components/schemas/UsageRule"
-        "400": { description: A rule carries two tags in one namespace, or an unknown/inaccessible tag id }
-        "401": { description: Not authenticated }
-  /api/ignored:
-    get:
-      summary: Violations marked as false positives (hidden from all stats)
-      operationId: getIgnored
-      responses:
-        "200":
-          description: Current ignore list
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IgnoredConfig"
-        "500":
-          description: Server error reading the ignore file
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-    put:
-      summary: Replace the whole false-positive ignore list
-      operationId: putIgnored
+                  user:
+                    type: object
+                    properties:
+                      id: { type: integer }
+                      email: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { description: "Invalid email or password", content: { text/plain: { schema: { type: string } } } }
+        "403": { description: "Email not yet verified", content: { text/plain: { schema: { type: string } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/register:
+    post:
+      summary: Self-service signup
       description: >
-        Body is `{ ignored: [...] }`. Each entry (ts + keyword + url) identifies a
-        single recorded violation to hide from counts. Non-destructive — the raw
-        reports log is never modified.
+        Public; hosted mode only. Rate-limited to 3 requests per 10 minutes per
+        client IP. Creates an unverified account and emails a /verify link; no
+        session is issued. If the email can't be sent the account is rolled back.
+      operationId: register
+      security: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/IgnoredConfig"
+              type: object
+              properties:
+                email: { type: string }
+                password: { type: string, minLength: 8 }
+                altcha:
+                  type: string
+                  description: Base64 Altcha solution; required when captcha is enabled.
       responses:
         "200":
-          description: The deduped ignore list that was saved
+          description: Account created, verification email sent
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/IgnoredConfig"
-        "500":
-          description: Server error writing the ignore file
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  message: { type: string }
+        "400": { description: "Bad body, invalid email, short password, or captcha failed", content: { text/plain: { schema: { type: string } } } }
+        "404": { description: "Registration disabled (local mode)", content: { text/plain: { schema: { type: string } } } }
+        "409": { description: "Email already registered", content: { text/plain: { schema: { type: string } } } }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "502": { description: "Verification email could not be sent", content: { text/plain: { schema: { type: string } } } }
+        "503": { description: "Email not configured", content: { text/plain: { schema: { type: string } } } }
+
+  /verify:
+    get:
+      summary: Email verification link target
+      description: Public. Consumes the emailed token and returns an HTML landing page.
+      operationId: verifyEmail
+      security: []
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: "Verified", content: { text/html: { schema: { type: string } } } }
+        "400": { description: "Invalid or expired token", content: { text/html: { schema: { type: string } } } }
+
+  /api/altcha:
+    get:
+      summary: Signup captcha challenge
+      description: Public. Only mounted when captcha is enabled.
+      operationId: getAltchaChallenge
+      security: []
+      responses:
+        "200":
+          description: A signed proof-of-work challenge
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                type: object
+                properties:
+                  algorithm: { type: string, example: SHA-256 }
+                  challenge: { type: string }
+                  maxnumber: { type: integer }
+                  salt: { type: string }
+                  signature: { type: string }
+
+  /api/me:
+    get:
+      summary: Current account and instance flags
+      operationId: getMe
+      security: [ { cookieAuth: [] } ]
+      responses:
+        "200":
+          description: Account
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: integer }
+                  email: { type: string }
+                  auth: { type: boolean, description: False in local (single-user) mode. }
+                  admin: { type: boolean }
+                  e2e: { type: boolean, description: The account has a key vault. }
+                  encrypted: { type: boolean }
+                  billing: { type: boolean, description: Billing is enabled on this instance. }
+                  subStatus: { type: string, description: '"" (free), trialing, active, canceled, past_due, expired.' }
+                  deviceLimit: { type: integer, description: Effective cap; -1 = unlimited. }
+                  subCurrentEnd: { type: string, format: date-time }
+                  version: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/logout:
+    post:
+      summary: End the current session
+      operationId: logout
+      security: [ { cookieAuth: [] } ]
+      responses:
+        "200":
+          description: Session deleted and cookie cleared
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "405": { description: Not POST (empty body) }
+
+  /api/data:
+    get:
+      summary: All-history overview (everything except usage)
+      description: >
+        Violations, unblocks, lifecycle, and derived per-device unmanaged and
+        downtime spans. `usage` is always an empty array here; fetch usage via
+        /api/usage. `sources.usage` reports whether any usage exists.
+      operationId: getData
+      security: [ { cookieAuth: [] } ]
+      responses:
+        "200":
+          description: Overview payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Data"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/usage:
+    get:
+      summary: Usage samples for a time window
+      operationId: getUsage
+      security: [ { cookieAuth: [] } ]
+      parameters:
+        - in: query
+          name: from
+          required: false
+          schema: { type: number }
+          description: Epoch ms (fractions truncated). Absent = now minus 400 days; 0 = all history.
+        - in: query
+          name: to
+          required: false
+          schema: { type: number }
+          description: Epoch ms. Absent or 0 = up to now.
+      responses:
+        "200":
+          description: Samples, ascending by ts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  now: { type: integer, format: int64 }
+                  usage:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/UsageSample"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /api/health:
     get:
-      summary: Liveness and which log files were found
+      summary: Account row counts
       operationId: getHealth
+      security: [ { cookieAuth: [] } ]
       responses:
         "200":
           description: Health status
@@ -137,156 +270,203 @@ paths:
               schema:
                 type: object
                 properties:
-                  ok:
-                    type: boolean
-                  sources:
-                    $ref: "#/components/schemas/Sources"
-                  paths:
-                    type: object
-                    additionalProperties:
-                      type: string
-  /api/admin/cancel-subscription:
-    post:
-      summary: Cancel a user's subscription and reset to free (admin-only)
-      description: >
-        One admin action: if the account has a live subscription it is revoked at Polar
-        first (so nothing is left billing), then glockpeek's record is reset to the free
-        tier (blank status, free device cap, no stored subscription id). The in-app
-        replacement for the Polar merchant dashboard. Admin-gated. An already-canceled or
-        already-gone subscription is treated as success, so this also repairs drift; a
-        free account is an idempotent no-op.
-      operationId: adminCancelSubscription
-      parameters:
-        - name: id
-          in: query
-          required: true
-          schema:
-            type: integer
-          description: Target account id.
+                  ok: { type: boolean }
+                  counts:
+                    $ref: "#/components/schemas/Counts"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/sync:
+    get:
+      summary: Last ingest time, last batch size, and totals
+      operationId: getSyncStatus
+      security: [ { cookieAuth: [] } ]
       responses:
         "200":
-          description: Canceled at the provider (if any) and reset to free
+          description: Sync status
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  ok:
-                    type: boolean
-        "400":
-          description: Invalid id
-        "403":
-          description: Not the admin account
-        "404":
-          description: No such user
-        "502":
-          description: Could not revoke at the provider
-  /api/admin/grant-subscription:
+                  lastSyncAt:
+                    type: integer
+                    format: int64
+                    nullable: true
+                    description: Epoch ms of the last ingest; null if never synced.
+                  last:
+                    type: object
+                    properties:
+                      violations: { type: integer }
+                      unblocks: { type: integer }
+                      lifecycle: { type: integer }
+                      usage: { type: integer }
+                      heartbeat: { type: integer }
+                  totals:
+                    $ref: "#/components/schemas/Counts"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /api/ingest:
+    get:
+      summary: Per-source high-water marks for this device
+      description: The syncer seeds its cursors from these so a restart only sends the gap.
+      operationId: getIngestCursors
+      security: [ { bearerAuth: [] } ]
+      responses:
+        "200":
+          description: Max stored ts (epoch ms, 0 if none) per source for the token's device
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cursors:
+                    type: object
+                    properties:
+                      reports: { type: integer, format: int64 }
+                      unblocks: { type: integer, format: int64 }
+                      lifecycle: { type: integer, format: int64 }
+                      usage: { type: integer, format: int64 }
+                      heartbeat: { type: integer, format: int64 }
+        "401": { $ref: "#/components/responses/BadToken" }
     post:
-      summary: Comp a user the paid tier without a payment (admin-only)
+      summary: Upsert a batch of records from the syncer
       description: >
-        Grants an account the paid tier directly — a friend, a beta tester, a manual
-        make-good — writing an "active" subscription with the paid device cap and an
-        empty provider subscription id (so the on-load Polar reconcile skips it and never
-        clobbers the comp). Permanent by default; an optional untilMillis time-boxes it
-        (access lapses after that instant). Admin-gated. Refuses an account that already
-        has a live, renewing subscription (active or trialing) — cancel it first — and
-        refuses when billing is disabled (every account already has access). Every other
-        state is enable-able: a canceled sub (in grace or lapsed), an expired or past_due
-        one, or a free account, even if a stale sub id lingers, which the grant clears.
-      operationId: adminGrantSubscription
-      parameters:
-        - name: id
-          in: query
-          required: true
-          schema:
-            type: integer
-          description: Target account id.
+        Idempotent (upsert on each table's natural key). Every array is optional.
+        The device is stamped server-side from the token. Body limit 64 MiB.
+      operationId: ingest
+      security: [ { bearerAuth: [] } ]
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
               properties:
-                untilMillis:
-                  type: integer
-                  format: int64
-                  description: >
-                    Optional Unix epoch milliseconds when the comp expires. Absent or 0
-                    grants permanent access.
-      responses:
-        "200":
-          description: Access granted
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  ok:
-                    type: boolean
-                  subStatus:
-                    type: string
-                    example: active
-        "400":
-          description: Invalid id, bad body, or billing disabled
-        "403":
-          description: Not the admin account
-        "404":
-          description: No such user
-        "409":
-          description: Account has a live subscription (active/trialing) — cancel it first
-  /api/admin/metrics:
-    get:
-      summary: Live server and database health (admin-only)
-      description: >
-        JSON operational snapshot for the admin dashboard: process uptime/build and
-        the database connection-pool stats + a live ping. Admin-gated (the configured
-        admin account only). The same numbers are exposed as Prometheus text at /metrics.
-      operationId: getAdminMetrics
-      responses:
-        "200":
-          description: Metrics snapshot
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  uptimeSeconds:
-                    type: integer
-                    format: int64
-                  version:
-                    type: string
-                  db:
+                encrypted:
+                  type: boolean
+                  description: Sensitive fields are ciphertext. Required true when require_encryption is on.
+                violations:
+                  type: array
+                  items:
                     type: object
                     properties:
-                      up:
-                        type: boolean
-                      pingSeconds:
-                        type: number
-                      open:
-                        type: integer
-                      inUse:
-                        type: integer
-                      idle:
-                        type: integer
-                      max:
-                        type: integer
-                      waitCount:
-                        type: integer
-                        format: int64
-                      waitSeconds:
-                        type: number
-        "403":
-          description: Not an admin account
+                      ts: { type: integer, format: int64 }
+                      recordId: { type: string }
+                      keyword: { type: string }
+                      url: { type: string }
+                      type: { type: string }
+                      domain: { type: string }
+                unblocks:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ts: { type: integer, format: int64 }
+                      recordId: { type: string }
+                      domain: { type: string }
+                      restoreTs: { type: integer, format: int64, nullable: true }
+                      reason: { type: string }
+                lifecycle:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ts: { type: integer, format: int64 }
+                      type: { type: string }
+                      reason: { type: string }
+                      note: { type: string }
+                usage:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ts: { type: integer, format: int64 }
+                      idleMs: { type: integer, format: int64 }
+                      activeClass: { type: string }
+                      activeInstance: { type: string }
+                      activeTitle: { type: string }
+                      windowCount: { type: integer }
+                heartbeat:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ts: { type: integer, format: int64 }
+                      alive: { type: boolean }
+      responses:
+        "200":
+          description: Batch stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: object
+                    properties:
+                      violations: { type: integer }
+                      unblocks: { type: integer }
+                      lifecycle: { type: integer }
+                      usage: { type: integer }
+                      heartbeat: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/BadToken" }
+        "402": { $ref: "#/components/responses/ReadOnly" }
+        "422": { description: "require_encryption is on but the batch is not marked encrypted", content: { text/plain: { schema: { type: string } } } }
+        "500": { description: '"ingest <source> failed: <error>"', content: { text/plain: { schema: { type: string } } } }
+
+  /api/rules:
+    get:
+      summary: The account's usage-categorization rules
+      description: >
+        Rules in precedence order, each with the ids of the registry tags it
+        attaches. Tags come from /api/tags. See docs/tags-and-rules.md.
+      operationId: getRules
+      security: [ { cookieAuth: [] } ]
+      responses:
+        "200":
+          description: Current rules
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleList"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    put:
+      summary: Replace the account's rules
+      operationId: putRules
+      description: >
+        Full replace-all. Each rule may carry at most one tag per namespace, and
+        every tag id must be one the account can use (a system `Glocker:*` tag or
+        its own). Rejected bodies leave the stored rules untouched. Body limit 256 KiB.
+      security: [ { cookieAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuleList"
+      responses:
+        "200":
+          description: The saved rules (same shape as GET)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleList"
+        "400": { description: "Bad body, two tags in one namespace, or an unknown/inaccessible tag id", content: { text/plain: { schema: { type: string } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/ReadOnly" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
   /api/tags:
     get:
       summary: The account's tag registry
       description: >
-        Session-gated. Returns the shared system tags (`Glocker:*`, with this
-        account's distraction overrides applied) followed by the account's own
-        tags. See docs/tags-and-rules.md.
+        System tags (`Glocker:*`, with this account's distraction overrides
+        applied) followed by the account's own tags. See docs/tags-and-rules.md.
       operationId: listTags
+      security: [ { cookieAuth: [] } ]
       responses:
         "200":
           description: Registry
@@ -298,20 +478,18 @@ paths:
                   tags:
                     type: array
                     items:
-                      type: object
-                      properties:
-                        id: { type: integer }
-                        scope: { type: string, enum: [system, user] }
-                        namespace: { type: string }
-                        name: { type: string }
-                        color: { type: string }
-                        distraction: { type: boolean }
-                        behavior: { type: string, description: "\"\" or \"hide\" (windows dropped from usage totals)." }
-        "401": { description: Not authenticated }
+                      $ref: "#/components/schemas/Tag"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
     post:
       summary: Create a user tag
-      description: Session-gated. Adds a tag in one of the account's own namespaces (not `Glocker`).
+      description: >
+        Adds a tag in one of the account's own namespaces. Under E2E the browser
+        seals namespace and name with a random nonce before sending, so the
+        server's reserved-`Glocker` check and the unique index (409) only catch
+        cleartext values; sealed duplicates are not detected server-side.
       operationId: createTag
+      security: [ { cookieAuth: [] } ]
       requestBody:
         required: true
         content:
@@ -324,21 +502,26 @@ paths:
                 color: { type: string }
                 distraction: { type: boolean }
       responses:
-        "201": { description: Created; returns the tag }
-        "400": { description: Missing fields, or the reserved Glocker namespace }
-        "409": { description: A tag with that namespace+name already exists }
-        "401": { description: Not authenticated }
+        "201":
+          description: Created; body is the tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400": { description: "Bad body, missing namespace/name, or the reserved Glocker namespace", content: { text/plain: { schema: { type: string } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/ReadOnly" }
+        "409": { description: "Create failed (returned for any store error; normally a duplicate namespace+name)", content: { text/plain: { schema: { type: string } } } }
     patch:
       summary: Edit a tag (or override a system tag's distraction)
       description: >
-        Session-gated. `?id=<tag>`. A user tag is edited in place; a system tag
-        accepts only a distraction change, stored as this account's override.
+        Partial update; only fields present are written. A user tag is edited in
+        place; a system tag accepts only a distraction change, stored as this
+        account's override.
       operationId: patchTag
+      security: [ { cookieAuth: [] } ]
       parameters:
-        - in: query
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/TagId"
       requestBody:
         required: true
         content:
@@ -352,47 +535,243 @@ paths:
                 distraction: { type: boolean }
       responses:
         "204": { description: Updated }
-        "404": { description: Tag not found / not yours }
-        "401": { description: Not authenticated }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/ReadOnly" }
+        "404": { description: "Tag not found / not yours, or a system tag without a distraction field", content: { text/plain: { schema: { type: string } } } }
+        "500": { $ref: "#/components/responses/ServerError" }
     delete:
       summary: Delete a user tag
-      description: Session-gated. `?id=<tag>`. Removes the tag and unlinks it from the account's rules. System tags cannot be deleted.
+      description: Removes the tag and unlinks it from the account's rules.
       operationId: deleteTag
+      security: [ { cookieAuth: [] } ]
       parameters:
-        - in: query
-          name: id
-          required: true
-          schema: { type: integer }
+        - $ref: "#/components/parameters/TagId"
       responses:
         "204": { description: Deleted }
-        "403": { description: System tag — cannot be deleted }
-        "404": { description: Tag not found / not yours }
-        "401": { description: Not authenticated }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/ReadOnly" }
+        "403": { description: "System tag; cannot be deleted", content: { text/plain: { schema: { type: string } } } }
+        "404": { description: "Tag not found / not yours", content: { text/plain: { schema: { type: string } } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /api/ignored:
+    get:
+      summary: Violations marked as false positives
+      operationId: getIgnored
+      security: [ { cookieAuth: [] } ]
+      responses:
+        "200":
+          description: Current ignore list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IgnoredConfig"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    put:
+      summary: Replace the whole false-positive ignore list
+      description: >
+        Entries are keyed by the violation's opaque recordId; entries without a
+        recordId are dropped and duplicates collapsed. Applied client-side as an
+        overlay; stored records are never modified. Body limit 512 KiB.
+      operationId: putIgnored
+      security: [ { cookieAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IgnoredConfig"
+      responses:
+        "200":
+          description: The deduped list that was saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IgnoredConfig"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402": { $ref: "#/components/responses/ReadOnly" }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /api/tokens:
+    get:
+      summary: List the account's device (ingest) tokens
+      operationId: listTokens
+      security: [ { cookieAuth: [] } ]
+      responses:
+        "200":
+          description: Tokens plus device-cap usage
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tokens:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: integer }
+                        name: { type: string }
+                        createdAt: { type: integer, format: int64 }
+                        lastUsedAt: { type: integer, format: int64, nullable: true }
+                        revokedAt: { type: integer, format: int64, nullable: true }
+                  limit: { type: integer, description: -1 = unlimited }
+                  used: { type: integer, description: Active (unrevoked) tokens. }
+                  canAdd: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    post:
+      summary: Mint a device token
+      description: Returns the plaintext token once. Name defaults to "device", truncated to 64 chars.
+      operationId: createToken
+      security: [ { cookieAuth: [] } ]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      responses:
+        "200":
+          description: Token created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  name: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "402":
+          description: >
+            Either read-only (text/plain, see ReadOnly) or, in hosted mode, the
+            device cap is reached (JSON below).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string, example: device limit reached }
+                  limit: { type: integer }
+                  used: { type: integer }
+            text/plain:
+              schema: { type: string }
+        "500": { $ref: "#/components/responses/ServerError" }
+    patch:
+      summary: Rename a device token
+      operationId: renameToken
+      security: [ { cookieAuth: [] } ]
+      parameters:
+        - $ref: "#/components/parameters/TokenId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      responses:
+        "200":
+          description: Renamed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  name: { type: string }
+        "400": { description: "Invalid id or empty name", content: { text/plain: { schema: { type: string } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "No such token", content: { text/plain: { schema: { type: string } } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+    delete:
+      summary: Revoke a device token
+      description: Revoked tokens stay listed (with revokedAt) but no longer count toward the cap.
+      operationId: revokeToken
+      security: [ { cookieAuth: [] } ]
+      parameters:
+        - $ref: "#/components/parameters/TokenId"
+      responses:
+        "200":
+          description: Revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "No such token", content: { text/plain: { schema: { type: string } } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /api/vault:
+    get:
+      summary: Fetch the account's E2E key vault
+      description: Readable by the browser (session) or the agent (bearer token). Returned verbatim as stored.
+      operationId: getVault
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The stored vault JSON
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vault"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "No vault", content: { text/plain: { schema: { type: string } } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+    put:
+      summary: Store the account's E2E key vault
+      description: Session only. The server checks only that kdf, salt and wrappedMK are present; contents are opaque. Body limit 64 KiB.
+      operationId: putVault
+      security: [ { cookieAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Vault"
+      responses:
+        "204": { description: Stored }
+        "400": { description: "Not a vault", content: { text/plain: { schema: { type: string } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
 
   /api/config:
     get:
       summary: Read device configuration snapshot(s)
       description: >
-        Modes by credential + query. Browser session, no query: every device's
-        latest config snapshot (no blocklist), for the Config tab. Browser
-        session, ?blocklist=1: every device's gzip'd blocklist blob (multi-MB),
-        for the dashboard's membership checks + domain search. Ingest bearer
-        token, ?mine=1: the stored snapshot + blocklist hashes for that device, so
-        the agent re-uploads only what changed. All blobs are content-blind —
-        opaque (base64 nonce||ciphertext under E2E, or cleartext/base64 gzip in
-        plaintext mode) and the server never parses them.
+        Mode by credential + query. Session, no query: every device's latest
+        snapshot (no blocklist). Session, ?blocklist=1: every device's gzip'd
+        blocklist blob (multi-MB). Bearer token, ?mine=1: this device's stored
+        snapshot and blocklist hashes, so the agent re-uploads only what
+        changed. Blobs are opaque (base64 nonce||ciphertext under E2E, or
+        cleartext/base64 gzip in plaintext mode).
       operationId: getDeviceConfig
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
       parameters:
         - in: query
           name: mine
           required: false
           schema: { type: string, enum: ["1"] }
-          description: With an ingest token, return this device's snapshot + blocklist hashes.
+          description: Bearer token required; returns this device's hashes.
         - in: query
           name: blocklist
           required: false
           schema: { type: string, enum: ["1"] }
-          description: With a session, return every device's blocklist blob instead of snapshots.
+          description: Session required; returns every device's blocklist blob.
       responses:
         "200":
           description: Snapshot list, blocklist list, or hashes (by mode)
@@ -408,10 +787,10 @@ paths:
                           type: object
                           properties:
                             deviceId: { type: integer }
-                            name: { type: string, description: Device label (API-token name; empty for local/single-device). }
-                            ts: { type: integer, format: int64, description: Snapshot capture time (epoch ms). }
+                            name: { type: string, description: Device label (token name; empty for local/single-device). }
+                            ts: { type: integer, format: int64 }
                             encrypted: { type: boolean }
-                            config: { type: string, description: Opaque snapshot blob; decrypted client-side. }
+                            config: { type: string, description: Opaque snapshot blob. }
                   - type: object
                     properties:
                       blocklists:
@@ -422,22 +801,22 @@ paths:
                             deviceId: { type: integer }
                             encrypted: { type: boolean }
                             hash: { type: string, description: Blocklist fingerprint (aad for decryption). }
-                            blocklist: { type: string, description: gzip'd domain list, encrypted+base64 or base64; gunzipped client-side. }
+                            blocklist: { type: string }
                   - type: object
                     properties:
                       hash: { type: string, description: Stored snapshot hash; empty if none. }
                       blocklistHash: { type: string, description: Stored blocklist hash; empty if none. }
-        "401":
-          description: Not authenticated
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/ServerError" }
     post:
       summary: Upload this device's configuration snapshot (agent)
       description: >
-        The glocker agent upserts its latest config snapshot (one row per
-        user+device; latest only, no history). Ingest-token gated; the device is
-        stamped server-side from the token. When the operator sets
-        require_encryption, an unencrypted snapshot is rejected (422), matching
-        the ingest backstop.
+        Upserts the device's latest snapshot (one row per account+device). The
+        device is stamped from the token. `accountability` is sent cleartext
+        (glockpeek sends the accountability email) and stored account-level;
+        latest upload wins. Body limit 32 MiB.
       operationId: putDeviceConfig
+      security: [ { bearerAuth: [] } ]
       requestBody:
         required: true
         content:
@@ -445,55 +824,74 @@ paths:
             schema:
               type: object
               properties:
-                ts: { type: integer, format: int64, description: Snapshot capture time (epoch ms). }
+                ts: { type: integer, format: int64, description: Capture time (epoch ms). }
                 encrypted: { type: boolean }
-                hash: { type: string, description: Stable fingerprint of the plaintext subset. }
-                config: { type: string, description: Opaque blob (base64 nonce||ciphertext under E2E, or cleartext JSON). }
-                blocklistHash: { type: string, description: Optional; fingerprint of the plaintext domain list. Present only when the blocklist changed. }
-                blocklist: { type: string, description: Optional; gzip'd domain list, encrypted+base64 or base64. Sent only when blocklistHash changed. }
+                hash: { type: string, description: Fingerprint of the plaintext subset. }
+                config: { type: string, description: "Opaque blob (base64 nonce||ciphertext under E2E, or cleartext JSON)." }
+                blocklistHash: { type: string, description: Optional; sent only when the blocklist changed. }
+                blocklist: { type: string, description: "Optional; gzip'd domain list, encrypted+base64 or base64. Stored only when blocklistHash is also set." }
+                accountability:
+                  type: object
+                  description: Optional, cleartext. Absent on older agents.
+                  properties:
+                    enabled: { type: boolean }
+                    buddyEmails: { type: array, items: { type: string }, description: Truncated to the first 10. }
+                    digestEveryHours: { type: integer }
+                    digestWhenQuiet: { type: boolean }
+                    wentDark: { type: boolean }
+                    highViolations: { type: integer }
+                    heartbeatMinutes: { type: integer }
       responses:
-        "204":
-          description: Snapshot stored
-        "401":
-          description: Missing or invalid ingest token
-        "422":
-          description: require_encryption is on but the snapshot is not encrypted
+        "204": { description: Stored }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/BadToken" }
+        "402": { $ref: "#/components/responses/ReadOnly" }
+        "422": { description: "require_encryption is on but the snapshot is not encrypted", content: { text/plain: { schema: { type: string } } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
   /api/billing/checkout:
     post:
-      summary: Start a checkout for the paid tier (Merchant-of-Record, Polar)
+      summary: Start a Polar checkout for the paid tier
       description: >
-        Creates a Polar checkout session for the authenticated account and
-        returns the hosted checkout URL to redirect the browser to. The account's
-        numeric id is attached as external_customer_id (never the email), so the
-        webhook can map the resulting subscription back without glockpeek holding
-        payer PII. Only mounted when billing is enabled; session-gated.
+        Only mounted when billing is enabled. Returns the hosted checkout URL.
+        The account id is sent as external_customer_id (never the email).
       operationId: startBillingCheckout
+      security: [ { cookieAuth: [] } ]
       responses:
         "200":
           description: Checkout session created
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  url:
-                    type: string
-                    format: uri
-                    description: Hosted Polar checkout URL to redirect the customer to.
-        "401":
-          description: Not authenticated
-        "502":
-          description: Upstream (Polar) error creating the checkout
+                $ref: "#/components/schemas/UrlResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "502": { description: "Polar error", content: { text/plain: { schema: { type: string } } } }
+
+  /api/billing/portal:
+    post:
+      summary: Open the Polar customer portal
+      description: Only mounted when billing is enabled. Returns the portal URL.
+      operationId: openBillingPortal
+      security: [ { cookieAuth: [] } ]
+      responses:
+        "200":
+          description: Portal session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UrlResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "No Polar customer for this account yet", content: { text/plain: { schema: { type: string } } } }
+        "502": { description: "Polar error", content: { text/plain: { schema: { type: string } } } }
+
   /api/billing/cancel:
     post:
-      summary: Cancel the subscription at period end (no portal round trip)
+      summary: Cancel the subscription at period end
       description: >
-        Cancels the authenticated account's subscription via the Polar API
-        (PATCH /v1/subscriptions/{id} with cancel_at_period_end), keeping full
-        access until the current period ends. Records the canceled state from the
-        API response immediately (the webhook reconciles idempotently). Only
-        mounted when billing is enabled; session-gated.
+        Only mounted when billing is enabled. Cancels via the Polar API, keeping
+        access until the period ends, and records the canceled state immediately.
       operationId: cancelBillingSubscription
+      security: [ { cookieAuth: [] } ]
       responses:
         "200":
           description: Cancellation scheduled
@@ -502,44 +900,26 @@ paths:
               schema:
                 type: object
                 properties:
-                  status:
-                    type: string
-                    description: New subscription status ("canceled").
-                  subCurrentEnd:
-                    type: string
-                    format: date-time
-                    description: Access is retained until this time.
-        "401":
-          description: Not authenticated
-        "409":
-          description: No cancelable subscription (not trialing/active)
-        "502":
-          description: Upstream (Polar) error canceling
+                  status: { type: string, example: canceled }
+                  subCurrentEnd: { type: string, format: date-time, description: Access retained until this time. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { description: "No cancelable subscription (not trialing/active)", content: { text/plain: { schema: { type: string } } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "502": { description: "Polar error", content: { text/plain: { schema: { type: string } } } }
+
   /api/billing/webhook:
     post:
-      summary: Merchant-of-Record subscription webhook (Polar)
+      summary: Polar subscription webhook
       description: >
-        Receives Polar subscription lifecycle events. The request is verified
-        against the Standard Webhooks HMAC signature before anything is trusted;
-        the event is then mapped onto the account's device limit —
-        active/uncanceled grant the paid cap, revoked drops back to free, canceled
-        keeps access until the period end, and past_due (failed renewal) holds
-        access through a grace window before revoked→expired. Not session-gated (the
-        caller is Polar, authenticated by the signature, not a browser). Idempotent.
+        Only mounted when billing is enabled. Public, but verified against the
+        Standard Webhooks HMAC signature before anything is trusted. Maps
+        subscription.* events onto the account's plan and device limit. Idempotent.
       operationId: billingWebhook
+      security: []
       parameters:
-        - in: header
-          name: webhook-id
-          required: true
-          schema: { type: string }
-        - in: header
-          name: webhook-timestamp
-          required: true
-          schema: { type: string }
-        - in: header
-          name: webhook-signature
-          required: true
-          schema: { type: string }
+        - { in: header, name: webhook-id, required: true, schema: { type: string } }
+        - { in: header, name: webhook-timestamp, required: true, schema: { type: string } }
+        - { in: header, name: webhook-signature, required: true, schema: { type: string } }
       requestBody:
         required: true
         content:
@@ -548,28 +928,341 @@ paths:
               type: object
               description: A Polar webhook event; only subscription.* types are acted on.
               properties:
-                type:
-                  type: string
-                  example: subscription.active
-                data:
-                  type: object
+                type: { type: string, example: subscription.active }
+                data: { type: object }
+      responses:
+        "200": { description: "Applied, or acked and ignored (unknown account, unhandled type)" }
+        "400": { description: "Unreadable body or unparseable payload (after signature check)", content: { text/plain: { schema: { type: string } } } }
+        "401": { description: "Signature verification failed", content: { text/plain: { schema: { type: string } } } }
+        "502": { description: "Transient processing error; Polar should retry", content: { text/plain: { schema: { type: string } } } }
+        "503": { description: "No valid webhook signing secret configured", content: { text/plain: { schema: { type: string } } } }
+
+  /api/admin/users:
+    get:
+      summary: List all accounts (admin)
+      operationId: adminListUsers
+      security: [ { cookieAuth: [] } ]
       responses:
         "200":
-          description: Event applied, or safely ignored/acked (unknown account or unhandled type)
-        "401":
-          description: Signature verification failed
-        "502":
-          description: Transient processing error; Polar should retry
-        "503":
-          description: Billing webhook not configured (no valid signing secret)
+          description: Accounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AdminUser"
+                  totals:
+                    type: object
+                    properties:
+                      accounts: { type: integer }
+                      records: { type: integer, format: int64 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    delete:
+      summary: Delete an account and all its data (admin)
+      operationId: adminDeleteUser
+      security: [ { cookieAuth: [] } ]
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "400": { description: "Invalid id, or the admin's own account", content: { text/plain: { schema: { type: string } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "500": { $ref: "#/components/responses/ServerError" }
+    put:
+      summary: Set an account's device limit (admin)
+      operationId: adminSetDeviceLimit
+      security: [ { cookieAuth: [] } ]
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                deviceLimit: { type: integer }
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "400": { description: "Invalid id or bad body", content: { text/plain: { schema: { type: string } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "No such user", content: { text/plain: { schema: { type: string } } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /api/admin/cancel-subscription:
+    post:
+      summary: Cancel a user's subscription and reset to free (admin)
+      description: >
+        If billing is on and the account has a provider subscription id, it is
+        revoked at Polar first; then the record is reset to the free tier.
+        Already-canceled/gone subscriptions count as success; a free account is a no-op.
+      operationId: adminCancelSubscription
+      security: [ { cookieAuth: [] } ]
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "400": { description: "Invalid id", content: { text/plain: { schema: { type: string } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "No such user", content: { text/plain: { schema: { type: string } } } }
+        "500": { description: "Revoked at Polar but the local reset failed", content: { text/plain: { schema: { type: string } } } }
+        "502": { description: "Could not revoke at Polar", content: { text/plain: { schema: { type: string } } } }
+
+  /api/admin/grant-subscription:
+    post:
+      summary: Comp a user the paid tier without payment (admin)
+      description: >
+        Writes an "active" subscription with the paid device cap and an empty
+        provider id (so the Polar reconcile skips it). Permanent unless
+        untilMillis is set. Refuses accounts that are active or trialing, and
+        refuses when billing is disabled.
+      operationId: adminGrantSubscription
+      security: [ { cookieAuth: [] } ]
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                untilMillis:
+                  type: integer
+                  format: int64
+                  description: Optional expiry (epoch ms). Absent or 0 = permanent.
+      responses:
+        "200":
+          description: Access granted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  subStatus: { type: string, example: active }
+        "400": { description: "Invalid id, bad body, or billing disabled", content: { text/plain: { schema: { type: string } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "No such user", content: { text/plain: { schema: { type: string } } } }
+        "409": { description: "Account is active or trialing; cancel it first", content: { text/plain: { schema: { type: string } } } }
+        "500": { $ref: "#/components/responses/ServerError" }
+
+  /api/admin/metrics:
+    get:
+      summary: Server and DB pool health as JSON (admin)
+      description: Same numbers as /metrics.
+      operationId: getAdminMetrics
+      security: [ { cookieAuth: [] } ]
+      responses:
+        "200":
+          description: Metrics snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uptimeSeconds: { type: integer, format: int64 }
+                  version: { type: string }
+                  db:
+                    type: object
+                    properties:
+                      up: { type: boolean }
+                      pingSeconds: { type: number }
+                      open: { type: integer }
+                      inUse: { type: integer }
+                      idle: { type: integer }
+                      max: { type: integer }
+                      waitCount: { type: integer, format: int64 }
+                      waitSeconds: { type: number }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /metrics:
+    get:
+      summary: Prometheus metrics (admin)
+      description: >
+        Admin session required. Exposes glockpeek_uptime_seconds,
+        glockpeek_build_info, glockpeek_db_up, glockpeek_db_ping_seconds and
+        glockpeek_db_connections_* / glockpeek_db_wait_* gauges and counters.
+      operationId: getMetrics
+      security: [ { cookieAuth: [] } ]
+      responses:
+        "200":
+          description: Prometheus text exposition (version 0.0.4)
+          content:
+            text/plain:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
 components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: glockpeek_session
+      description: Browser session from POST /api/login. Not checked in local mode.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Ingest API token (one per device), minted via POST /api/tokens. Not checked in local mode.
+
+  parameters:
+    TagId:
+      in: query
+      name: id
+      required: true
+      schema: { type: integer, minimum: 1 }
+    TokenId:
+      in: query
+      name: id
+      required: true
+      schema: { type: integer }
+    UserId:
+      in: query
+      name: id
+      required: true
+      schema: { type: integer }
+      description: Target account id.
+
+  responses:
+    Ok:
+      description: Done
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              ok: { type: boolean }
+    BadRequest:
+      description: Malformed body or parameter
+      content:
+        text/plain:
+          schema: { type: string }
+    Unauthorized:
+      description: No valid session (or token, where accepted)
+      content:
+        text/plain:
+          schema: { type: string, example: authentication required }
+    BadToken:
+      description: Missing or invalid API token
+      content:
+        text/plain:
+          schema: { type: string, example: invalid or missing API token }
+    Forbidden:
+      description: Not the admin account
+      content:
+        text/plain:
+          schema: { type: string, example: admin only }
+    ReadOnly:
+      description: Billing enabled and the account has no active access (read-only)
+      content:
+        text/plain:
+          schema: { type: string }
+    RateLimited:
+      description: Per-IP rate limit exceeded
+      headers:
+        Retry-After:
+          schema: { type: integer, example: 60 }
+      content:
+        text/plain:
+          schema: { type: string }
+    ServerError:
+      description: Internal error
+      content:
+        text/plain:
+          schema: { type: string }
+
   schemas:
-    Error:
+    UrlResponse:
       type: object
       properties:
-        error:
+        url: { type: string, format: uri }
+    Counts:
+      type: object
+      description: Row counts per table for the account.
+      properties:
+        violations: { type: integer, format: int64 }
+        unblocks: { type: integer, format: int64 }
+        lifecycle: { type: integer, format: int64 }
+        usage: { type: integer, format: int64 }
+        heartbeat: { type: integer, format: int64 }
+        rules: { type: integer, format: int64 }
+        ignored: { type: integer, format: int64 }
+    Vault:
+      type: object
+      description: Passphrase-wrapped master key. Opaque to the server beyond these required fields.
+      required: [kdf, salt, wrappedMK]
+      additionalProperties: true
+      properties:
+        kdf: { type: string }
+        salt: { type: string }
+        wrappedMK: {}
+    AdminUser:
+      type: object
+      properties:
+        id: { type: integer }
+        email: { type: string }
+        verified: { type: boolean }
+        deviceLimit: { type: integer, description: Effective cap; -1 = unlimited. }
+        devices: { type: integer }
+        records: { type: integer, format: int64 }
+        lastSyncAt: { type: integer, format: int64, nullable: true }
+        createdAt: { type: integer, format: int64 }
+        isAdmin: { type: boolean }
+        self: { type: boolean }
+        subStatus: { type: string }
+        hasAccess: { type: boolean }
+    Tag:
+      type: object
+      properties:
+        id: { type: integer }
+        scope: { type: string, enum: [system, user] }
+        namespace: { type: string, description: Sealed (enc:v1:...) for user tags under E2E. }
+        name: { type: string, description: Sealed (enc:v1:...) for user tags under E2E. }
+        color: { type: string }
+        distraction: { type: boolean }
+        behavior: { type: string, description: 'Omitted, or "hide" (windows dropped from usage totals).' }
+    RuleList:
+      type: object
+      properties:
+        rules:
+          type: array
+          items:
+            $ref: "#/components/schemas/UsageRule"
+    UsageRule:
+      type: object
+      description: >
+        One categorization rule. program/title are optional case-insensitive
+        regexes (empty = any); the first matching rule wins per namespace.
+        Matching runs client-side. Under E2E program/title are sealed.
+      properties:
+        id:
+          type: integer
+          description: Present on GET; ignored on PUT.
+        position:
+          type: integer
+          description: Precedence; lower wins.
+        program:
           type: string
+          description: Regex against the active window class.
+        title:
+          type: string
+          description: Regex against the active window title.
+        tagIds:
+          type: array
+          description: Registry tag ids, at most one per namespace.
+          items:
+            type: integer
     IgnoredConfig:
       type: object
       properties:
@@ -579,201 +1272,110 @@ components:
             $ref: "#/components/schemas/IgnoredViolation"
     IgnoredViolation:
       type: object
-      description: >
-        One recorded violation marked as a false positive. Matched by ts +
-        keyword + url; domain is stored only for display.
+      description: One violation marked as a false positive, keyed by its opaque recordId.
       properties:
+        recordId:
+          type: string
+          description: Matches Violation.recordId.
         ts:
           type: integer
           format: int64
-          description: Event time in epoch milliseconds (matches Violation.ts).
-        keyword:
-          type: string
-        url:
-          type: string
-        domain:
-          type: string
+          description: Event time (epoch ms); display only. Omitted when 0.
     Sources:
       type: object
-      description: Whether each log file was found and readable.
+      description: Whether the account has any rows of each kind.
       properties:
-        reports:
-          type: boolean
-        unblocks:
-          type: boolean
-        lifecycle:
-          type: boolean
-        usage:
-          type: boolean
-        heartbeat:
-          type: boolean
+        reports: { type: boolean }
+        unblocks: { type: boolean }
+        lifecycle: { type: boolean }
+        usage: { type: boolean }
+        heartbeat: { type: boolean }
     Violation:
       type: object
-      description: One content/URL keyword violation report.
+      description: One URL/content keyword violation.
       properties:
-        ts:
-          type: integer
-          format: int64
-          description: Event time in epoch milliseconds (local-zone naive timestamp).
-        type:
-          type: string
-          enum: [url-keyword, content-keyword]
-        keyword:
-          type: string
-        url:
-          type: string
-        domain:
-          type: string
+        ts: { type: integer, format: int64, description: Epoch ms. }
+        deviceId: { type: integer, description: 0 = local/legacy. }
+        recordId: { type: string, description: Opaque content-blind id; the ignore overlay's key. }
+        type: { type: string, example: url-keyword }
+        keyword: { type: string }
+        url: { type: string }
+        domain: { type: string }
     Unblock:
       type: object
       description: One temporary unblock grant.
       properties:
-        ts:
-          type: integer
-          format: int64
-          description: Unblock time in epoch milliseconds.
-        restoreTs:
-          type: integer
-          format: int64
-          nullable: true
-          description: When the unblock expired, in epoch milliseconds.
-        reason:
-          type: string
-        domain:
-          type: string
+        ts: { type: integer, format: int64 }
+        deviceId: { type: integer }
+        restoreTs: { type: integer, format: int64, nullable: true }
+        reason: { type: string }
+        domain: { type: string }
     Lifecycle:
       type: object
       description: One install or uninstall event.
       properties:
-        ts:
-          type: integer
-          format: int64
-        type:
-          type: string
-          enum: [install, uninstall]
-        reason:
-          type: string
-        note:
-          type: string
+        ts: { type: integer, format: int64 }
+        deviceId: { type: integer }
+        type: { type: string, example: uninstall }
+        reason: { type: string }
+        note: { type: string }
     Unmanaged:
       type: object
-      description: A span during which glocker was uninstalled (fully exposed).
+      description: A per-device span during which glocker was uninstalled (gaps under 2 minutes are dropped).
       properties:
-        start:
-          type: integer
-          format: int64
-        end:
-          type: integer
-          format: int64
-        open:
-          type: boolean
-          description: True if glocker is still uninstalled (span ends at now).
-        reason:
-          type: string
-        note:
-          type: string
+        start: { type: integer, format: int64 }
+        end: { type: integer, format: int64 }
+        open: { type: boolean, description: Still uninstalled (end = now). }
+        reason: { type: string }
+        note: { type: string }
+        deviceId: { type: integer }
     Downtime:
       type: object
-      description: >
-        A span the glockdoc heartbeat watchdog observed glocker to be down (a run
-        of alive:false liveness samples). Unlike Unmanaged (derived from clean
-        uninstall/install events), this reflects observed liveness, so it also
-        captures crashes and unclean stops.
+      description: A per-device span the heartbeat watchdog observed glocker to be down.
       properties:
-        start:
-          type: integer
-          format: int64
-        end:
-          type: integer
-          format: int64
-        open:
-          type: boolean
-          description: True if glocker was still down at the last sample (span ends at now).
+        start: { type: integer, format: int64 }
+        end: { type: integer, format: int64 }
+        open: { type: boolean, description: Still down at the last sample. }
+        deviceId: { type: integer }
     UsageSample:
       type: object
-      description: >
-        One usage monitor sample: the focused window and idle time at a point in
-        time. The full window list from the log is dropped server-side; only the
-        active window is forwarded.
+      description: One usage sample (focused window + idle time).
       properties:
-        ts:
-          type: integer
-          format: int64
-          description: Sample time in epoch milliseconds.
-        idleMs:
-          type: integer
-          format: int64
-          description: Milliseconds since last user input, or -1 if unknown.
+        ts: { type: integer, format: int64 }
+        deviceId: { type: integer }
+        idleMs: { type: integer, format: int64, description: "Ms since last input, or -1 if unknown." }
         active:
           type: object
           nullable: true
-          description: The focused window, or null if none was focused.
+          description: Focused window; null if none.
           properties:
-            class:
-              type: string
-            instance:
-              type: string
-            title:
-              type: string
-        windowCount:
-          type: integer
-          description: Number of open windows observed in the sample.
-    UsageRule:
-      type: object
-      description: >
-        One categorization rule. program/title are optional case-insensitive
-        regex strings (empty = match anything); the first rule whose present
-        regexes all match a sample's active window wins per namespace. Instead of
-        a tag string, a rule attaches registry tags by id (tagIds), at most one
-        per namespace. Matching runs client-side (the server is content-blind).
-      properties:
-        id:
-          type: integer
-          description: Rule id (present on GET; ignored on PUT — the set is replaced wholesale).
-        position:
-          type: integer
-          description: Precedence order; lower wins. Defaults to array order when 0.
-        program:
-          type: string
-          description: Regex matched against the active window class (empty = any).
-        title:
-          type: string
-          description: Regex matched against the active window title (empty = any).
-        tagIds:
-          type: array
-          description: Ids of the registry tags this rule attaches (one per namespace). See /api/tags.
-          items:
-            type: integer
+            class: { type: string }
+            instance: { type: string, description: Omitted when empty. }
+            title: { type: string }
+        windowCount: { type: integer }
     Data:
       type: object
       properties:
-        now:
-          type: integer
-          format: int64
-          description: Server time in epoch milliseconds when the data was read.
+        now: { type: integer, format: int64, description: Server time (epoch ms). }
         sources:
           $ref: "#/components/schemas/Sources"
         violations:
           type: array
-          items:
-            $ref: "#/components/schemas/Violation"
+          items: { $ref: "#/components/schemas/Violation" }
         unblocks:
           type: array
-          items:
-            $ref: "#/components/schemas/Unblock"
+          items: { $ref: "#/components/schemas/Unblock" }
         lifecycle:
           type: array
-          items:
-            $ref: "#/components/schemas/Lifecycle"
+          items: { $ref: "#/components/schemas/Lifecycle" }
         unmanaged:
           type: array
-          items:
-            $ref: "#/components/schemas/Unmanaged"
+          items: { $ref: "#/components/schemas/Unmanaged" }
         downtime:
           type: array
-          items:
-            $ref: "#/components/schemas/Downtime"
+          items: { $ref: "#/components/schemas/Downtime" }
         usage:
           type: array
-          items:
-            $ref: "#/components/schemas/UsageSample"
+          description: Always empty; use /api/usage.
+          maxItems: 0
+          items: { $ref: "#/components/schemas/UsageSample" }

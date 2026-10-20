@@ -51,6 +51,9 @@ func handleTags(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "a tag with that namespace and name already exists", http.StatusConflict)
 			return
 		}
+		// Headers first: WriteHeader commits them, so writeJSON's Content-Type
+		// would otherwise be dropped.
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		writeJSON(w, t)
 
