@@ -148,8 +148,8 @@ sign-firefox-extension:
 	 tag=$$base$${dirty:+-dirty}; \
 	 printf 'var GLOCKER_BUILD = { commit: "%s" };\n' "$$tag" > extensions/firefox/build-info.js; \
 	 echo "stamped build-info.js: $$tag"
-	cd extensions/firefox && web-ext sign --channel=unlisted --api-key="$$AMO_JWT_ISSUER" --api-secret="$$AMO_JWT_SECRET"
-	@git checkout -- extensions/firefox/build-info.js 2>/dev/null || true
+	cd extensions/firefox && web-ext sign --channel=unlisted --api-key="$$AMO_JWT_ISSUER" --api-secret="$$AMO_JWT_SECRET"; \
+	 rc=$$?; git checkout -- build-info.js 2>/dev/null; exit $$rc
 
 # Sign then publish in one step.
 release-firefox-extension: sign-firefox-extension deploy-firefox-extension
