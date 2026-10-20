@@ -39,10 +39,16 @@ function toDomains(list) {
     .filter(Boolean);
 }
 
+// A URL keyword must start a word: follow the start of the URL, a separator
+// (/ ? = . - _ …) or a %XX escape, so it can't fire inside a random token like a
+// tracking id or base64 blob. It may run on into the word: "porn" matches
+// "pornhub". Same rule as the Firefox extension.
+const WORD_START = "(?:[^a-z0-9]|%[0-9a-f]{2})";
+
 function compileRegexes() {
   urlKeywordRegexes = urlKeywords.map((keyword) => ({
     keyword,
-    regex: new RegExp(escapeRegex(keyword.toLowerCase()), "i"),
+    regex: new RegExp(`(?:^|${WORD_START})${escapeRegex(keyword.toLowerCase())}`, "i"),
   }));
   whitelistDomains = toDomains(whitelist);
 }
@@ -61,14 +67,20 @@ function buildTag() {
 }
 
 // ── declarativeNetRequest: the actual blocking ───────────────────────────────
-// A keyword rule's regex consumes the whole URL and captures the hostname, so the
-// substitution can hand the blocked page its "Access to X" domain like Firefox
-// does. Two alternatives: the keyword inside the host (\1), or after it (\2);
-// the unmatched group substitutes as empty.
-function keywordRegex(kw) {
+// Each keyword gets two rules: one for the keyword inside the host, one for it
+// after the host. Each regex consumes the whole URL and captures the hostname
+// (\1), so the substitution can hand the blocked page its "Access to X" domain
+// like Firefox does. Either way the keyword must start a word (WORD_START);
+// inside the host that means after a "." or "-". They're separate rules because
+// one regex with both alternatives exceeds Chrome's 2KB compiled-regex limit for
+// any keyword over ~3 characters.
+function keywordRegexes(kw) {
   const k = escapeRegex(kw);
-  const scheme = "^[a-z][a-z0-9+.-]*://";
-  return `${scheme}([^/?#:]*${k}[^/?#:]*).*|${scheme}([^/?#:]*)[:/?#].*${k}.*`;
+  const scheme = "^[a-z]+://";
+  return [
+    `${scheme}((?:[^/?#:]*[.-])?${k}[^/?#:]*).*`,
+    `${scheme}([^/?#:]*)[:/?#](?:.*${WORD_START})?${k}.*`,
+  ];
 }
 
 // Rebuild the dynamic rule set from the current keywords/whitelist. Priorities:
@@ -93,19 +105,24 @@ async function rebuildBlockingRules() {
   }
 
   for (const kw of urlKeywords) {
-    const regexFilter = keywordRegex(kw);
-    // One rejected regex (RE2 memory cap) would fail the whole update; drop it alone.
-    const { isSupported, reason: why } = await chrome.declarativeNetRequest.isRegexSupported({ regex: regexFilter });
-    if (!isSupported) {
-      console.log(`glocker: skipping url keyword "${kw}": ${why}`);
-      continue;
-    }
     const reason = encodeURIComponent(`URL contains blocked keyword: "${kw}"`);
-    rules.push({
-      id: id++, priority: 1,
-      action: { type: "redirect", redirect: { regexSubstitution: `${GLOCKER}/blocked?reason=${reason}&domain=\\1\\2` } },
-      condition: { regexFilter, isUrlFilterCaseSensitive: false, resourceTypes: RESOURCE_TYPES },
-    });
+    for (const regexFilter of keywordRegexes(kw)) {
+      // One rejected regex (RE2 memory cap) would fail the whole update; drop it
+      // alone. The flags must match the rule's, or the check passes regexes the
+      // update then rejects.
+      const { isSupported, reason: why } = await chrome.declarativeNetRequest.isRegexSupported({
+        regex: regexFilter, isCaseSensitive: false, requireCapturing: true,
+      });
+      if (!isSupported) {
+        console.log(`glocker: skipping url keyword "${kw}": ${why}`);
+        continue;
+      }
+      rules.push({
+        id: id++, priority: 1,
+        action: { type: "redirect", redirect: { regexSubstitution: `${GLOCKER}/blocked?reason=${reason}&domain=\\1` } },
+        condition: { regexFilter, isUrlFilterCaseSensitive: false, resourceTypes: RESOURCE_TYPES },
+      });
+    }
   }
 
   try {

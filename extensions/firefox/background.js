@@ -48,12 +48,15 @@ let glockerConnected = false;
 
 // Compile keywords into regex patterns for performance
 function compileKeywordRegexes() {
-  // Compile URL keyword regexes - less restrictive, no word boundaries
+  // Compile URL keyword regexes. A keyword must start a word — follow the start
+  // of the URL, a separator (/ ? = . - _ …) or a %XX escape — so it can't fire
+  // inside a random token like a tracking id or base64 blob. It may run on into
+  // the word: "porn" still matches "pornhub".
   urlKeywordRegexes = urlKeywords.map(keyword => {
     const escapedKeyword = keyword.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return {
       keyword: keyword,
-      regex: new RegExp(escapedKeyword, 'i')
+      regex: new RegExp('(?:^|[^a-z0-9]|%[0-9a-f]{2})' + escapedKeyword, 'i')
     };
   });
   

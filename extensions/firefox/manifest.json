@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Glocker Content Monitor",
-  "version": "2.6",
+  "version": "2.7",
   "description": "Collects:\n• URLs/domains of pages matching a blocked keyword — sent to your local Glocker service (127.0.0.1)\n• page text — scanned locally for keywords; page content itself is not transmitted",
 
   "browser_specific_settings": {
