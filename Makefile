@@ -20,7 +20,11 @@ GOLDFLAGS := -ldflags "-X main.version=$(VERSION)"
 # from a parent Makefile — the private hosted repo passes these pointing at its
 # own out-of-tree config/secrets (e.g. GLOCKPEEK_CONF=$(abspath conf/glockpeek.yaml)).
 DEPLOY_USER    ?= root
-DEPLOY_HOST    ?= glockerapp.com
+# The box to ssh to — no default: a public domain may front a load balancer that
+# forwards only 80/443, where ssh would just hang. Pass the node's address.
+DEPLOY_HOST    ?=
+# Fail fast on an unreachable host instead of hanging.
+SSH_OPTS       ?= -o ConnectTimeout=10
 GLOCKPEEK_CONF ?= conf/glockpeek.yaml   # server config with secrets (gitignored)
 TAGS_FILE      ?= tags.json             # curated starter rules (hosted-only, gitignored)
 DB_BACKUP_DIR  ?= deploy/backups        # local pg_dump destination (gitignored)
@@ -58,7 +62,7 @@ test: ## Run tests
 # `full-install`); the rest ship one piece each (like `install`). One-time host
 # provisioning — postgres, caddy, the service user — is managed in a private ops
 # repo (this repo is consumed there as a git subtree); see deploy/README.md.
-#   make deploy-full DEPLOY_HOST=glockerapp.com          # binary + extension
+#   make deploy-full DEPLOY_HOST=<node-ip>               # binary + extension
 #   make deploy | deploy-extension                       # just one piece
 # (Deploy knobs — DEPLOY_HOST/USER, GLOCKPEEK_CONF — are defined up top.)
 
@@ -72,20 +76,20 @@ deploy-full: deploy deploy-extension ## Full deploy: dashboard binary + extensio
 # service. Migrations are additive/backward-compatible, so the old code keeps
 # serving on the new schema until `deploy` rolls the binary.
 migrate: ## Apply DB migrations on the box (runs automatically before deploy; server no longer migrates on boot)
-	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make migrate DEPLOY_HOST=my.example.com"; exit 1; }
+	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make migrate DEPLOY_HOST=<node-ip>"; exit 1; }
 	@test -f $(GLOCKPEEK_CONF) || { echo "$(GLOCKPEEK_CONF) not found (gitignored server config with secrets) — create it from conf/glockpeek.yaml.sample"; exit 1; }
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o dist/glockpeek ./cmd/glockpeek
-	scp dist/glockpeek $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.migrate
-	scp $(GLOCKPEEK_CONF) $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.yaml.new
-	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -o root -g glockpeek -m 0640 /tmp/glockpeek.yaml.new /etc/glocker/glockpeek.yaml && sudo -u glockpeek /tmp/glockpeek.migrate -migrate && rm -f /tmp/glockpeek.migrate /tmp/glockpeek.yaml.new'
+	scp $(SSH_OPTS) dist/glockpeek $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.migrate
+	scp $(SSH_OPTS) $(GLOCKPEEK_CONF) $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.yaml.new
+	ssh $(SSH_OPTS) $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -o root -g glockpeek -m 0640 /tmp/glockpeek.yaml.new /etc/glocker/glockpeek.yaml && sudo -u glockpeek /tmp/glockpeek.migrate -migrate && rm -f /tmp/glockpeek.migrate /tmp/glockpeek.yaml.new'
 
 deploy: migrate ## Migrate the DB (idempotent), then deploy the glockpeek binary + server config to the VPS
-	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy DEPLOY_HOST=my.example.com"; exit 1; }
+	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy DEPLOY_HOST=<node-ip>"; exit 1; }
 	@test -f $(GLOCKPEEK_CONF) || { echo "$(GLOCKPEEK_CONF) not found (gitignored server config with secrets) — create it from conf/glockpeek.yaml.sample"; exit 1; }
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o dist/glockpeek ./cmd/glockpeek
-	scp dist/glockpeek $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.new
-	scp $(GLOCKPEEK_CONF) $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.yaml.new
-	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -m 0755 /tmp/glockpeek.new /usr/local/bin/glockpeek && sudo install -o root -g glockpeek -m 0640 /tmp/glockpeek.yaml.new /etc/glocker/glockpeek.yaml && rm -f /tmp/glockpeek.new /tmp/glockpeek.yaml.new && sudo systemctl restart glockpeek && sleep 2 && systemctl is-active glockpeek'
+	scp $(SSH_OPTS) dist/glockpeek $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.new
+	scp $(SSH_OPTS) $(GLOCKPEEK_CONF) $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glockpeek.yaml.new
+	ssh $(SSH_OPTS) $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -m 0755 /tmp/glockpeek.new /usr/local/bin/glockpeek && sudo install -o root -g glockpeek -m 0640 /tmp/glockpeek.yaml.new /etc/glocker/glockpeek.yaml && rm -f /tmp/glockpeek.new /tmp/glockpeek.yaml.new && sudo systemctl restart glockpeek && sleep 2 && systemctl is-active glockpeek'
 
 # Ship the curated Glocker starter rules (tags.json, hosted-only + gitignored)
 # and load them into the default-rules template so NEW accounts seed from them.
@@ -95,8 +99,8 @@ deploy: migrate ## Migrate the DB (idempotent), then deploy the glockpeek binary
 deploy-rules:
 	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST"; exit 1; }
 	@test -f $(TAGS_FILE) || { echo "$(TAGS_FILE) not found (hosted-only asset, gitignored)"; exit 1; }
-	scp $(TAGS_FILE) $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glocker-tags.json
-	ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo /usr/local/bin/glockpeek -import-rules /tmp/glocker-tags.json && rm -f /tmp/glocker-tags.json'
+	scp $(SSH_OPTS) $(TAGS_FILE) $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glocker-tags.json
+	ssh $(SSH_OPTS) $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo /usr/local/bin/glockpeek -import-rules /tmp/glocker-tags.json && rm -f /tmp/glocker-tags.json'
 
 # ── Database backup ──────────────────────────────────────────
 # Restore relies on DigitalOcean's managed droplet backups; this is a local
@@ -114,12 +118,12 @@ db-backup: ## Pull a compressed pg_dump of the glockpeek DB to DB_BACKUP_DIR (lo
 	 else \
 	   dump="sudo -u postgres pg_dump -Fc glockpeek"; \
 	 fi; \
-	 ssh $(DEPLOY_USER)@$(DEPLOY_HOST) "$$dump" > "$$f" && \
+	 ssh $(SSH_OPTS) $(DEPLOY_USER)@$(DEPLOY_HOST) "$$dump" > "$$f" && \
 	 echo "saved $$f ($$(du -h "$$f" | cut -f1))"
 
 
 # Publish the SIGNED Firefox extension to the apex web root, served at
-# https://$(DEPLOY_HOST)/glocker.xpi — where `glocker -install` fetches it on a
+# https://glockerapp.com/glocker.xpi — where `glocker -install` fetches it on a
 # machine without a locally built artifact. Signing is a separate, manual, one-off
 # step (`web-ext sign --channel unlisted` in extensions/firefox/); this only ships
 # the newest signed .xpi already in web-ext-artifacts/. Re-run after re-signing.
@@ -151,12 +155,13 @@ sign-extension:
 release-extension: sign-extension deploy-extension ## Sign the Firefox extension and publish it
 
 deploy-extension: ## Publish the signed Firefox extension xpi to the site
-	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-extension DEPLOY_HOST=my.example.com"; exit 1; }
+	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-extension DEPLOY_HOST=<node-ip>"; exit 1; }
 	@xpi=$$(ls -t extensions/firefox/web-ext-artifacts/*.xpi 2>/dev/null | head -1); \
 	 test -n "$$xpi" || { echo "no signed .xpi in extensions/firefox/web-ext-artifacts/ — run 'web-ext sign --channel unlisted' there first"; exit 1; }; \
 	 echo "shipping $$xpi"; \
-	 scp "$$xpi" $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glocker.xpi && \
-	 ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -D -o caddy -g caddy -m 0644 /tmp/glocker.xpi /var/www/glocker-landing/glocker.xpi && rm -f /tmp/glocker.xpi && echo "extension published at /glocker.xpi"'
+	 set -x; \
+	 scp $(SSH_OPTS) "$$xpi" $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/glocker.xpi && \
+	 ssh $(SSH_OPTS) $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -D -o caddy -g caddy -m 0644 /tmp/glocker.xpi /var/www/glocker-landing/glocker.xpi && rm -f /tmp/glocker.xpi && echo "extension published at /glocker.xpi"'
 
 # Pack + sign the Chrome extension into extensions/chrome-artifacts/glocker-<ver>.crx.
 # The key fixes the extension ID the installer's policy names (chromeExtensionID in
@@ -179,6 +184,7 @@ sign-chrome-extension: ## Pack and sign the Chrome extension (.crx)
 	 tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; \
 	 cp -r extensions/chrome "$$tmp/ext"; \
 	 printf 'var GLOCKER_BUILD = { commit: "%s" };\n' "$$tag" > "$$tmp/ext/build-info.js"; \
+	 echo "+ chromium --pack-extension (signing with $(CHROME_KEY))"; \
 	 chromium --headless=new --user-data-dir="$$tmp/profile" --pack-extension="$$tmp/ext" --pack-extension-key="$(abspath $(CHROME_KEY))" >/dev/null 2>&1; \
 	 test -s "$$tmp/ext.crx" || { echo "chromium --pack-extension produced no crx"; exit 1; }; \
 	 mkdir -p extensions/chrome-artifacts && mv "$$tmp/ext.crx" $$out && echo "signed $$out ($$tag)"
@@ -191,7 +197,7 @@ release-chrome-extension: sign-chrome-extension deploy-chrome-extension ## Sign 
 # — DEPLOY_HOST is just the box to ssh to.
 # Installed browsers pick up the new version on their next update check.
 deploy-chrome-extension: ## Publish the signed Chrome extension + update manifest to the site
-	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-chrome-extension DEPLOY_HOST=my.example.com"; exit 1; }
+	@test -n "$(DEPLOY_HOST)" || { echo "set DEPLOY_HOST, e.g. make deploy-chrome-extension DEPLOY_HOST=<node-ip>"; exit 1; }
 	@crx=$$(ls -t extensions/chrome-artifacts/*.crx 2>/dev/null | head -1); \
 	 test -n "$$crx" || { echo "no .crx in extensions/chrome-artifacts/ — run 'make sign-chrome-extension' first"; exit 1; }; \
 	 ver=$$(basename "$$crx" .crx | sed 's/^glocker-//'); \
@@ -201,8 +207,9 @@ deploy-chrome-extension: ## Publish the signed Chrome extension + update manifes
 	 printf "<?xml version='1.0' encoding='UTF-8'?>\n<gupdate xmlns='http://www.google.com/update2/response' protocol='2.0'>\n  <app appid='%s'>\n    <updatecheck codebase='%s/glocker.crx' version='%s' />\n  </app>\n</gupdate>\n" "$$id" "$$url" "$$ver" > "$$tmp/update.xml"; \
 	 cp "$$crx" "$$tmp/glocker.crx"; \
 	 echo "shipping $$crx (version $$ver)"; \
-	 scp "$$tmp/glocker.crx" "$$tmp/update.xml" $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/ && \
-	 ssh $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -D -o caddy -g caddy -m 0644 /tmp/glocker.crx /var/www/glocker-landing/chrome/glocker.crx && sudo install -D -o caddy -g caddy -m 0644 /tmp/update.xml /var/www/glocker-landing/chrome/update.xml && rm -f /tmp/glocker.crx /tmp/update.xml && echo "extension published at /chrome/update.xml"'
+	 set -x; \
+	 scp $(SSH_OPTS) "$$tmp/glocker.crx" "$$tmp/update.xml" $(DEPLOY_USER)@$(DEPLOY_HOST):/tmp/ && \
+	 ssh $(SSH_OPTS) $(DEPLOY_USER)@$(DEPLOY_HOST) 'sudo install -D -o caddy -g caddy -m 0644 /tmp/glocker.crx /var/www/glocker-landing/chrome/glocker.crx && sudo install -D -o caddy -g caddy -m 0644 /tmp/update.xml /var/www/glocker-landing/chrome/update.xml && rm -f /tmp/glocker.crx /tmp/update.xml && echo "extension published at /chrome/update.xml"'
 
 # ── Release: signed binaries for a GitHub release (source stays the main path). ──
 # Builds static linux/amd64 binaries + a SHA256SUMS file, then signs SHA256SUMS
