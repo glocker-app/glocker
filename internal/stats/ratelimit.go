@@ -17,9 +17,10 @@ import (
 // "client, proxy1, proxy2, …" where each hop APPENDS the address it saw. A client
 // can PREPEND fake entries, but it can't control what our trusted upstream appends
 // last — so take the RIGHT-most entry (the address our proxy actually observed),
-// not the spoofable left-most. Assumes a single trusted proxy hop; if a second is
-// added (an LB in front of Caddy), trust N-from-the-right instead. Falls back to
-// the transport peer when there's no proxy header.
+// not the spoofable left-most. Assumes a single trusted proxy hop; an L4 load
+// balancer that hands Caddy the client address via PROXY protocol doesn't add
+// one, but a second HTTP proxy would — then trust N-from-the-right instead.
+// Falls back to the transport peer when there's no proxy header.
 func clientIP(r *http.Request) string {
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		parts := strings.Split(xff, ",")
