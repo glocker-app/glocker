@@ -5,9 +5,11 @@ apps on a schedule, makes them *annoying* to reach when you slip, and logs your
 usage so you can see the patterns and tighten the rules over time.
 
 It's opinionated — built by one person (on Debian + Firefox) to break their own
-habits — but if your setup is similar it may help you too. The
-**[guide](docs/habits.md)** explains both the thinking and the features, and is
-the source of truth for how glocker works.
+habits — but if your setup is similar it may help you too.
+
+Website: **[glockerapp.com](https://glockerapp.com)**. The
+**[guide](https://glockerapp.com/habits.html)** explains both the thinking and the
+features, and is the source of truth for how glocker works.
 
 ## The programs
 
@@ -81,8 +83,9 @@ extension · root to install.
 
 ## Docs
 
-- **[docs/habits.md](docs/habits.md)** — the guide (features, config, the
-  dashboard, and the habit psychology behind them). Start here.
+- **[The guide](https://glockerapp.com/habits.html)** — features, config, the
+  dashboard, and the habit psychology behind them. Start here. (Source in this
+  repo: [docs/habits.md](docs/habits.md).)
 - [conf/conf.yaml.sample](conf/conf.yaml.sample) documents every config option inline.
 
 ## License
