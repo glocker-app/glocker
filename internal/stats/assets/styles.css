@@ -1305,6 +1305,19 @@ canvas { max-height: 260px; }
   transition: background 0.15s, color 0.15s, box-shadow 0.15s;
 }
 .btn-ghost { color: var(--ink-dim); background: transparent; border: 1px solid var(--line); }
+
+/* Plan/status pill in the Devices header. */
+.plan-pill {
+  display: inline-flex; align-items: center; padding: 3px 11px; border-radius: 999px;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
+  border: 1px solid var(--line); color: var(--ink-dim); background: var(--bg-2); white-space: nowrap;
+}
+.plan-pill.ok { color: var(--safe); border-color: rgba(95, 129, 105, 0.4); background: rgba(95, 129, 105, 0.12); }
+.plan-pill.warn { color: #9a6a24; border-color: rgba(201, 160, 78, 0.5); background: rgba(201, 160, 78, 0.14); }
+.plan-pill.bad { color: var(--danger); border-color: rgba(192, 86, 74, 0.45); background: rgba(192, 86, 74, 0.12); }
+[data-view="devices"] .panel-head { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+[data-view="devices"] .panel-head h2 { margin: 0; }
+[data-view="devices"] .panel-head .btn-ghost:first-of-type { margin-left: auto; }
 .btn-ghost:hover { color: var(--ink); border-color: var(--line-2); }
 .btn-primary { color: var(--on-accent); background: var(--signal); border: 1px solid var(--signal); }
 .btn-primary:hover { box-shadow: 0 0 0 2px rgba(192, 86, 74,0.25); }

@@ -3984,9 +3984,20 @@ async function reconcileAfterCheckout() {
   }
 }
 
+// planPill maps a subscription status to the header pill's label + colour class.
+function planPill(sub) {
+  switch (sub) {
+    case "active":   return { text: "Pro · active", cls: "ok" };
+    case "trialing": return { text: "Pro · trial", cls: "ok" };
+    case "canceled": return { text: "Pro · cancels at period end", cls: "warn" };
+    case "past_due": return { text: "Pro · past due", cls: "warn" };
+    case "expired":  return { text: "Expired", cls: "bad" };
+    default:         return { text: "Free", cls: "" };
+  }
+}
+
 async function renderDevices() {
   const listEl = document.getElementById("device-list");
-  const usageEl = document.getElementById("device-usage");
   const nameEl = document.getElementById("device-name");
   const addBtn = document.getElementById("add-device");
   let data;
@@ -3995,18 +4006,17 @@ async function renderDevices() {
     if (!res.ok) throw new Error(res.status);
     data = await res.json();
   } catch {
-    usageEl.textContent = "";
     return;
   }
 
-  const limitText = data.limit < 0 ? "∞" : data.limit;
-  usageEl.textContent = `${data.used} of ${limitText} device${data.limit === 1 ? "" : "s"} used.`;
-  // Surface the current plan alongside usage.
+  // Plan + status as a single pill in the header.
   const sub = state.me && state.me.subStatus;
-  if (sub === "active") {
-    usageEl.textContent += "  ·  Pro plan (active)";
-  } else if (sub === "canceled") {
-    usageEl.textContent += "  ·  Pro plan (cancels at period end)";
+  const pill = document.getElementById("plan-pill");
+  if (pill) {
+    const p = planPill(sub);
+    pill.textContent = p.text;
+    pill.className = `plan-pill ${p.cls}`;
+    pill.hidden = false;
   }
   // Manage/cancel is available once there's a subscription (active or winding
   // down); an expired/free account sees the upgrade CTA instead.
