@@ -83,8 +83,7 @@ extension · root to install.
 
 - **[docs/habits.md](docs/habits.md)** — the guide (features, config, the
   dashboard, and the habit psychology behind them). Start here.
-- [docs/installation.md](docs/installation.md), [docs/architecture.md](docs/architecture.md),
-  and [conf/conf.yaml.sample](conf/conf.yaml.sample) for the rest.
+- [conf/conf.yaml.sample](conf/conf.yaml.sample) documents every config option inline.
 
 ## License
 

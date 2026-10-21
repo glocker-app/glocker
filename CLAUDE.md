@@ -238,7 +238,7 @@ glocker -uninstall "reason"
 
 ### Documentation
 - **`CLAUDE.md`** - This file - developer guidance
-- **`docs/`** - `architecture.md`, `installation.md`, `bypasses.md`, `e2e-design.md`, and
+- **`docs/`** - `habits.md` (the user guide / source of truth), `bypasses.md`, `e2e-design.md`, and
   **`docs/openapi.yaml`** (the OpenAPI spec for glockpeek's HTTP API) and
   **`docs/agent-openapi.yaml`** (the agent's loopback API used by the extensions)
 
