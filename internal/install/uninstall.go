@@ -39,10 +39,11 @@ func RestoreSystemChanges(cfg *config.Config) error {
 	}
 
 	// Remove sudoers backup
-	if err := os.Remove(config.SudoersBackup); err != nil {
-		log.Printf("   Warning: couldn't remove sudoers backup: %v", err)
-	} else {
+	switch err := os.Remove(config.SudoersBackup); {
+	case err == nil:
 		log.Println("✓ Sudoers backup removed")
+	case !os.IsNotExist(err): // no backup taken is the normal case
+		log.Printf("   Warning: couldn't remove sudoers backup: %v", err)
 	}
 
 	// Clean up Firefox extension
