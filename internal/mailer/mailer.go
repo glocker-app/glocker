@@ -17,9 +17,10 @@ import (
 
 // Mailer sends mail from a fixed From on a configured Mailgun domain.
 type Mailer struct {
-	mg      mailgun.Mailgun
-	from    string
-	enabled bool
+	mg         mailgun.Mailgun
+	from       string // bare sender address (what From() reports)
+	fromHeader string // From header used when sending, e.g. "glockpeek <noreply@…>"
+	enabled    bool
 }
 
 // New builds a Mailer from config. It is disabled (Send is a no-op) unless
@@ -37,7 +38,18 @@ func New(cfg config.MailConfig) *Mailer {
 	if from == "" {
 		from = "noreply@" + cfg.Domain
 	}
-	return &Mailer{mg: mg, from: from, enabled: true}
+	// Give the From header a display name so recipients see a name, not "noreply".
+	// Honor a From already in "Name <addr>" form; otherwise wrap the bare address
+	// with from_name (default "glockpeek"). From() still reports the bare address.
+	fromHeader := from
+	if !strings.Contains(from, "<") {
+		name := cfg.FromName
+		if name == "" {
+			name = "glockpeek"
+		}
+		fromHeader = fmt.Sprintf("%s <%s>", name, from)
+	}
+	return &Mailer{mg: mg, from: from, fromHeader: fromHeader, enabled: true}
 }
 
 // Enabled reports whether mail will actually be sent.
@@ -52,7 +64,7 @@ func (m *Mailer) Send(ctx context.Context, to, subject, textBody, htmlBody strin
 	if !m.Enabled() {
 		return nil
 	}
-	msg := mailgun.NewMessage(m.from, subject, textBody, to)
+	msg := mailgun.NewMessage(m.fromHeader, subject, textBody, to)
 	if htmlBody != "" {
 		msg.SetHTML(htmlBody)
 	}

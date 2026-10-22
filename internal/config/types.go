@@ -9,7 +9,7 @@ const (
 	// LockBackgroundInstallPath is where the default glocklock background image is
 	// installed; conf.yaml.sample's violation_tracking.background points here.
 	LockBackgroundInstallPath = "/usr/local/share/glocker/lock-background.png"
-	HeartbeatCronPath    = "/etc/cron.d/glocker-doc"
+	HeartbeatCronPath         = "/etc/cron.d/glocker-doc"
 	// The glockdoc watchdog's systemd scheduler (preferred over the cron file).
 	GlockdocServicePath = "/etc/systemd/system/glockdoc.service"
 	GlockdocTimerPath   = "/etc/systemd/system/glockdoc.timer"
@@ -70,11 +70,12 @@ type SudoersConfig struct {
 // + api key; From defaults to noreply@<domain>. Unlike the daemon's legacy
 // accountability mail, the domain here is configurable (not hardcoded).
 type MailConfig struct {
-	Enabled bool   `yaml:"enabled"`
-	Domain  string `yaml:"domain"` // Mailgun sending domain, e.g. mg.glockerapp.com
-	APIKey  string `yaml:"api_key"`
-	From    string `yaml:"from"`   // e.g. noreply@mg.glockerapp.com
-	Region  string `yaml:"region"` // "us" (default) or "eu"
+	Enabled  bool   `yaml:"enabled"`
+	Domain   string `yaml:"domain"` // Mailgun sending domain, e.g. mg.glockerapp.com
+	APIKey   string `yaml:"api_key"`
+	From     string `yaml:"from"`      // e.g. noreply@mg.glockerapp.com
+	FromName string `yaml:"from_name"` // sender display name (default "glockpeek")
+	Region   string `yaml:"region"`    // "us" (default) or "eu"
 }
 
 // DomainsConfig groups everything about domain blocking: the on/off switch, the

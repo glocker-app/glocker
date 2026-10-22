@@ -67,6 +67,7 @@ glockpeek:
   #   domain: "mg.example.com"
   #   api_key: ""
   #   from: "noreply@mg.example.com"
+  #   from_name: "glockpeek"                 # sender display name (default "glockpeek")
   #   region: "us"                          # "us" or "eu" (match your Mailgun domain)
   #
   # billing:                                # paid tier via a Merchant-of-Record (Polar)

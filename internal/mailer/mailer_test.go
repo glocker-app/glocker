@@ -40,6 +40,24 @@ func TestFromDefaultsAndOverride(t *testing.T) {
 	}
 }
 
+func TestFromHeaderDisplayName(t *testing.T) {
+	// Default display name.
+	m := New(config.MailConfig{Enabled: true, Domain: "mg.glockerapp.com", APIKey: "k"})
+	if m.fromHeader != "glockpeek <noreply@mg.glockerapp.com>" {
+		t.Errorf("default fromHeader = %q", m.fromHeader)
+	}
+	// Overridden display name.
+	m2 := New(config.MailConfig{Enabled: true, Domain: "mg.glockerapp.com", APIKey: "k", From: "noreply@mg.glockerapp.com", FromName: "Glocker"})
+	if m2.fromHeader != "Glocker <noreply@mg.glockerapp.com>" {
+		t.Errorf("overridden fromHeader = %q", m2.fromHeader)
+	}
+	// A From already carrying a name is left as-is.
+	m3 := New(config.MailConfig{Enabled: true, Domain: "mg.glockerapp.com", APIKey: "k", From: "Team <team@mg.glockerapp.com>"})
+	if m3.fromHeader != "Team <team@mg.glockerapp.com>" {
+		t.Errorf("preformed fromHeader = %q", m3.fromHeader)
+	}
+}
+
 func TestRegionEUConstructs(t *testing.T) {
 	// Just ensure the EU path builds a usable, enabled mailer (no network call).
 	m := New(config.MailConfig{Enabled: true, Domain: "mg.glockerapp.com", APIKey: "k", Region: "EU"})
