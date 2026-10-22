@@ -316,8 +316,13 @@ controlled with the `sudoers` stanza. It also has an `enabled` key to
 turn it on. It does its work by swapping out the
 `allowed_sudoers_line` with the `blocked_sudoers_line` outside of the
 `allow_windows`. Inside the window, `allowed_sudoers_line` will be
-in your `/etc/sudoers` and outside the window, it will be
-`blocked_sudoers_line`. A line like 
+in `/etc/sudoers.d/glocker` and outside the window, it will be
+`blocked_sudoers_line`. For this to hold, glocker has to be your only
+way to sudo. So on Debian, Ubuntu, Fedora, Omarchy and Arch, the
+install takes over your existing sudo access (it removes you from the
+`sudo`/`wheel` group or moves your own sudoers file aside) and
+`-uninstall` puts it back. On other distributions, the sudo window
+isn't available. A line like 
 
     john ALL=(ALL) NOPASSWD: /usr/bin/apt, /usr/bin/dmesg, /sbin/service docker *, /sbin/service networking *
 

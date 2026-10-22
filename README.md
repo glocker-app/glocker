@@ -104,6 +104,8 @@ device token on the **Devices** page, put it in the `sync:` stanza of
 Linux with systemd · Go 1.26+ to build · Firefox or Chrome/Chromium for the
 extension · root to install.
 
+Tested on Debian, Ubuntu, Fedora, Omarchy and Arch.
+
 ## Docs
 
 - **[The guide](https://glockerapp.com/habits.html)** — features, config, the
