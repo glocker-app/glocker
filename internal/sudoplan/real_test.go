@@ -2,6 +2,8 @@ package sudoplan
 
 import (
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -33,6 +35,12 @@ func TestRealSystem(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("%s plan: %v", p.Name, a.Describe(s, user))
+	fallback := NeedsFallback(s, a)
+	if fallback {
+		dropIns = append(dropIns, filepath.Base(FallbackFile(s, user)))
+		sort.Strings(dropIns)
+	}
+	t.Logf("fallback on restore: %v", fallback)
 	if err := Takeover(s, p, user, user+" ALL=(ALL) ALL", a); err != nil {
 		t.Fatal(err)
 	}
@@ -50,6 +58,9 @@ func TestRealSystem(t *testing.T) {
 		t.Fatal(err)
 	}
 	for p, want := range before {
+		if p == s.Sudoers && a.LegacyLine {
+			continue // glocker's old line is stripped for good
+		}
 		if got := read(t, p); got != want {
 			t.Errorf("%s changed:\n--- before\n%s\n--- after\n%s", p, want, got)
 		}

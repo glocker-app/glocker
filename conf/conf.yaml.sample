@@ -126,8 +126,8 @@ content:
 # outside them the blocked line applies. Keep the blocked line limited to sudo you
 # genuinely need; do NOT leave yourself able to edit /etc/hosts, /etc/sudoers, or
 # remove glocker.
-# Sudo window. Install takes over your sudo access (Ubuntu, Fedora, Omarchy and
-# Arch only) so these lines, in /etc/sudoers.d/glocker, are your only sudo path;
+# Sudo window. Install takes over your sudo access (Debian, Ubuntu, Fedora,
+# Omarchy and Arch only) so these lines, in /etc/sudoers.d/glocker, are your only sudo path;
 # uninstall gives the original back. Elsewhere sudo is left alone.
 sudoers:
   enabled: true

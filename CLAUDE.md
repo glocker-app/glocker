@@ -197,7 +197,7 @@ glocker -uninstall "reason"
 - **`internal/e2e/`** - E2E encryption primitives (master key, vault wrap/unwrap, record seal)
 - **`internal/envcheck/`** - Capability checks (systemd, visudo, watchdog scheduler, chattr support)
 - **`internal/precheck/`** - Bypass-route audit behind `glocker -check`
-- **`internal/sudoplan/`** - Per-distro sudo takeover (`plans.go`: Ubuntu, Fedora, Omarchy, Arch; anything else gets no sudo window). Install removes the user's blanket admin-group membership and moves per-user blanket `sudoers.d` files aside, recording it; uninstall restores it
+- **`internal/sudoplan/`** - Per-distro sudo takeover (`plans.go`: Debian, Ubuntu, Fedora, Omarchy, Arch; anything else gets no sudo window). Install removes the user's blanket admin-group membership and moves per-user blanket `sudoers.d` files aside, recording it; uninstall restores it (or, if the user had no sudo of their own and root is locked, leaves a password-sudo `glocker-restored-<user>` drop-in)
 - **`internal/heartbeat/`** - glockdoc's liveness probe (pings the socket, appends `heartbeat.jsonl`)
 - **`internal/lock/`** - glocklock's timed locker: X11, Wayland (`ext-session-lock`) and GNOME backends
 - **`internal/reports/`** - Parsers for the agent's `/var` log files (used by syncer, cli, web)

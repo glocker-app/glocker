@@ -19,6 +19,7 @@ func fakeSystem(t *testing.T, osRelease, sudoers, group string, dropIns map[stri
 		Sudoers:    filepath.Join(dir, "sudoers"),
 		SudoersDir: filepath.Join(dir, "sudoers.d"),
 		GroupFile:  filepath.Join(dir, "group"),
+		Shadow:     filepath.Join(dir, "shadow"),
 		StateDir:   filepath.Join(dir, "var", "sudo"),
 	}
 	write := func(p, c string) {
@@ -32,6 +33,7 @@ func fakeSystem(t *testing.T, osRelease, sudoers, group string, dropIns map[stri
 	write(s.OSRelease, osRelease)
 	write(s.Sudoers, sudoers)
 	write(s.GroupFile, group)
+	write(s.Shadow, "root:!:20000:0:99999:7:::\n") // locked, as most installers leave it
 	if err := os.MkdirAll(s.SudoersDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -83,6 +85,17 @@ const (
 	debianRelease  = "ID=debian\n"
 )
 
+func plan(t *testing.T, name string) Plan {
+	t.Helper()
+	for _, p := range Plans {
+		if p.Name == name {
+			return p
+		}
+	}
+	t.Fatalf("no plan %q", name)
+	return Plan{}
+}
+
 func read(t *testing.T, p string) string {
 	t.Helper()
 	b, err := os.ReadFile(p)
@@ -107,7 +120,7 @@ func TestDetect(t *testing.T) {
 			t.Errorf("Detect(%q) = %q, %v; want %q", rel, p.Name, ok, want)
 		}
 	}
-	for _, rel := range []string{debianRelease, "ID=opensuse-tumbleweed\nID_LIKE=\"opensuse suse\"\n", ""} {
+	for _, rel := range []string{"ID=opensuse-tumbleweed\nID_LIKE=\"opensuse suse\"\n", ""} {
 		if p, _, ok := Detect(fakeSystem(t, rel, "", "", nil)); ok {
 			t.Errorf("Detect(%q) = %q, want unsupported", rel, p.Name)
 		}
@@ -133,6 +146,13 @@ func TestTakeoverAndRestorePerDistro(t *testing.T) {
 			},
 			wantGroups: []string{"sudo"},
 			wantFiles:  []string{"90-cloud-init-users"},
+		},
+		{
+			name:       "debian, root left empty at install",
+			release:    debianRelease,
+			sudoers:    "root\tALL=(ALL:ALL) ALL\n%sudo\tALL=(ALL:ALL) ALL\n@includedir /etc/sudoers.d\n",
+			group:      "sudo:x:27:alice\n",
+			wantGroups: []string{"sudo"},
 		},
 		{
 			name:       "fedora",
@@ -231,7 +251,7 @@ func writeTemp(t *testing.T, content string) string {
 
 func TestSurveyRefuses(t *testing.T) {
 	ubuntu := func(sudoers, group string) System { return fakeSystem(t, ubuntuRelease, sudoers, group, nil) }
-	p := Plans[0]
+	p := plan(t, "ubuntu")
 	cases := map[string]System{
 		"no includedir":          ubuntu("root ALL=(ALL) ALL\n%sudo ALL=(ALL:ALL) ALL\n", "sudo:x:27:alice\n"),
 		"direct line in sudoers": ubuntu("alice ALL=(ALL) ALL\n@includedir /etc/sudoers.d\n", ""),
@@ -249,11 +269,11 @@ func TestTakeoverStripsLegacyLine(t *testing.T) {
 	s := fakeSystem(t, fedoraRelease,
 		"root ALL=(ALL) ALL\n%wheel ALL=(ALL) ALL\n#includedir /etc/sudoers.d\nalice ALL=(ALL) NOPASSWD:ALL # GLOCKER-MANAGED",
 		"wheel:x:10:alice\n", nil)
-	a, err := Survey(s, Plans[1], "alice")
+	a, err := Survey(s, plan(t, "fedora"), "alice")
 	if err != nil || !a.LegacyLine {
 		t.Fatalf("survey = %+v, %v; want LegacyLine", a, err)
 	}
-	if err := Takeover(s, Plans[1], "alice", "alice ALL=(ALL) ALL", a); err != nil {
+	if err := Takeover(s, plan(t, "fedora"), "alice", "alice ALL=(ALL) ALL", a); err != nil {
 		t.Fatal(err)
 	}
 	if got := read(t, s.Sudoers); strings.Contains(got, "GLOCKER-MANAGED") || !strings.HasSuffix(got, "\n") {
@@ -265,7 +285,7 @@ func TestTakeoverStripsLegacyLine(t *testing.T) {
 func TestTakeoverRollsBack(t *testing.T) {
 	s := fakeSystem(t, ubuntuRelease, "%sudo ALL=(ALL:ALL) ALL\n@includedir /etc/sudoers.d\n", "sudo:x:27:alice\n",
 		map[string]string{"90-cloud-init-users": "alice ALL=(ALL) NOPASSWD:ALL\n"})
-	a, err := Survey(s, Plans[0], "alice")
+	a, err := Survey(s, plan(t, "ubuntu"), "alice")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +296,7 @@ func TestTakeoverRollsBack(t *testing.T) {
 		}
 		return run(name, args...)
 	}
-	if err := Takeover(s, Plans[0], "alice", "alice ALL=(ALL) ALL", a); err == nil {
+	if err := Takeover(s, plan(t, "ubuntu"), "alice", "alice ALL=(ALL) ALL", a); err == nil {
 		t.Fatal("takeover succeeded, want error")
 	}
 	if Active(s) {
@@ -298,5 +318,62 @@ func TestWriteLineValidates(t *testing.T) {
 	}
 	if _, err := os.Stat(s.dropIn()); !os.IsNotExist(err) {
 		t.Error("invalid drop-in was installed")
+	}
+}
+
+// Debian where the user's only sudo is glocker's old line (they left the sudo
+// group): with root locked, uninstall must not leave them without root.
+func TestRestoreFallbackWhenNoOwnSudo(t *testing.T) {
+	s := fakeSystem(t, debianRelease,
+		"root\tALL=(ALL:ALL) ALL\n%sudo\tALL=(ALL:ALL) ALL\n@includedir /etc/sudoers.d\nalice  ALL=(ALL) NOPASSWD:ALL # GLOCKER-MANAGED\n",
+		"sudo:x:27:\n", nil)
+	p := plan(t, "debian")
+	a, err := Survey(s, p, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !NeedsFallback(s, a) {
+		t.Fatal("want NeedsFallback with no own sudo and root locked")
+	}
+	if err := Takeover(s, p, "alice", "alice ALL=(ALL) ALL", a); err != nil {
+		t.Fatal(err)
+	}
+	if err := Restore(s); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, FallbackFile(s, "alice")); got != "alice ALL=(ALL) ALL\n" {
+		t.Fatalf("fallback = %q", got)
+	}
+	if strings.Contains(read(t, s.Sudoers), "GLOCKER-MANAGED") {
+		t.Error("legacy line not stripped")
+	}
+
+	// A reinstall treats the fallback as the user's own sudo, and gives it back.
+	a, err = Survey(s, p, "alice")
+	if err != nil || !slices.Equal(a.Files, []string{filepath.Base(FallbackFile(s, "alice"))}) || NeedsFallback(s, a) {
+		t.Fatalf("reinstall survey = %+v, %v", a, err)
+	}
+}
+
+// With a root password set (Debian's other installer path), su still works, so
+// an exact restore — no sudo — is right.
+func TestRestoreNoFallbackWithRootPassword(t *testing.T) {
+	s := fakeSystem(t, debianRelease, "root\tALL=(ALL:ALL) ALL\n%sudo\tALL=(ALL:ALL) ALL\n@includedir /etc/sudoers.d\n", "sudo:x:27:\n", nil)
+	if err := os.WriteFile(s.Shadow, []byte("root:$y$j9T$abc:20000:0:99999:7:::\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	p := plan(t, "debian")
+	a, _ := Survey(s, p, "alice")
+	if NeedsFallback(s, a) {
+		t.Fatal("no fallback when root has a password")
+	}
+	if err := Takeover(s, p, "alice", "alice ALL=(ALL) ALL", a); err != nil {
+		t.Fatal(err)
+	}
+	if err := Restore(s); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(FallbackFile(s, "alice")); !os.IsNotExist(err) {
+		t.Error("fallback written despite root password")
 	}
 }

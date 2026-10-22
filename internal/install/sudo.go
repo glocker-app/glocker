@@ -49,6 +49,10 @@ func takeOverSudo(cfg *config.Config) {
 		log.Printf("   %s", l)
 	}
 	log.Println("   glocker -uninstall puts these back.")
+	if !sudoplan.Active(sys) && sudoplan.NeedsFallback(sys, actions) {
+		log.Printf("   %s has no sudo of their own and root is locked, so uninstall will leave %s (password sudo) instead.",
+			cfg.User, sudoplan.FallbackFile(sys, cfg.User))
+	}
 	if term.IsTerminal(int(os.Stdin.Fd())) && !confirm("Proceed? [Y/n] ") {
 		log.Println("Skipped — sudo window not enabled.")
 		return

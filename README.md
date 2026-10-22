@@ -30,7 +30,7 @@ Each mechanism is independently configurable, usually with time windows:
   logged reason (`glocker -unblock`).
 - **Forbidden programs** killed on sight during kill windows (e.g. media players
   at night); mark one `extendible` for a one-hour `glocker -extend` reprieve.
-- A **sudo window** (Ubuntu, Fedora, Omarchy, Arch: install takes over your sudo
+- A **sudo window** (Debian, Ubuntu, Fedora, Omarchy, Arch: install takes over your sudo
   access and uninstall gives it back) and a paced **mindful-uninstall** challenge, to raise
   the cost of turning glocker off.
 - **Content monitoring** — a Firefox/Chrome extension flags keywords on any page;

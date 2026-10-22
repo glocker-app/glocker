@@ -177,6 +177,12 @@ func checkRootPassword(shadowPath string) Finding {
 	return f
 }
 
+// RootLocked reports whether root's password is locked ('!' or '*'), so `su`
+// can't give root and sudo is the only way in.
+func RootLocked(shadowPath string) bool {
+	return checkRootPassword(shadowPath).Status == StatusClosed
+}
+
 // checkRecoveryMode reports whether the bootloader is password-protected. An
 // unprotected GRUB means recovery/single-user mode is reachable — which is the
 // break-glass we WANT to keep, so an open result here is framed as "keep it".

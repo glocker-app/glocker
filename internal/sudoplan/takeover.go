@@ -31,6 +31,7 @@ type System struct {
 	Sudoers    string
 	SudoersDir string
 	GroupFile  string
+	Shadow     string
 	StateDir   string // takeover.json + moved/ (mutable state, so under /var)
 	// Run executes gpasswd and visudo.
 	Run func(name string, args ...string) error
@@ -43,6 +44,7 @@ func Default() System {
 		Sudoers:    config.SudoersPath,
 		SudoersDir: "/etc/sudoers.d",
 		GroupFile:  "/etc/group",
+		Shadow:     "/etc/shadow",
 		StateDir:   "/var/lib/glocker/sudo",
 		Run: func(name string, args ...string) error {
 			out, err := exec.Command(name, args...).CombinedOutput()
@@ -65,6 +67,21 @@ type Record struct {
 	RemovedGroups []string `json:"removed_groups,omitempty"`
 	// MovedFiles are sudoers.d file names, kept under StateDir/moved/.
 	MovedFiles []string `json:"moved_files,omitempty"`
+	// Fallback is set when the user had no sudo of their own at takeover and
+	// root is locked: an exact restore would leave no way to root, so Restore
+	// writes FallbackFile (password sudo) instead.
+	Fallback bool `json:"fallback,omitempty"`
+}
+
+// FallbackFile is the sudoers.d file Restore leaves when Record.Fallback is set.
+func FallbackFile(s System, user string) string {
+	return filepath.Join(s.SudoersDir, "glocker-restored-"+strings.ReplaceAll(user, ".", "_"))
+}
+
+// NeedsFallback reports whether a takeover with these actions would leave user
+// without root after uninstall, so Restore will write FallbackFile.
+func NeedsFallback(s System, a Actions) bool {
+	return len(a.Groups) == 0 && len(a.Files) == 0 && precheck.RootLocked(s.Shadow)
 }
 
 // Actions is what a takeover would do on this system right now.
@@ -148,7 +165,7 @@ func Takeover(s System, p Plan, user, line string, a Actions) error {
 	}
 	rec, err := loadRecord(s)
 	if errors.Is(err, os.ErrNotExist) {
-		rec = Record{User: user, Plan: p.Name}
+		rec = Record{User: user, Plan: p.Name, Fallback: NeedsFallback(s, a)}
 	} else if err != nil {
 		return err
 	}
@@ -231,6 +248,11 @@ func Restore(s System) error {
 	if err := os.Remove(s.dropIn()); err != nil && !os.IsNotExist(err) {
 		errs = append(errs, err)
 	}
+	if rec.Fallback {
+		if err := writeValidated(s, FallbackFile(s, rec.User), rec.User+" ALL=(ALL) ALL\n"); err != nil {
+			errs = append(errs, fmt.Errorf("leaving password sudo for %s: %w", rec.User, err))
+		}
+	}
 	if len(errs) > 0 {
 		return errors.Join(errs...) // keep the record so a retry knows what's left
 	}
@@ -250,9 +272,15 @@ func Active(s System) bool {
 
 // WriteLine puts line in glocker's drop-in, validated by visudo first.
 func WriteLine(s System, line string) error {
-	content := "# The glocker sudo window. Rewritten on schedule; removed by glocker -uninstall.\n" +
-		line + " " + config.SudoersMarker + "\n"
-	tmp := s.dropIn() + ".tmp"
+	return writeValidated(s, s.dropIn(),
+		"# The glocker sudo window. Rewritten on schedule; removed by glocker -uninstall.\n"+
+			line+" "+config.SudoersMarker+"\n")
+}
+
+// writeValidated writes a sudoers.d file via a temp copy that visudo checks
+// first. The temp name has a '.', so sudo ignores it while it exists.
+func writeValidated(s System, path, content string) error {
+	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, []byte(content), 0440); err != nil {
 		return fmt.Errorf("writing %s: %w", tmp, err)
 	}
@@ -260,8 +288,8 @@ func WriteLine(s System, line string) error {
 	if err := s.Run("visudo", "-c", "-f", tmp); err != nil {
 		return fmt.Errorf("sudoers validation failed: %w", err)
 	}
-	if err := os.Rename(tmp, s.dropIn()); err != nil {
-		return fmt.Errorf("replacing %s: %w", s.dropIn(), err)
+	if err := os.Rename(tmp, path); err != nil {
+		return fmt.Errorf("replacing %s: %w", path, err)
 	}
 	return nil
 }

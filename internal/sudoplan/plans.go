@@ -28,8 +28,14 @@ type Plan struct {
 }
 
 // Every plan also moves aside per-user blanket drop-ins under sudoers.d — the
-// file archinstall writes, and the NOPASSWD file cloud images add.
+// file archinstall writes, and the NOPASSWD file cloud images add. And when the
+// user has no sudo of their own and root is locked, uninstall leaves them a
+// password-sudo drop-in rather than no way to root (see Record.Fallback).
 var Plans = []Plan{
+	// Debian (and derivatives with ID_LIKE=debian): with the root password left
+	// empty the installer locks root and adds the user to `sudo`
+	// (`%sudo ALL=(ALL:ALL) ALL`); with one set, the user gets no sudo at all.
+	{Name: "debian", IDs: []string{"debian"}, AdminGroups: []string{"sudo"}},
 	// Ubuntu (and derivatives with ID_LIKE=ubuntu): the installer adds the user
 	// to `sudo` (`%sudo ALL=(ALL:ALL) ALL`); releases before 12.04 used `admin`.
 	{Name: "ubuntu", IDs: []string{"ubuntu"}, AdminGroups: []string{"sudo", "admin"}},
