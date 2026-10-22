@@ -238,14 +238,17 @@ release-extensions: sign-extensions deploy-extensions ## Sign and publish both b
 # One-time setup:
 #   minisign -G -s ~/.minisign/glocker.key -p minisign.pub   # generate your keypair
 #   # commit minisign.pub, paste it into the README, publish at glockerapp.com/minisign.pub
-# Per release:
-#   make release                 # prompts for your key passphrase
-#   # then upload dist/release/* to the GitHub release
+# Per release — the version comes from the git tag (VERSION is git describe):
+#   git tag -a v0.1.1 -m v0.1.1  # on the clean commit being released
+#   make release                 # refuses unless HEAD is exactly on a tag; prompts for your key passphrase
+#   # then upload dist/release/* to the GitHub release (the command is printed)
 # Point at a different key with MINISIGN_KEY=/path/to/key.
 MINISIGN_KEY ?= $(HOME)/.minisign/glocker.key
 RELEASE_DIR := dist/release
-release: ## Build + checksum + minisign the release binaries (needs minisign + your key)
+release: ## Build + checksum + minisign the release binaries from the tag on HEAD (needs minisign + your key)
 	@command -v minisign >/dev/null || { echo "install minisign first — https://jedisct1.github.io/minisign/"; exit 1; }
+	@git describe --tags --exact-match HEAD >/dev/null 2>&1 || { echo "HEAD isn't tagged — tag the release commit first: git tag -a vX.Y.Z -m vX.Y.Z"; exit 1; }
+	@case "$(VERSION)" in *-dirty) echo "uncommitted changes — commit or stash before releasing $(VERSION)"; exit 1;; esac
 	rm -rf $(RELEASE_DIR) && mkdir -p $(RELEASE_DIR)
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o $(RELEASE_DIR)/glocker   ./cmd/glocker
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o $(RELEASE_DIR)/glocklock ./cmd/glocklock
@@ -253,4 +256,5 @@ release: ## Build + checksum + minisign the release binaries (needs minisign + y
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o $(RELEASE_DIR)/glockdoc  ./cmd/glockdoc
 	cd $(RELEASE_DIR) && sha256sum glocker glocklock glockpeek glockdoc > SHA256SUMS
 	minisign -Sm $(RELEASE_DIR)/SHA256SUMS -s $(MINISIGN_KEY)
-	@echo "✓ signed — upload $(RELEASE_DIR)/* (binaries + SHA256SUMS + SHA256SUMS.minisig) to the GitHub release"
+	@echo "✓ signed $(VERSION) — publish with:"
+	@echo "  gh release create $(VERSION) $(RELEASE_DIR)/* -R glocker-app/glocker --target master --title $(VERSION)"
