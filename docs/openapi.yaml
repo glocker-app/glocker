@@ -145,6 +145,77 @@ paths:
         "200": { description: "Verified", content: { text/html: { schema: { type: string } } } }
         "400": { description: "Invalid or expired token", content: { text/html: { schema: { type: string } } } }
 
+  /forgot:
+    get:
+      summary: Forgot-password form
+      description: Public. HTML form asking for the account email.
+      operationId: forgotPasswordForm
+      security: []
+      responses:
+        "200": { description: "Form", content: { text/html: { schema: { type: string } } } }
+    post:
+      summary: Request a password-reset email
+      description: |
+        Public, hosted mode only. Emails a single-use reset link valid for 1 hour.
+        The reply is identical whether or not the address has a (verified) account,
+        and at most one link is sent per account per hour. Resets the login
+        password only; the E2E vault stays wrapped under the encryption passphrase.
+      operationId: requestPasswordReset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200": { description: "Generic confirmation (or 'unavailable' when email isn't configured)", content: { text/html: { schema: { type: string } } } }
+        "404": { description: "Not available (local mode)", content: { text/plain: { schema: { type: string } } } }
+        "429": { description: "Rate limited (5 per 10 min per IP); has Retry-After", content: { text/html: { schema: { type: string } } } }
+        "500": { description: "Could not create the reset token", content: { text/html: { schema: { type: string } } } }
+        "502": { description: "Reset email could not be sent", content: { text/html: { schema: { type: string } } } }
+
+  /reset:
+    get:
+      summary: Set-new-password form (emailed link target)
+      description: Public. Renders the form for the token in the link.
+      operationId: resetPasswordForm
+      security: []
+      parameters:
+        - in: query
+          name: token
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: "Form", content: { text/html: { schema: { type: string } } } }
+        "400": { description: "Missing token", content: { text/html: { schema: { type: string } } } }
+    post:
+      summary: Apply a password reset
+      description: |
+        Public. Consumes the token, sets the new password and signs the account out
+        of every session. Validation errors (password under 8 characters, mismatch)
+        re-render the form with 200.
+      operationId: applyPasswordReset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [token, password, confirm]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 8 }
+                confirm: { type: string }
+      responses:
+        "200": { description: "Password changed, or the form re-rendered with an error", content: { text/html: { schema: { type: string } } } }
+        "400": { description: "Token invalid, expired or already used", content: { text/html: { schema: { type: string } } } }
+        "429": { description: "Rate limited (10 per 10 min per IP); has Retry-After", content: { text/html: { schema: { type: string } } } }
+
   /api/altcha:
     get:
       summary: Signup captcha challenge
