@@ -308,7 +308,7 @@ func checkSudoers(mainPath, dir, managedUser string) Finding {
 			if managedUser != "" && path == mainPath && strings.HasPrefix(t, managedUser+" ") {
 				continue // glocker manages this user's line in the main sudoers file
 			}
-			if !grantIsBlanket(t) {
+			if !GrantIsBlanket(t) {
 				continue // command-scoped grants can't open a root shell or remove glocker
 			}
 			if strings.Contains(strings.ToUpper(t), "NOPASSWD") {
@@ -354,7 +354,7 @@ func checkManagedUserSudoGroup(sudoersMain, sudoersDir, managedUser string) Find
 		f.Detail = "couldn't resolve " + managedUser + "'s groups: " + err.Error()
 		return f
 	}
-	blanket := blanketSudoGroups(sudoersMain, sudoersDir)
+	blanket := BlanketSudoGroups(sudoersMain, sudoersDir)
 	var hits []string
 	for _, g := range groups {
 		if blanket[g] {
@@ -385,10 +385,10 @@ func plural(s []string) string {
 	return ""
 }
 
-// blanketSudoGroups returns the groups that have an UNRESTRICTED sudo grant
+// BlanketSudoGroups returns the groups that have an UNRESTRICTED sudo grant
 // (`%group … = … ALL`) in sudoers — the ones that fully bypass the window. A
 // command-scoped grant (`%group … = … /usr/bin/foo`) is not blanket and is ignored.
-func blanketSudoGroups(mainPath, dir string) map[string]bool {
+func BlanketSudoGroups(mainPath, dir string) map[string]bool {
 	out := map[string]bool{}
 	files := []string{mainPath}
 	if entries, err := os.ReadDir(dir); err == nil {
@@ -405,7 +405,7 @@ func blanketSudoGroups(mainPath, dir string) map[string]bool {
 		}
 		for _, line := range strings.Split(string(data), "\n") {
 			t := strings.TrimSpace(line)
-			if !strings.HasPrefix(t, "%") || !strings.Contains(t, "ALL=") || !grantIsBlanket(t) {
+			if !strings.HasPrefix(t, "%") || !strings.Contains(t, "ALL=") || !GrantIsBlanket(t) {
 				continue
 			}
 			name := t[1:]
@@ -419,9 +419,9 @@ func blanketSudoGroups(mainPath, dir string) map[string]bool {
 	return out
 }
 
-// grantIsBlanket reports whether a sudoers line's command spec is exactly ALL
+// GrantIsBlanket reports whether a sudoers line's command spec is exactly ALL
 // (optionally behind NOPASSWD:/PASSWD:), i.e. it grants every command.
-func grantIsBlanket(line string) bool {
+func GrantIsBlanket(line string) bool {
 	tail := line
 	if i := strings.LastIndex(line, ")"); i >= 0 {
 		tail = line[i+1:] // after the (runas) spec, if any
