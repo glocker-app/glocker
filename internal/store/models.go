@@ -293,7 +293,7 @@ type KeyVault struct {
 // sync.
 func AllModels() []any {
 	return []any{
-		&User{}, &Session{}, &APIToken{}, &VerificationToken{},
+		&User{}, &Session{}, &APIToken{}, &VerificationToken{}, &PasswordResetToken{},
 		&Violation{}, &Unblock{}, &LifecycleEvent{}, &UsageSample{},
 		&Heartbeat{}, &Rule{}, &TagColor{}, &IgnoredViolation{},
 		&SyncStatus{}, &KeyVault{}, &DeviceConfig{},

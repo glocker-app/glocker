@@ -142,6 +142,10 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 	// Unauthenticated liveness for the load balancer — pings the DB, no session.
 	mux.HandleFunc("/healthz", handleHealthz)
 	mux.HandleFunc("/verify", handleVerify) // browser link from the email, not /api/
+	// Password reset — browser form pages (GET renders, POST acts); rate-limited
+	// per-IP inside the handler. Login reset only — never touches the E2E vault.
+	mux.HandleFunc("/forgot", handleForgot)
+	mux.HandleFunc("/reset", handleReset)
 	// SSR pages (Go html/template; chrome only — client crypto/analytics stay JS).
 	mux.HandleFunc("/settings/encryption", handleEncryptionSetup)
 	if o.Captcha {

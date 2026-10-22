@@ -34,7 +34,7 @@ func (db *DB) DeleteUserData(userID uint) error {
 		// Glocker:* tags and DefaultRule templates carry user_id 0, so this never
 		// touches them. Non-scoped infra (RateHit/CaptchaUse/SchedulerLease) is left.
 		for _, m := range []any{
-			&Session{}, &APIToken{}, &VerificationToken{},
+			&Session{}, &APIToken{}, &VerificationToken{}, &PasswordResetToken{},
 			&Violation{}, &Unblock{}, &LifecycleEvent{}, &UsageSample{},
 			&Heartbeat{}, &Rule{}, &Tag{}, &TagOverride{}, &TagColor{},
 			&IgnoredViolation{}, &SyncStatus{}, &KeyVault{}, &DeviceConfig{},
