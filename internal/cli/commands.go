@@ -14,6 +14,7 @@ import (
 	"glocker/internal/reports"
 	"glocker/internal/schedule"
 	"glocker/internal/state"
+	"glocker/internal/sudoplan"
 	"glocker/internal/syncer"
 	"glocker/internal/web"
 )
@@ -35,6 +36,10 @@ const (
 // Version is the build version surfaced in -status. main stamps it from the
 // binary's -ldflags value (git describe); it stays "dev" for a plain `go build`.
 var Version = "dev"
+
+// sudoTakenOver reports whether install recorded a sudo takeover — without
+// one the allow windows restrict nothing. A var so tests can stand one in.
+var sudoTakenOver = func() bool { return sudoplan.Active(sudoplan.Default()) }
 
 // GetStatusResponse returns a formatted runtime status report. svc says what the
 // caller knows about the daemon so the service line can't contradict reality
@@ -138,6 +143,8 @@ func GetStatusResponse(cfg *config.Config, svc ServiceState) string {
 	f.head("sudo")
 	if !cfg.Sudoers.Enabled {
 		f.row("restriction", dim("unrestricted"))
+	} else if !sudoTakenOver() {
+		f.row("access", alert("not restricted")+dim(" · no sudo takeover on this system (see glocker -install)"))
 	} else {
 		forced := enforcement.IsSudoForceLocked()
 		if enforcement.IsSudoAllowed(cfg, now) && !forced {

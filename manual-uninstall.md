@@ -77,19 +77,23 @@ Then confirm nothing of yours lived below it (it never should):
 grep GLOCKER /etc/hosts || echo "hosts is clean"
 ```
 
-## Step 4 — restore sudoers
+## Step 4 — restore sudo
 
-So your normal `sudo` works again. Prefer glocker's backup; always go through
-`visudo` so you can't save a broken file (a broken `/etc/sudoers` breaks `sudo`
-for everyone):
+So your normal `sudo` works again. Install recorded what it took over in
+`/var/lib/glocker/sudo/takeover.json`; put those back, then remove glocker's
+drop-in:
 
 ```bash
-# If the backup exists and is valid, use it:
-visudo -c -f /etc/sudoers.glocker.backup && cp /etc/sudoers.glocker.backup /etc/sudoers
-
-# Otherwise edit by hand and delete the line ending in "# GLOCKER-MANAGED":
-visudo
+cat /var/lib/glocker/sudo/takeover.json
+gpasswd -a <user> <group>                        # for each entry in removed_groups
+mv /var/lib/glocker/sudo/moved/<file> /etc/sudoers.d/   # for each entry in moved_files
+rm -f /etc/sudoers.d/glocker
+rm -rf /var/lib/glocker/sudo
 ```
+
+Older installs edited `/etc/sudoers` instead. If it has a line ending in
+`# GLOCKER-MANAGED`, delete it with `visudo` (never edit the file directly — a
+broken `/etc/sudoers` breaks `sudo` for everyone).
 
 ## Step 5 — remove glocker's files
 

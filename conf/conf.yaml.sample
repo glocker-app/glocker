@@ -126,9 +126,12 @@ content:
 # outside them the blocked line applies. Keep the blocked line limited to sudo you
 # genuinely need; do NOT leave yourself able to edit /etc/hosts, /etc/sudoers, or
 # remove glocker.
+# Sudo window. Install takes over your sudo access (Ubuntu, Fedora, Omarchy and
+# Arch only) so these lines, in /etc/sudoers.d/glocker, are your only sudo path;
+# uninstall gives the original back. Elsewhere sudo is left alone.
 sudoers:
   enabled: true
-  allowed_sudoers_line: "yourusername ALL=(ALL) NOPASSWD:ALL"
+  allowed_sudoers_line: "yourusername ALL=(ALL) ALL"
   blocked_sudoers_line: "yourusername ALL=(ALL) NOPASSWD: /usr/sbin/pm-suspend, /usr/bin/journalctl"
   # The default allows full sudo all day except 09:00–10:00 (a small demonstration
   # no-sudo window). Edit these windows to set your own blocked periods.

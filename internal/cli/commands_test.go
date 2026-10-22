@@ -53,6 +53,8 @@ func TestGetStatusResponse_ShowsRuntimeAdditions(t *testing.T) {
 	enforcement.AddRuntimePrograms([]string{"runtimebin"})
 	enforcement.SetSudoForceLocked(true)
 	defer enforcement.SetSudoForceLocked(false)
+	defer func(f func() bool) { sudoTakenOver = f }(sudoTakenOver)
+	sudoTakenOver = func() bool { return true }
 
 	cfg := &config.Config{
 		Domains:  config.DomainsConfig{Enabled: true},
@@ -727,5 +729,15 @@ func TestGetStatusResponse_TruncatesViolationDetails(t *testing.T) {
 		if strings.Contains(resp, old) {
 			t.Errorf("oldest violation %s should have been truncated, not shown:\n%s", old, resp)
 		}
+	}
+}
+
+func TestGetStatusResponse_SudoNotTakenOver(t *testing.T) {
+	defer func(f func() bool) { sudoTakenOver = f }(sudoTakenOver)
+	sudoTakenOver = func() bool { return false }
+
+	response := plainStatus(&config.Config{Sudoers: config.SudoersConfig{Enabled: true}})
+	if !strings.Contains(response, "not restricted") {
+		t.Errorf("status should say sudo isn't restricted without a takeover:\n%s", response)
 	}
 }

@@ -90,7 +90,7 @@ glocker -uninstall "reason"
   runtime state (in-memory `-block` / `-block-app` additions)
 - **`enforcement.go`** - `RunOnce()` — dead code, not called by the daemon
 - **`hosts.go`** - `UpdateHosts()` modifies `/etc/hosts`, immutable file protection (chattr)
-- **`sudoers.go`** - `UpdateSudoers()` controls sudo access; `IsSudoAllowed()` window check
+- **`sudoers.go`** - `UpdateSudoers()` writes the allowed/blocked line to `/etc/sudoers.d/glocker` (only once a takeover is recorded; see `internal/sudoplan`); `IsSudoAllowed()` window check
 - **`domains.go`** - Domain block-window evaluation (`IsDomainBlockedAt`), temp unblocks
 
 ### IPC / Socket Communication (`internal/ipc/`)
@@ -197,6 +197,7 @@ glocker -uninstall "reason"
 - **`internal/e2e/`** - E2E encryption primitives (master key, vault wrap/unwrap, record seal)
 - **`internal/envcheck/`** - Capability checks (systemd, visudo, watchdog scheduler, chattr support)
 - **`internal/precheck/`** - Bypass-route audit behind `glocker -check`
+- **`internal/sudoplan/`** - Per-distro sudo takeover (`plans.go`: Ubuntu, Fedora, Omarchy, Arch; anything else gets no sudo window). Install removes the user's blanket admin-group membership and moves per-user blanket `sudoers.d` files aside, recording it; uninstall restores it
 - **`internal/heartbeat/`** - glockdoc's liveness probe (pings the socket, appends `heartbeat.jsonl`)
 - **`internal/lock/`** - glocklock's timed locker: X11, Wayland (`ext-session-lock`) and GNOME backends
 - **`internal/reports/`** - Parsers for the agent's `/var` log files (used by syncer, cli, web)
@@ -420,7 +421,8 @@ type ForbiddenProgram struct {
 - `/var/log/glocker/reports.log` - Content monitoring logs
 - `/var/log/glocker/unblocks.log` - Unblock request logs
 - `/etc/hosts` - Modified with GLOCKER markers and immutable flag
-- `/etc/sudoers` - Modified during blocking periods
+- `/etc/sudoers.d/glocker` - glocker's sudo-window drop-in (`/etc/sudoers` itself is never edited)
+- `/var/lib/glocker/sudo/takeover.json` (+ `moved/`) - what install took over from the user's sudo, replayed by uninstall
 - `/usr/local/bin/glocker` - Installed binary (root:root 0755, immutable; not setuid)
 - `/etc/systemd/system/glocker.service` - Systemd service file
 
@@ -649,14 +651,14 @@ glocker/
 **Package Dependencies:**
 (internal imports, non-test)
 - `cmd/glocker` imports `cli`, `config`, `connect`, `enforcement`, `envcheck`, `install`, `ipc`, `mindful`, `monitoring`, `precheck`, `reports`, `state`, `syncer`, `usage`, `web`
-- `cli` imports `config`, `enforcement`, `monitoring`, `reports`, `schedule`, `state`, `syncer`, `web`
+- `cli` imports `config`, `enforcement`, `monitoring`, `reports`, `schedule`, `state`, `sudoplan`, `syncer`, `web`
 - `ipc` imports `cli`, `config`, `enforcement`, `install`, `syncer`, `web`
-- `install` imports `config`, `envcheck`, `precheck`, `utils`, `web`
+- `install` imports `config`, `envcheck`, `precheck`, `sudoplan`, `utils`, `web`
 - `schedule` imports `config`, `enforcement`, `monitoring`
 - `syncer` imports `config`, `e2e`, `reports`, `state`, `usage`
 - `web` imports `config`, `monitoring`, `reports`, `state`, `utils`
 - `monitoring` imports `config`, `reports`, `state`, `utils`
-- `enforcement` imports `config`, `state`, `utils`
+- `enforcement` imports `config`, `state`, `sudoplan`, `utils`; `sudoplan` imports `config`, `precheck`, `utils`
 - `usage` imports `config`, `utils`; `lock` imports `utils`; `connect` imports `config`, `e2e`
 - `stats` imports `reports`, `store`; `report` imports `store`; `accountability` imports `config`, `report`, `store`; `mailer`, `reports` import `config`
 - `utils` imports `config` (for `TimeWindow`) and nothing else

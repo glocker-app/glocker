@@ -346,6 +346,10 @@ func InstallGlocker(confPath string) error {
 	// only; self-skips elsewhere) so usage tracking works there too.
 	InstallGnomeExtension(&cfg)
 
+	// Step 5c: Take over the user's sudo access so the sudo window applies.
+	// Before the service starts, since the daemon writes the drop-in.
+	takeOverSudo(&cfg)
+
 	// Step 6: Install systemd service
 	servicePath := "/etc/systemd/system/glocker.service"
 	log.Println("Installing systemd service...")

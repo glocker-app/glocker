@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"glocker/internal/config"
+	"glocker/internal/sudoplan"
 	"glocker/internal/utils"
 )
 
@@ -28,22 +29,29 @@ func RestoreSystemChanges(cfg *config.Config) error {
 		log.Println("✓ Hosts file restored")
 	}
 
-	// Restore sudoers
-	if cfg.Sudoers.Enabled {
+	// Give sudo back exactly as it was before the takeover.
+	sys := sudoplan.Default()
+	if sudoplan.Active(sys) {
+		log.Println("Restoring sudo access...")
+		if err := sudoplan.Restore(sys); err != nil {
+			log.Printf("   Warning: couldn't fully restore sudo access: %v", err)
+		} else {
+			log.Println("✓ Sudo access restored to how it was before install")
+		}
+	} else if data, err := os.ReadFile(config.SudoersPath); err == nil && strings.Contains(string(data), config.SudoersMarker) {
+		// Installs from before the sudoers.d takeover edited /etc/sudoers itself.
 		log.Println("Restoring sudoers configuration...")
 		if err := restoreSudoers(cfg); err != nil {
 			log.Printf("   Warning: couldn't restore sudoers: %v", err)
 		} else {
 			log.Println("✓ Sudoers configuration restored")
 		}
-	}
-
-	// Remove sudoers backup
-	switch err := os.Remove(config.SudoersBackup); {
-	case err == nil:
-		log.Println("✓ Sudoers backup removed")
-	case !os.IsNotExist(err): // no backup taken is the normal case
-		log.Printf("   Warning: couldn't remove sudoers backup: %v", err)
+		switch err := os.Remove(config.SudoersBackup); {
+		case err == nil:
+			log.Println("✓ Sudoers backup removed")
+		case !os.IsNotExist(err): // no backup taken is the normal case
+			log.Printf("   Warning: couldn't remove sudoers backup: %v", err)
+		}
 	}
 
 	// Clean up Firefox extension

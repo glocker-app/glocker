@@ -1,105 +1,35 @@
 package enforcement
 
 import (
-	"fmt"
-	"os"
-	"os/exec"
-	"strings"
 	"time"
 
 	"glocker/internal/config"
+	"glocker/internal/sudoplan"
 	"glocker/internal/utils"
 )
 
-// UpdateSudoers updates the /etc/sudoers file to restrict or allow sudo access
-// based on the current time and configured time windows.
+// UpdateSudoers puts the allowed or blocked line (per the allow windows, or
+// blocked when forceBlock) in glocker's /etc/sudoers.d drop-in. It only acts
+// once install has recorded a sudo takeover — until then glocker isn't the
+// user's sudo path, the drop-in would restrict nothing, and it returns
+// sudoplan.ErrNotTakenOver. /etc/sudoers itself is never edited.
 func UpdateSudoers(cfg *config.Config, now time.Time, dryRun bool, forceBlock bool) error {
 	if !cfg.Sudoers.Enabled && !forceBlock {
 		return nil
 	}
-
-	// Determine if sudo should be allowed at this time
-	sudoAllowed := IsSudoAllowed(cfg, now)
-
-	// Override with force block if requested
-	if forceBlock {
-		sudoAllowed = false
+	sys := sudoplan.Default()
+	if !sudoplan.Active(sys) {
+		return sudoplan.ErrNotTakenOver
 	}
 
-	targetLine := cfg.Sudoers.BlockedSudoersLine
-	if sudoAllowed {
-		targetLine = cfg.Sudoers.AllowedSudoersLine
+	line := cfg.Sudoers.BlockedSudoersLine
+	if !forceBlock && IsSudoAllowed(cfg, now) {
+		line = cfg.Sudoers.AllowedSudoersLine
 	}
-
 	if dryRun {
 		return nil
 	}
-
-	// Read current sudoers file
-	content, err := os.ReadFile(config.SudoersPath)
-	if err != nil {
-		return fmt.Errorf("reading sudoers file: %w", err)
-	}
-
-	lines := strings.Split(string(content), "\n")
-	var newLines []string
-	found := false
-
-	// Look for our managed line or the user's sudo line
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		// Check if this is our managed line
-		if strings.Contains(line, config.SudoersMarker) {
-			// Replace with the target line
-			newLines = append(newLines, targetLine+" "+config.SudoersMarker)
-			found = true
-			continue
-		}
-
-		// Check if this is an unmanaged line for our user
-		if strings.HasPrefix(trimmed, cfg.User+" ") ||
-			strings.HasPrefix(trimmed, "# "+cfg.User+" ") {
-			// Replace with our managed version
-			newLines = append(newLines, targetLine+" "+config.SudoersMarker)
-			found = true
-			continue
-		}
-
-		newLines = append(newLines, line)
-	}
-
-	// If we didn't find any line, add it at the end
-	if !found {
-		newLines = append(newLines, targetLine+" "+config.SudoersMarker)
-	}
-
-	newContent := utils.JoinFileLines(newLines)
-
-	// Write to a temporary file
-	tmpFile := config.SudoersPath + ".tmp"
-	if err := os.WriteFile(tmpFile, []byte(newContent), 0440); err != nil {
-		return fmt.Errorf("writing temporary sudoers file: %w", err)
-	}
-	defer os.Remove(tmpFile)
-
-	// Validate the file with visudo
-	cmd := exec.Command("visudo", "-c", "-f", tmpFile)
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("sudoers validation failed: %w", err)
-	}
-
-	// Validation passed, now replace the real file
-	if err := os.Rename(tmpFile, config.SudoersPath); err != nil {
-		return fmt.Errorf("replacing sudoers file: %w", err)
-	}
-
-	// Ensure correct permissions
-	os.Chmod(config.SudoersPath, 0440)
-
-	// Update checksum after legitimate change
-
-	return nil
+	return sudoplan.WriteLine(sys, line)
 }
 
 // IsSudoAllowed determines if sudo access should be allowed at the given time
@@ -111,23 +41,4 @@ func IsSudoAllowed(cfg *config.Config, now time.Time) bool {
 
 	// Empty allow windows means sudo is never permitted.
 	return utils.InAnyWindow(cfg.Sudoers.AllowWindows, now)
-}
-
-// CreateSudoersBackup creates a backup of the sudoers file before modification.
-// It only creates the backup if one doesn't already exist.
-func CreateSudoersBackup() error {
-	// Check if backup already exists
-	if _, err := os.Stat(config.SudoersBackup); err == nil {
-		// Backup already exists, don't overwrite
-		return nil
-	}
-
-	// Read current sudoers
-	content, err := os.ReadFile(config.SudoersPath)
-	if err != nil {
-		return err
-	}
-
-	// Write backup
-	return os.WriteFile(config.SudoersBackup, content, 0440)
 }
