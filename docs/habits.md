@@ -907,8 +907,30 @@ encryption is that if you lose your passphrase and recovery key, your
 data won't be recoverable. Whenever you hit the site, you need to
 enter your passphrase so that decryption can happen. The recovery key
 is currently implemented but not exposed on glockpeek. It will be
-available in the next release.
+available in the next release. 
+
+::: margin-note
+I'm not a crypto expert and this is a best effort implementation. It
+has survived an AI audit so I think it's decent. However, I'm happy to
+receive feedback to make the encryption stronger. 
+:::
+
+
 
 # Additional notes on maintaining healthy routines
 
-The basic idea of 
+Here are some additional points I think are useful for people trying
+to break bad digital habits. 
+
+Many times, the addiction is an solution for an unresolved problems. A
+harmful solution but a solution nonetheless. e.g. A lot of people
+struggle with handling stress and indulge in cheap thrills to offset
+the discomfort. No digital blocking app is going to help there. The
+root cause needs to be dealt with.
+
+That comfortable feeling which comes when one slips into the
+compulsive patterns needs to be axed before it takes deep
+root. Otherwise, it will become hard, if not impossible, to break
+later. 
+
+   
