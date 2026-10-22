@@ -1,4 +1,4 @@
-.PHONY: build-all init install full-install update-blocklists test release migrate deploy deploy-full deploy-rules sign-extensions deploy-extensions release-extensions sign-firefox-extension deploy-firefox-extension release-firefox-extension sign-chrome-extension deploy-chrome-extension release-chrome-extension db-backup help
+.PHONY: test-deps build-all init install full-install update-blocklists test release migrate deploy deploy-full deploy-rules sign-extensions deploy-extensions release-extensions sign-firefox-extension deploy-firefox-extension release-firefox-extension sign-chrome-extension deploy-chrome-extension release-chrome-extension db-backup help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -35,15 +35,20 @@ DB_BACKUP_DIR  ?= deploy/backups
 # Set → dump this DB (e.g. managed PG); empty → on-box postgres.
 DB_DSN         ?=
 
+# Fail fast if the Go toolchain is missing — every build target needs it (an
+# -install checks its own system deps at runtime). Not surfaced in help.
+test-deps:
+	@command -v go >/dev/null 2>&1 || { echo "error: Go toolchain not found. Install Go 1.26+ (see README) and retry." >&2; exit 1; }
+
 # Internal build step (dependency of install / full-install); not surfaced in help.
-build-all:
+build-all: test-deps
 	go build $(GOLDFLAGS) -o glocker ./cmd/glocker
 	go build $(GOLDFLAGS) -o glocklock ./cmd/glocklock
 	go build $(GOLDFLAGS) -o glockpeek ./cmd/glockpeek
 	go build $(GOLDFLAGS) -o glockdoc ./cmd/glockdoc
 
 
-init: ## Generate conf/conf.yaml from the sample (fills in your login; keeps comments; won't overwrite)
+init: test-deps ## Generate conf/conf.yaml from the sample (fills in your login; keeps comments; won't overwrite)
 	go run ./cmd/glocker -init
 
 install: build-all ## Rebuild and reinstall (in-place; stops+swaps+restarts the daemon)
