@@ -4023,13 +4023,16 @@ async function renderDevices() {
     pill.className = `plan-pill ${p.cls}`;
     pill.hidden = false;
   }
-  // Manage/cancel is available once there's a subscription (active or winding
-  // down); an expired/free account sees the upgrade CTA instead.
+  // Manage/cancel is available for any live subscription — trialing or active,
+  // and manage stays through a winding-down cancel; an expired/free account sees
+  // the upgrade CTA instead.
+  const live = sub === "active" || sub === "trialing";
   const manage = document.getElementById("manage-billing");
-  if (manage) manage.hidden = !(state.me && state.me.billing && (sub === "active" || sub === "canceled"));
-  // Cancel is offered while active; a canceled sub is already winding down.
+  if (manage) manage.hidden = !(state.me && state.me.billing && (live || sub === "canceled"));
+  // Cancel is offered for a live sub (trial or active); a canceled sub is already
+  // winding down. The backend allows cancelling a trial, so don't hide it there.
   const cancelBtn = document.getElementById("cancel-sub");
-  if (cancelBtn) cancelBtn.hidden = !(state.me && state.me.billing && sub === "active");
+  if (cancelBtn) cancelBtn.hidden = !(state.me && state.me.billing && live);
 
   listEl.textContent = "";
   if (!data.tokens.length) {
