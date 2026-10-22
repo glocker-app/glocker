@@ -203,6 +203,9 @@ func TestTakeoverAndRestorePerDistro(t *testing.T) {
 			if Active(s) {
 				t.Error("still active after restore")
 			}
+			if _, err := os.Stat(s.StateDir); !os.IsNotExist(err) {
+				t.Error("state dir left behind")
+			}
 			if _, err := os.Stat(s.dropIn()); !os.IsNotExist(err) {
 				t.Error("drop-in left behind")
 			}

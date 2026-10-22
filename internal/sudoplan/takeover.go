@@ -235,7 +235,11 @@ func Restore(s System) error {
 		return errors.Join(errs...) // keep the record so a retry knows what's left
 	}
 	_ = os.Remove(s.movedDir())
-	return os.Remove(s.recordPath())
+	if err := os.Remove(s.recordPath()); err != nil {
+		return err
+	}
+	_ = os.Remove(s.StateDir)
+	return nil
 }
 
 // Active reports whether a takeover is recorded.

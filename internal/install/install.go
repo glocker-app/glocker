@@ -108,12 +108,6 @@ func InstallGlocker(confPath string) error {
 	}
 	envcheck.LogAdvisories(envResults, log.Printf)
 
-	// Then the bypass/recovery-route audit (the second half of `glocker -check`),
-	// up front so enforcement gaps are visible BEFORE we finish — not left for the
-	// user to discover by running the audit later. Read-only; never blocks install
-	// (some routes, like recovery mode, you WANT open as break-glass).
-	logOpenBypassRoutes(cfg.User)
-
 	// Ensure the log directory exists (and migrate any logs from the old flat
 	// /var/log/glocker-* names into it).
 	setupLogDir()
@@ -349,6 +343,12 @@ func InstallGlocker(confPath string) error {
 	// Step 5c: Take over the user's sudo access so the sudo window applies.
 	// Before the service starts, since the daemon writes the drop-in.
 	takeOverSudo(&cfg)
+
+	// Then the bypass/recovery-route audit (the second half of `glocker -check`),
+	// after the takeover so it reports what's actually still open. Read-only;
+	// never blocks install (some routes, like recovery mode, you WANT open as
+	// break-glass).
+	logOpenBypassRoutes(cfg.User)
 
 	// Step 6: Install systemd service
 	servicePath := "/etc/systemd/system/glocker.service"
