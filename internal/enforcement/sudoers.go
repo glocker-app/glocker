@@ -74,7 +74,7 @@ func UpdateSudoers(cfg *config.Config, now time.Time, dryRun bool, forceBlock bo
 		newLines = append(newLines, targetLine+" "+config.SudoersMarker)
 	}
 
-	newContent := strings.Join(newLines, "\n")
+	newContent := utils.JoinFileLines(newLines)
 
 	// Write to a temporary file
 	tmpFile := config.SudoersPath + ".tmp"

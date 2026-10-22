@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"glocker/internal/config"
+	"glocker/internal/utils"
 )
 
 // RestoreSystemChanges removes all glocker modifications and restores the system to its original state.
@@ -296,7 +297,7 @@ func replaceBlockedWithAllowed(cfg *config.Config) error {
 		newLines = append(newLines, cfg.Sudoers.AllowedSudoersLine+" "+config.SudoersMarker)
 	}
 
-	newContent := strings.Join(newLines, "\n")
+	newContent := utils.JoinFileLines(newLines)
 
 	// Write to temporary file for validation
 	tmpFile := config.SudoersPath + ".tmp"

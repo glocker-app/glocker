@@ -168,3 +168,16 @@ func TestReplaceFileCreatesNewDestination(t *testing.T) {
 		t.Errorf("dst not created correctly: %q", b)
 	}
 }
+
+func TestJoinFileLinesTrailingNewline(t *testing.T) {
+	cases := map[string][]string{
+		"root ALL=(ALL) ALL\nme ALL=(ALL) ALL # M\n": {"root ALL=(ALL) ALL", "me ALL=(ALL) ALL # M"},
+		"a\n\nb\n": {"a", "", "b"},
+		"a\n":      {"a", ""},
+	}
+	for want, in := range cases {
+		if got := JoinFileLines(in); got != want {
+			t.Errorf("JoinFileLines(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

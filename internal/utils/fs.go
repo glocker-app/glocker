@@ -3,6 +3,7 @@ package utils
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // CopyFile copies a single file from src to dst, preserving permissions.
@@ -106,4 +107,15 @@ func RunningAsRoot(real bool) bool {
 		uid = os.Geteuid() // Effective user ID - current privileges (affected by setuid)
 	}
 	return uid == 0
+}
+
+// JoinFileLines joins lines with "\n" and guarantees a trailing newline.
+// sudo-rs's visudo (Ubuntu's default sudo since 25.10) rejects a sudoers file
+// whose last line has no terminator; classic sudo tolerates it.
+func JoinFileLines(lines []string) string {
+	s := strings.Join(lines, "\n")
+	if !strings.HasSuffix(s, "\n") {
+		s += "\n"
+	}
+	return s
 }
