@@ -189,7 +189,16 @@ func handleBillingPortal(w http.ResponseWriter, r *http.Request) {
 // the caller can 404.
 func createPolarPortal(ctx context.Context, userID uint) (string, error) {
 	ext := strconv.FormatUint(uint64(userID), 10)
-	body, err := json.Marshal(map[string]any{"customer_external_id": ext})
+	// return_url is where Polar's hosted portal sends the user "back" to, so
+	// managing/cancelling there doesn't dead-end on Polar's page. Prefer the
+	// dashboard's Devices view; fall back to the checkout success URL.
+	reqBody := map[string]any{"customer_external_id": ext}
+	if base := strings.TrimRight(appURL, "/"); base != "" {
+		reqBody["return_url"] = base + "/devices"
+	} else if billing.SuccessURL != "" {
+		reqBody["return_url"] = billing.SuccessURL
+	}
+	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return "", err
 	}
