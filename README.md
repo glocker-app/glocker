@@ -90,7 +90,7 @@ and runs two ways:
 - **hosted**: real accounts + per-device sync tokens. I run one at
   [my.glockerapp.com](https://my.glockerapp.com), end-to-end encrypted — your
   window titles and tags are sealed in your browser, so the server stores only
-  ciphertext. $99/yr for up to three machines, 14-day trial; self-hosting stays
+  ciphertext. $99/yr for unlimited machines, 14-day trial; self-hosting stays
   free.
 
 To sync to the hosted dashboard: register, set an encryption passphrase, mint a
