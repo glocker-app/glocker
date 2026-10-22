@@ -43,6 +43,9 @@ lines; `conf/conf.yaml.sample` documents every option inline.
 
 ## Quick start
 
+You'll need the Go toolchain (1.26+) — `make init` and `make full-install` build
+from source.
+
 ```bash
 make init                 # write conf/conf.yaml from the sample
 $EDITOR conf/conf.yaml     # edit to taste
