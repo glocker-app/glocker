@@ -409,12 +409,32 @@ func main() {
 		if *uninstallNote != "" {
 			log.Printf("   Note: %s", *uninstallNote)
 		}
-		log.Println()
-		log.Println("To complete the uninstall, manually run these commands:")
-		log.Printf("   rm -f %s", "/etc/systemd/system/glocker.service")
-		log.Printf("   rm -f %s", config.InstallPath)
-		log.Printf("   rm -f %s", config.GlockerConfigFile)
-		log.Printf("   rmdir %s", filepath.Dir(config.GlockerConfigFile))
+		// The E2E master key is deliberately kept so a reinstall can sync again
+		// without -connect; say so, since it blocks the rmdir below.
+		keyFile := uninstallCfg.Sync.KeyFile()
+		if _, err := os.Stat(keyFile); err == nil {
+			log.Println()
+			log.Printf("Kept: %s (your encryption key, for a reinstall). If you're not reinstalling:", keyFile)
+			log.Printf("   rm -f %s", keyFile)
+		}
+
+		// Only list what's still there — the daemon already removed some of it.
+		var leftover []string
+		for _, p := range []string{"/etc/systemd/system/glocker.service", config.InstallPath, config.GlockerConfigFile} {
+			if _, err := os.Stat(p); err == nil {
+				leftover = append(leftover, "rm -f "+p)
+			}
+		}
+		if _, err := os.Stat(filepath.Dir(config.GlockerConfigFile)); err == nil {
+			leftover = append(leftover, "rmdir "+filepath.Dir(config.GlockerConfigFile))
+		}
+		if len(leftover) > 0 {
+			log.Println()
+			log.Println("To complete the uninstall, manually run these commands:")
+			for _, c := range leftover {
+				log.Printf("   %s", c)
+			}
+		}
 
 		// -purge also removes the glockdoc watchdog + timer/cron that a normal uninstall
 		// leaves behind to record downtime.

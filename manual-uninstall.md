@@ -102,7 +102,7 @@ rm -f /etc/systemd/system/glockdoc.timer /etc/systemd/system/glockdoc.service
 rm -f /etc/cron.d/glocker-doc          # the glockdoc heartbeat cron (older installs / no systemd timer)
 rm -f /etc/sudoers.glocker.backup
 rm -rf /var/glocker                    # the socket dir
-rm -rf /etc/glocker
+rm -rf /etc/glocker                    # includes e2e.key (your encryption key); keep a copy to reinstall without -connect
 rm -f /etc/opt/chrome/policies/managed/glocker.json \
       /etc/chromium/policies/managed/glocker.json \
       /etc/brave/policies/managed/glocker.json \
