@@ -61,6 +61,25 @@ required reason:
 sudo glocker -uninstall "reason"
 ```
 
+## Verifying a release
+
+Release binaries come with a `SHA256SUMS` signed by
+[minisign](https://jedisct1.github.io/minisign/). The public key is
+[`minisign.pub`](minisign.pub), also published at
+[glockerapp.com](https://glockerapp.com):
+
+```
+RWT2ioF8xC/sE5SAAyubQQGPAJWWZxougVjndvUzoRH1D1/C8mOoFK5i
+```
+
+Download the binaries, `SHA256SUMS` and `SHA256SUMS.minisig` into one directory,
+then:
+
+```bash
+minisign -Vm SHA256SUMS -P RWT2ioF8xC/sE5SAAyubQQGPAJWWZxougVjndvUzoRH1D1/C8mOoFK5i
+sha256sum -c SHA256SUMS
+```
+
 ## Dashboard (glockpeek)
 
 `glockpeek` is a separate systemd service serving your analytics — violations,
