@@ -121,6 +121,13 @@ func TestCheckSudoers(t *testing.T) {
 		t.Fatalf("title should flag NOPASSWD: %q", f.Title)
 	}
 
+	// The managed user's own grant under sudoers.d bypasses the window too —
+	// glocker only rewrites the main file.
+	writeFile(t, filepath.Join(sudoersD, "extra"), "alice ALL=(ALL) NOPASSWD: ALL\n")
+	if f := checkSudoers(main, sudoersD, "alice"); f.Status != StatusOpen || !strings.Contains(f.Detail, "alice ALL=(ALL) NOPASSWD: ALL") {
+		t.Fatalf("sudoers.d user grant: status %q detail %q, want OPEN naming it", f.Status, f.Detail)
+	}
+
 	// Clean system: only root, the managed line, and a command-scoped grant.
 	writeFile(t, main, "root ALL=(ALL) ALL\nalice ALL=(ALL) ALL # GLOCKER-MANAGED\n")
 	if got := checkSudoers(main, filepath.Join(dir, "empty"), "alice").Status; got != StatusClosed {

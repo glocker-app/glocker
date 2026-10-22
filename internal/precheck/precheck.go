@@ -271,7 +271,9 @@ func checkSSHRoot(mainCfg, dir string) Finding {
 }
 
 // checkSudoers surfaces sudo grants other than glocker's own managed line —
-// especially NOPASSWD, which sidesteps the whole sudo-window mechanism.
+// especially NOPASSWD, which sidesteps the whole sudo-window mechanism. That
+// includes the managed user's own lines under sudoers.d (e.g. the one cloud
+// images ship), which glocker never rewrites.
 func checkSudoers(mainPath, dir, managedUser string) Finding {
 	f := Finding{ID: "sudoers-extra", Title: "Other blanket sudo grants"}
 	files := []string{mainPath}
@@ -303,8 +305,8 @@ func checkSudoers(mainPath, dir, managedUser string) Finding {
 			if strings.HasPrefix(t, "%") {
 				continue // group grants are covered by the per-user + group-member checks
 			}
-			if managedUser != "" && strings.HasPrefix(t, managedUser+" ") {
-				continue // glocker manages this user's own line
+			if managedUser != "" && path == mainPath && strings.HasPrefix(t, managedUser+" ") {
+				continue // glocker manages this user's line in the main sudoers file
 			}
 			if !grantIsBlanket(t) {
 				continue // command-scoped grants can't open a root shell or remove glocker
