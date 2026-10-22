@@ -3801,6 +3801,11 @@ async function openBillingPortal(btn) {
   if (btn) btn.disabled = true;
   try {
     const res = await fetch("api/billing/portal", { method: "POST" });
+    if (res.status === 404) {
+      if (btn) btn.disabled = false;
+      alert("No billing to manage on this account — it wasn't set up through checkout.");
+      return;
+    }
     if (!res.ok) throw new Error(`server returned ${res.status}`);
     const { url } = await res.json();
     if (!url) throw new Error("no portal url");

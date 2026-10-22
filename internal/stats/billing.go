@@ -184,8 +184,9 @@ func handleBillingPortal(w http.ResponseWriter, r *http.Request) {
 
 // createPolarPortal POSTs to Polar's customer-sessions API keyed by the account's
 // external id (the numeric user id we set at checkout) and returns the hosted
-// customer-portal URL. A 404 means the account never checked out (no Polar
-// customer yet) — surfaced as errNoCustomer so the caller can 404.
+// customer-portal URL. No Polar customer for the account (it never checked out —
+// e.g. a comped subscription granted by an admin) surfaces as errNoCustomer so
+// the caller can 404.
 func createPolarPortal(ctx context.Context, userID uint) (string, error) {
 	ext := strconv.FormatUint(uint64(userID), 10)
 	body, err := json.Marshal(map[string]any{"customer_external_id": ext})
@@ -204,7 +205,11 @@ func createPolarPortal(ctx context.Context, userID uint) (string, error) {
 	}
 	defer resp.Body.Close()
 	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if resp.StatusCode == http.StatusNotFound {
+	// No Polar customer for this account: Polar answers 404, or 422 with a
+	// "Customer does not exist" validation error on external_customer_id (what a
+	// comped/never-checked-out account hits). Both mean the same — no portal.
+	if resp.StatusCode == http.StatusNotFound ||
+		(resp.StatusCode == http.StatusUnprocessableEntity && bytes.Contains(rb, []byte("Customer does not exist"))) {
 		return "", errNoCustomer
 	}
 	if resp.StatusCode/100 != 2 {
