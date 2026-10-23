@@ -116,6 +116,82 @@ func checkoutProduct(plan string) string {
 	return billing.ProductID
 }
 
+// planForProduct is the inverse of checkoutProduct: the plan name for a product
+// id, so the dashboard can show the current plan. Empty if it's neither.
+func planForProduct(productID string) string {
+	if productID == "" {
+		return ""
+	}
+	switch productID {
+	case billing.ProductID:
+		return "annual"
+	case billing.ProductIDMonthly:
+		return "monthly"
+	}
+	return ""
+}
+
+// handleSwitchPlan switches a live subscription to the other plan (monthly<->annual)
+// via Polar's subscription-update API, keeping the products Private and the account
+// linked. The subscription.updated webhook reconciles the new product; we also set
+// it optimistically so the UI updates without waiting.
+func handleSwitchPlan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !billingEnabled || billing.ProductIDMonthly == "" {
+		http.Error(w, "plan switching is not available", http.StatusNotFound)
+		return
+	}
+	u := userFrom(r)
+	if u.SubID == "" || (u.SubStatus != store.SubStatusTrialing && u.SubStatus != store.SubStatusActive) {
+		http.Error(w, "no switchable subscription", http.StatusConflict)
+		return
+	}
+	target := checkoutProduct(r.URL.Query().Get("plan"))
+	if target == "" {
+		http.Error(w, "unknown plan", http.StatusBadRequest)
+		return
+	}
+	if target == u.SubProductID {
+		writeJSON(w, map[string]any{"ok": true, "changed": false, "plan": planForProduct(target)})
+		return
+	}
+	if err := switchPolarPlan(r.Context(), u.SubID, target); err != nil {
+		log.Printf("billing: plan switch failed for user %d: %v", u.ID, err)
+		http.Error(w, "could not change plan", http.StatusBadGateway)
+		return
+	}
+	_ = db.SetSubscriptionProduct(u.ID, target) // optimistic; webhook confirms
+	writeJSON(w, map[string]any{"ok": true, "changed": true, "plan": planForProduct(target)})
+}
+
+// switchPolarPlan PATCHes a subscription onto a different product. proration is
+// omitted so Polar applies the organization's default proration setting.
+func switchPolarPlan(ctx context.Context, subID, product string) error {
+	body, err := json.Marshal(map[string]any{"product_id": product})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, billing.APIBase+"/v1/subscriptions/"+subID, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+billing.APIToken)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := billingHTTP.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	rb, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("polar subscription update status %d: %s", resp.StatusCode, string(rb))
+	}
+	return nil
+}
+
 // createPolarCheckout POSTs to Polar's checkout API (raw HTTP — Polar's Go SDK
 // is archived) and returns the hosted checkout URL.
 func createPolarCheckout(ctx context.Context, userID uint, email, plan string) (string, error) {
@@ -491,6 +567,7 @@ type polarSubscriptionEvent struct {
 	Data struct {
 		ID                string     `json:"id"`
 		Status            string     `json:"status"`
+		ProductID         string     `json:"product_id"`
 		CancelAtPeriodEnd bool       `json:"cancel_at_period_end"`
 		CurrentPeriodEnd  time.Time  `json:"current_period_end"`
 		EndsAt            *time.Time `json:"ends_at"`
@@ -585,6 +662,10 @@ func applyBillingEvent(evt polarSubscriptionEvent) error {
 		}
 		return evt.Data.CurrentPeriodEnd
 	}
+
+	// Record the product so the dashboard can show the plan and offer a switch. A
+	// plan switch arrives as subscription.updated with the new product_id.
+	_ = db.SetSubscriptionProduct(userID, evt.Data.ProductID)
 
 	switch evt.Type {
 	case "subscription.created", "subscription.active", "subscription.uncanceled", "subscription.updated", "subscription.past_due":

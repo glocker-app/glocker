@@ -63,6 +63,15 @@ func (db *DB) SetSubscription(userID uint, status, subID string, currentEnd time
 	return nil
 }
 
+// SetSubscriptionProduct records which provider product the subscription is on
+// (for showing the plan and offering an in-app switch). A no-op for an empty id.
+func (db *DB) SetSubscriptionProduct(userID uint, productID string) error {
+	if productID == "" {
+		return nil
+	}
+	return db.Model(&User{}).Where("id = ?", userID).Update("sub_product_id", productID).Error
+}
+
 // StampSubSynced records that the account's subscription was just reconciled
 // against the provider, so the on-load reconcile stays throttled. Best-effort:
 // a no-op on an unknown id.

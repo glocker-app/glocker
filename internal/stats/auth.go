@@ -249,6 +249,7 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		// Billing/plan info so the dashboard can show the tier + gate the upgrade CTA.
 		"billing":        billingEnabled,
 		"billingMonthly": billingEnabled && billing.ProductIDMonthly != "", // offer the monthly plan?
+		"plan":           planForProduct(u.SubProductID),                   // "annual" | "monthly" | ""
 		"subStatus":      u.SubStatus,
 		"deviceLimit":    store.EffectiveDeviceLimit(u),
 		"subCurrentEnd":  u.SubCurrentEnd,

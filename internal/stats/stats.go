@@ -185,6 +185,8 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 		mux.HandleFunc("/api/billing/portal", requireUser(handleBillingPortal))
 		// Session-gated: cancel at period end in-app (no portal round trip).
 		mux.HandleFunc("/api/billing/cancel", requireUser(handleBillingCancel))
+		// Session-gated: switch a live subscription between monthly and annual.
+		mux.HandleFunc("/api/billing/switch-plan", requireUser(handleSwitchPlan))
 		// Public but signature-verified: the Merchant-of-Record posts subscription
 		// events here. Not session-gated (the caller is Polar, not a browser).
 		mux.HandleFunc("/api/billing/webhook", handleBillingWebhook)

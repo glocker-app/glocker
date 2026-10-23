@@ -985,6 +985,36 @@ paths:
         "409": { description: "No cancelable subscription (not trialing/active)", content: { text/plain: { schema: { type: string } } } }
         "500": { $ref: "#/components/responses/ServerError" }
         "502": { description: "Polar error", content: { text/plain: { schema: { type: string } } } }
+  /api/billing/switch-plan:
+    post:
+      summary: Switch a live subscription between monthly and annual
+      description: >
+        Only mounted when billing is enabled and a monthly product is configured.
+        Switches the subscription's product in place via the Polar API (org default
+        proration); the subscription.updated webhook reconciles it.
+      operationId: switchBillingPlan
+      security: [ { cookieAuth: [] } ]
+      parameters:
+        - name: plan
+          in: query
+          required: true
+          schema: { type: string, enum: [annual, monthly] }
+      responses:
+        "200":
+          description: Plan switched (or already on the requested plan)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  changed: { type: boolean, description: false if already on that plan }
+                  plan: { type: string, enum: [annual, monthly] }
+        "400": { description: "Unknown plan", content: { text/plain: { schema: { type: string } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "Plan switching not available", content: { text/plain: { schema: { type: string } } } }
+        "409": { description: "No switchable subscription (not trialing/active)", content: { text/plain: { schema: { type: string } } } }
+        "502": { description: "Polar error", content: { text/plain: { schema: { type: string } } } }
 
   /api/billing/webhook:
     post:

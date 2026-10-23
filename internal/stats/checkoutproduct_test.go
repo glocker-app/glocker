@@ -23,3 +23,24 @@ func TestCheckoutProduct(t *testing.T) {
 		t.Errorf("monthly fallback = %q, want annual-prod", got)
 	}
 }
+
+func TestPlanForProduct(t *testing.T) {
+	billing = BillingOptions{ProductID: "annual-prod", ProductIDMonthly: "monthly-prod"}
+	t.Cleanup(func() { billing = BillingOptions{} })
+
+	for pid, want := range map[string]string{
+		"annual-prod":  "annual",
+		"monthly-prod": "monthly",
+		"other":        "",
+		"":             "",
+	} {
+		if got := planForProduct(pid); got != want {
+			t.Errorf("planForProduct(%q) = %q, want %q", pid, got, want)
+		}
+	}
+	// No empty-product false match even when a product id is unset.
+	billing.ProductIDMonthly = ""
+	if got := planForProduct(""); got != "" {
+		t.Errorf("planForProduct(\"\") with no monthly = %q, want empty", got)
+	}
+}

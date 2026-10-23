@@ -3816,6 +3816,23 @@ async function openBillingPortal(btn) {
   }
 }
 
+// switchPlan moves a live subscription between monthly and annual in place (via
+// Polar's subscription-update API), then re-renders with the new plan.
+async function switchPlan(plan, btn) {
+  const orig = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "Switching…"; }
+  try {
+    const res = await fetch("api/billing/switch-plan?plan=" + encodeURIComponent(plan), { method: "POST" });
+    if (!res.ok) throw new Error(`server returned ${res.status}`);
+    const d = await res.json().catch(() => ({}));
+    if (state.me) state.me.plan = d.plan || plan;
+    renderDevices();
+  } catch {
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
+    alert("Could not change plan. Please try again in a moment.");
+  }
+}
+
 // cancelSubscription cancels at period end via the Polar API directly (no portal
 // redirect). The server records the canceled state from the API response, so we
 // reflect it immediately from the response and re-render.
@@ -4044,6 +4061,19 @@ async function renderDevices() {
   // winding down. The backend allows cancelling a trial, so don't hide it there.
   const cancelBtn = document.getElementById("cancel-sub");
   if (cancelBtn) cancelBtn.hidden = !(state.me && state.me.billing && live);
+  // Change plan: offered for a live sub when a monthly plan exists and we know the
+  // current one — switches to the other plan (monthly<->annual) in place.
+  const switchBtn = document.getElementById("switch-plan");
+  if (switchBtn) {
+    const plan = state.me && state.me.plan;
+    const canSwitch = state.me && state.me.billing && state.me.billingMonthly && live && (plan === "annual" || plan === "monthly");
+    switchBtn.hidden = !canSwitch;
+    if (canSwitch) {
+      const toMonthly = plan === "annual";
+      switchBtn.textContent = toMonthly ? "Switch to monthly ($10/mo)" : "Switch to annual ($99/yr)";
+      switchBtn.onclick = () => switchPlan(toMonthly ? "monthly" : "annual", switchBtn);
+    }
+  }
 
   listEl.textContent = "";
   if (!data.tokens.length) {
