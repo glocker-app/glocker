@@ -22,6 +22,7 @@ const VIEW_TITLES = {
   insights: "Insights",
   config: "Config",
   devices: "Devices",
+  subscription: "Subscription",
   admin: "Admin",
 };
 
@@ -635,6 +636,8 @@ async function bootDashboard(me) {
     };
     document.getElementById("nav-devices").hidden = false;
     setupDevices();
+    // Subscription page: only when billing is configured (hosted paid tier).
+    if (me.billing) document.getElementById("nav-subscription").hidden = false;
     // Admin-only: the accounts panel.
     if (me.admin) document.getElementById("nav-users").hidden = false;
   }
@@ -776,6 +779,7 @@ function setView(view) {
   if (view === "config") renderConfig();
   if (view === "insights") renderInsights();
   if (view === "devices") renderDevices();
+  if (view === "subscription") renderSubscription();
   if (view === "admin") { renderAdminMetrics(); renderUsers(); }
   // Charts built while their view was display:none have zero size; fix on reveal.
   requestAnimationFrame(() => {
@@ -3789,11 +3793,6 @@ function setupDevices() {
   // Dismiss on backdrop click or Esc — the warning already says copy first.
   modal.addEventListener("click", (e) => { if (e.target === modal) closeModal(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !modal.hidden) closeModal(); });
-
-  const manage = document.getElementById("manage-billing");
-  if (manage) manage.onclick = () => openBillingPortal(manage);
-  const cancel = document.getElementById("cancel-sub");
-  if (cancel) cancel.onclick = () => cancelSubscription(cancel);
 }
 
 // openBillingPortal redirects to the Polar customer portal (manage/cancel).
@@ -3826,7 +3825,7 @@ async function switchPlan(plan, btn) {
     if (!res.ok) throw new Error(`server returned ${res.status}`);
     const d = await res.json().catch(() => ({}));
     if (state.me) state.me.plan = d.plan || plan;
-    renderDevices();
+    renderSubscription();
   } catch {
     if (btn) { btn.disabled = false; btn.textContent = orig; }
     alert("Could not change plan. Please try again in a moment.");
@@ -3848,7 +3847,7 @@ async function cancelSubscription(btn) {
       if (j.subCurrentEnd) state.me.subCurrentEnd = j.subCurrentEnd;
     }
     renderAccessBanner();
-    if (state.view === "devices") renderDevices();
+    renderSubscription();
   } catch {
     if (btn) { btn.disabled = false; btn.textContent = "Cancel subscription"; }
     alert("Could not cancel the subscription. Please try again in a moment.");
@@ -3869,79 +3868,37 @@ function renderAccessBanner() {
   const hasAccess = s === "trialing" || s === "active" || s === "canceled" || s === "past_due";
   state.readOnly = !hasAccess;
 
+  // A live, non-canceling subscription needs no banner.
+  if (s === "active") { el.hidden = true; return; }
+
   el.className = "access-banner";
   el.textContent = "";
-  const btn = (label, fn, cls) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = cls || "btn-primary";
-    b.textContent = label;
-    b.onclick = () => fn(b);
-    return b;
-  };
-  // Plan buttons: monthly + annual when a monthly plan is configured, else a
-  // single trial/subscribe button. The two live in one right-aligned cluster;
-  // annual is the emphasised (primary) button, monthly the quieter one.
-  const planButtons = (singleLabel) => {
-    if (me.billingMonthly) {
-      const group = document.createElement("span");
-      group.className = "banner-actions";
-      group.append(btn("$10 / month", (b) => startCheckout("monthly", b), "btn-ghost"));
-      group.append(btn("$99 / year · save ~2 months", (b) => startCheckout("annual", b)));
-      el.append(group);
-    } else {
-      el.append(btn(singleLabel, (b) => startCheckout("annual", b)));
-    }
-  };
+  const end = me.subCurrentEnd ? new Date(me.subCurrentEnd) : null;
+  const dshort = end ? end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
 
+  let msg, cta, info = true;
   if (s === "trialing") {
-    const end = me.subCurrentEnd ? new Date(me.subCurrentEnd) : null;
     const days = end ? Math.max(0, Math.ceil((end - Date.now()) / 86400000)) : null;
-    el.classList.add("access-banner--info");
-    el.append(document.createTextNode(days != null
-      ? `Free trial — ${days} day${days === 1 ? "" : "s"} left, then your subscription begins. `
-      : "Free trial active. "));
-    el.append(btn("Manage billing", openBillingPortal));
-    const cancel = btn("Cancel", cancelSubscription);
-    cancel.className = "btn-ghost";
-    el.append(cancel);
-    el.hidden = false;
-    return;
-  }
-  if (s === "canceled") {
-    // Cancellation is scheduled: access holds until the period end. Say so, so it
-    // isn't mistaken for a live subscription — with a way back in via the portal.
-    const end = me.subCurrentEnd ? new Date(me.subCurrentEnd) : null;
-    el.classList.add("access-banner--info");
-    el.append(document.createTextNode(end
-      ? `Subscription ends ${end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} — full access until then. `
-      : "Subscription set to cancel — full access until the period ends. "));
-    el.append(btn("Manage billing", openBillingPortal));
-    el.hidden = false;
-    return;
-  }
-  if (s === "past_due") {
-    // Renewal payment failed. Access is held through a grace window; the customer
-    // needs to fix their card at the portal before it lapses.
-    const end = me.subCurrentEnd ? new Date(me.subCurrentEnd) : null;
-    el.classList.add("access-banner--warn");
-    el.append(document.createTextNode(end
-      ? `Payment failed — update your card by ${end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })} to keep access. `
-      : "Payment failed — update your card to keep access. "));
-    el.append(btn("Update payment", openBillingPortal));
-    el.hidden = false;
-    return;
-  }
-  if (hasAccess) { el.hidden = true; return; } // active: no banner
-
-  el.classList.add("access-banner--warn");
-  if (s === "expired") {
-    el.append(document.createTextNode("Your subscription has lapsed — the dashboard is read-only and syncing is paused. "));
-    planButtons("Subscribe");
+    msg = days != null ? `Free trial — ${days} day${days === 1 ? "" : "s"} left.` : "Free trial active.";
+    cta = "Manage subscription";
+  } else if (s === "canceled") {
+    msg = end ? `Subscription ends ${dshort} — full access until then.` : "Subscription set to cancel.";
+    cta = "Manage subscription";
+  } else if (s === "past_due") {
+    msg = "Payment failed — update your card to keep access."; cta = "Fix payment"; info = false;
+  } else if (s === "expired") {
+    msg = "Your subscription has lapsed — the dashboard is read-only and syncing is paused."; cta = "Subscribe"; info = false;
   } else {
-    el.append(document.createTextNode("Start your 2-week free trial to connect devices and use the dashboard. "));
-    planButtons("Start free trial");
+    msg = "Start your 2-week free trial to connect devices and use the dashboard."; cta = "Choose a plan"; info = false;
   }
+  el.classList.add(info ? "access-banner--info" : "access-banner--warn");
+  el.append(document.createTextNode(msg + " "));
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "btn-primary";
+  b.textContent = cta;
+  b.onclick = () => routeTo("subscription");
+  el.append(b);
   el.hidden = false;
 }
 
@@ -4033,6 +3990,62 @@ function planPill(sub) {
   }
 }
 
+// renderSubscription is the billing home: current plan + status, and the actions
+// for that state (choose a plan, switch plan, cancel, manage billing). All billing
+// lives here; the access banner just links in.
+function renderSubscription() {
+  const el = document.getElementById("subscription-body");
+  if (!el) return;
+  const me = state.me || {};
+  if (!me.billing) { el.innerHTML = `<p class="sub-status">Billing isn't enabled on this instance.</p>`; return; }
+
+  const s = me.subStatus;
+  const live = s === "trialing" || s === "active";
+  const end = me.subCurrentEnd ? new Date(me.subCurrentEnd) : null;
+  const dlong = end ? end.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }) : "";
+  const p = planPill(s);
+  const planLabel = me.plan === "monthly" ? "Monthly ($10/mo)" : me.plan === "annual" ? "Annual ($99/yr)" : "";
+  const titled = live || s === "canceled" || s === "past_due";
+
+  let statusLine;
+  if (s === "trialing") statusLine = end ? `Free trial — ends ${dlong}, then billing begins.` : "Free trial active.";
+  else if (s === "active") statusLine = end ? `Renews ${dlong}.` : "Active.";
+  else if (s === "canceled") statusLine = end ? `Access until ${dlong} — won't renew.` : "Set to cancel at period end.";
+  else if (s === "past_due") statusLine = "Renewal payment failed — update your card to keep access.";
+  else if (s === "expired") statusLine = "Lapsed — the dashboard is read-only and syncing is paused.";
+  else statusLine = "You're on the free tier. Start a 2-week free trial to sync devices and use the dashboard.";
+
+  let actions = "";
+  if (live) {
+    if (me.billingMonthly && (me.plan === "annual" || me.plan === "monthly")) {
+      actions += `<button id="sub-switch" class="btn-ghost" type="button">Switch to ${me.plan === "annual" ? "monthly ($10/mo)" : "annual ($99/yr)"}</button>`;
+    }
+    actions += `<button id="sub-cancel" class="btn-ghost" type="button">Cancel subscription</button>`;
+    actions += `<button id="sub-portal" class="btn-ghost" type="button">Manage billing</button>`;
+  } else if (s === "canceled" || s === "past_due") {
+    actions += `<button id="sub-portal" class="btn-primary" type="button">Manage billing</button>`;
+  } else if (me.billingMonthly) {
+    actions += `<button id="sub-monthly" class="btn-ghost" type="button">$10 / month</button>`;
+    actions += `<button id="sub-annual" class="btn-primary" type="button">$99 / year · save ~2 months</button>`;
+  } else {
+    actions += `<button id="sub-annual" class="btn-primary" type="button">${s === "expired" ? "Resubscribe" : "Start free trial"}</button>`;
+  }
+
+  el.innerHTML =
+    `<div class="sub-card">
+       <div class="sub-top"><span class="sub-plan">${titled ? "Glocker Pro" + (planLabel ? " · " + planLabel : "") : "Free"}</span><span class="plan-pill ${p.cls}">${p.text}</span></div>
+       <p class="sub-status">${statusLine}</p>
+       <div class="sub-actions">${actions}</div>
+     </div>`;
+
+  const wire = (id, fn) => { const b = document.getElementById(id); if (b) b.onclick = () => fn(b); };
+  wire("sub-portal", openBillingPortal);
+  wire("sub-cancel", cancelSubscription);
+  wire("sub-monthly", (b) => startCheckout("monthly", b));
+  wire("sub-annual", (b) => startCheckout("annual", b));
+  if (me.plan) wire("sub-switch", (b) => switchPlan(me.plan === "annual" ? "monthly" : "annual", b));
+}
+
 async function renderDevices() {
   const listEl = document.getElementById("device-list");
   const nameEl = document.getElementById("device-name");
@@ -4044,39 +4057,6 @@ async function renderDevices() {
     data = await res.json();
   } catch {
     return;
-  }
-
-  // Plan + status as a single pill in the header.
-  const sub = state.me && state.me.subStatus;
-  const pill = document.getElementById("plan-pill");
-  if (pill) {
-    const p = planPill(sub);
-    pill.textContent = p.text;
-    pill.className = `plan-pill ${p.cls}`;
-    pill.hidden = false;
-  }
-  // Manage/cancel is available for any live subscription — trialing or active,
-  // and manage stays through a winding-down cancel; an expired/free account sees
-  // the upgrade CTA instead.
-  const live = sub === "active" || sub === "trialing";
-  const manage = document.getElementById("manage-billing");
-  if (manage) manage.hidden = !(state.me && state.me.billing && (live || sub === "canceled"));
-  // Cancel is offered for a live sub (trial or active); a canceled sub is already
-  // winding down. The backend allows cancelling a trial, so don't hide it there.
-  const cancelBtn = document.getElementById("cancel-sub");
-  if (cancelBtn) cancelBtn.hidden = !(state.me && state.me.billing && live);
-  // Change plan: offered for a live sub when a monthly plan exists and we know the
-  // current one — switches to the other plan (monthly<->annual) in place.
-  const switchBtn = document.getElementById("switch-plan");
-  if (switchBtn) {
-    const plan = state.me && state.me.plan;
-    const canSwitch = state.me && state.me.billing && state.me.billingMonthly && live && (plan === "annual" || plan === "monthly");
-    switchBtn.hidden = !canSwitch;
-    if (canSwitch) {
-      const toMonthly = plan === "annual";
-      switchBtn.textContent = toMonthly ? "Switch to monthly ($10/mo)" : "Switch to annual ($99/yr)";
-      switchBtn.onclick = () => switchPlan(toMonthly ? "monthly" : "annual", switchBtn);
-    }
   }
 
   listEl.textContent = "";

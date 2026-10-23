@@ -128,7 +128,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 		}
 		serveShell(w, r)
 	})
-	for _, p := range []string{"/overview", "/analytics", "/analytics/", "/insights", "/config", "/devices", "/admin"} {
+	for _, p := range []string{"/overview", "/analytics", "/analytics/", "/insights", "/config", "/devices", "/subscription", "/admin"} {
 		mux.HandleFunc(p, serveShell)
 	}
 	// The admin view moved from /users to /admin; keep the old deep link working.

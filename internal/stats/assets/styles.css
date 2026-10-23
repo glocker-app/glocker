@@ -1470,6 +1470,12 @@ canvas { max-height: 260px; }
 .access-banner > .btn-primary, .access-banner > .btn-ghost, .access-banner > .banner-actions { margin-left: auto; }
 .access-banner .banner-actions { display: flex; align-items: center; gap: 10px; }
 
+/* Subscription page */
+.sub-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.sub-plan { font-family: var(--display); font-weight: 700; font-size: 20px; color: var(--ink); }
+.sub-status { font-size: 14px; color: var(--ink-dim); margin: 12px 0 22px; max-width: 60ch; }
+.sub-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
 /* ── Data-sync panel ──────────────────────────────────── */
 .sync-status { display: flex; flex-direction: column; gap: 8px; }
 .sync-row {

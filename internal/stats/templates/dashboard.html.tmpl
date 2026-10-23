@@ -48,6 +48,7 @@
         <ul class="nav nav-group">
           <li id="nav-config" hidden><button data-view="config">Config</button></li>
           <li id="nav-devices" hidden><button data-view="devices">Devices</button></li>
+          <li id="nav-subscription" hidden><button data-view="subscription">Subscription</button></li>
         </ul>
 
         <!-- Admin (only when the account is an admin) -->
@@ -336,10 +337,6 @@
           <section class="panel">
             <div class="panel-head">
               <h2>Connected devices</h2>
-              <span id="plan-pill" class="plan-pill" hidden></span>
-              <button id="manage-billing" class="btn-ghost" type="button" hidden>Manage billing</button>
-              <button id="switch-plan" class="btn-ghost" type="button" hidden>Change plan</button>
-              <button id="cancel-sub" class="btn-ghost" type="button" hidden>Cancel subscription</button>
             </div>
 
             <div id="device-list" class="device-list"></div>
@@ -368,6 +365,16 @@
               </div>
             </div>
           </div>
+        </section>
+
+        <!-- Subscription -->
+        <section class="view" data-view="subscription">
+          <section class="panel">
+            <div class="panel-head">
+              <h2>Subscription</h2>
+            </div>
+            <div id="subscription-body" class="subscription-body"></div>
+          </section>
         </section>
 
         <section class="view" data-view="admin">
