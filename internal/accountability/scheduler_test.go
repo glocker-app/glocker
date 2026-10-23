@@ -73,6 +73,9 @@ func TestDigestCountsAndContentFree(t *testing.T) {
 	if !strings.Contains(m.text, "hits: 1") {
 		t.Errorf("digest missing violation count:\n%s", m.text)
 	}
+	if !strings.Contains(m.text, footerURL) || !strings.Contains(m.html, footerURL) {
+		t.Errorf("digest missing the glocker footer link")
+	}
 	for _, leak := range []string{"SECRETWORD", "secret.example", "x.example"} {
 		if strings.Contains(m.text, leak) || strings.Contains(m.html, leak) {
 			t.Errorf("digest leaked content %q", leak)

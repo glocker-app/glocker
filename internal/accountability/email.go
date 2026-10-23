@@ -10,6 +10,13 @@ import (
 	"glocker/internal/report"
 )
 
+// footerURL is where a partner lands from an email; ?ref= shows up under
+// Campaigns in the site stats.
+const footerURL = "https://glockerapp.com/?ref=partner"
+
+// textFooter ends every plain-text email.
+const textFooter = "\n--\nSent by glocker · " + footerURL + "\n"
+
 // emailShell wraps body HTML in a simple, inline-styled card (email clients don't
 // do <style>/external CSS reliably). `who` is the account's login email, shown in
 // the header so a buddy watching several people knows whose machine this is about.
@@ -25,7 +32,10 @@ func emailShell(who, innerHTML string) string {
 		sub +
 		`</div>` +
 		`<div style="padding:20px 22px;color:#222;font-size:14px;line-height:1.55">` + innerHTML + `</div>` +
-		`</div></div>`
+		`</div>` +
+		`<div style="max-width:480px;margin:10px auto 0;text-align:center;color:#9ca3af;font-size:12px">` +
+		`Sent by <a href="` + footerURL + `" style="color:#9ca3af">glocker</a></div>` +
+		`</div>`
 }
 
 // withWho appends the account email to a subject when known.

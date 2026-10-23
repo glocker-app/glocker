@@ -176,7 +176,7 @@ func (n *Scheduler) send(to []string, subject, text, html string) bool {
 		if addr == "" {
 			continue
 		}
-		if err := n.mail.Send(context.Background(), addr, subject, text, html); err != nil {
+		if err := n.mail.Send(context.Background(), addr, subject, text+textFooter, html); err != nil {
 			slog.Warn("scheduler: send failed", "to", addr, "err", err)
 			continue
 		}
