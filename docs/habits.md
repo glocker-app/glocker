@@ -126,6 +126,10 @@ capabilities of the program are.
 We will cover the config file below. It's quite detailed. To get a
 quick initial file with decent basics, use `glocker -init`
 
+::: {.video data-yt="Gr3iOxcVxH8" data-poster="video-config.jpg" data-title="Configuring glocker"}
+[Watch: configuring glocker](https://youtu.be/Gr3iOxcVxH8)
+:::
+
 ### System behaviour
 - `log_level` - This is just to set the logging level of glocker. "info" is usually sufficient for personal use. "debug" if you're doing feature development. 
 - `user` - This tells Glocker who you are. Glocker runs as root so it needs to be told this explicitly. Several things below use it so make sure you set it correctly. 
