@@ -35,13 +35,14 @@ import (
 
 // BillingOptions is the resolved billing configuration handed to Register.
 type BillingOptions struct {
-	Enabled         bool
-	APIToken        string // Polar org access token (server-side)
-	WebhookSecret   string // Standard Webhooks secret (whsec_...)
-	ProductID       string // Polar subscription product id
-	APIBase         string // resolved Polar API base (production if unset)
-	PaidDeviceLimit int    // device cap while active (-1 unlimited)
-	SuccessURL      string // post-checkout redirect (falls back to AppURL upstream)
+	Enabled          bool
+	APIToken         string // Polar org access token (server-side)
+	WebhookSecret    string // Standard Webhooks secret (whsec_...)
+	ProductID        string // Polar subscription product id (annual plan)
+	ProductIDMonthly string // optional monthly plan; empty = annual only
+	APIBase          string // resolved Polar API base (production if unset)
+	PaidDeviceLimit  int    // device cap while active (-1 unlimited)
+	SuccessURL       string // post-checkout redirect (falls back to AppURL upstream)
 }
 
 var (
@@ -95,7 +96,7 @@ func handleBillingCheckout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u := userFrom(r)
-	url, err := createPolarCheckout(r.Context(), u.ID, u.Email)
+	url, err := createPolarCheckout(r.Context(), u.ID, u.Email, r.URL.Query().Get("plan"))
 	if err != nil {
 		log.Printf("billing: checkout create failed for user %d: %v", u.ID, err)
 		http.Error(w, "could not start checkout", http.StatusBadGateway)
@@ -104,12 +105,23 @@ func handleBillingCheckout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"url": url})
 }
 
+// checkoutProduct maps a requested plan to the Polar product id. "monthly" picks
+// the monthly product when one is configured; anything else (including "annual"
+// or an empty value) is the annual plan. An unconfigured monthly falls back to
+// annual rather than failing checkout.
+func checkoutProduct(plan string) string {
+	if plan == "monthly" && billing.ProductIDMonthly != "" {
+		return billing.ProductIDMonthly
+	}
+	return billing.ProductID
+}
+
 // createPolarCheckout POSTs to Polar's checkout API (raw HTTP — Polar's Go SDK
 // is archived) and returns the hosted checkout URL.
-func createPolarCheckout(ctx context.Context, userID uint, email string) (string, error) {
+func createPolarCheckout(ctx context.Context, userID uint, email, plan string) (string, error) {
 	ext := strconv.FormatUint(uint64(userID), 10)
 	reqBody := map[string]any{
-		"products":             []string{billing.ProductID},
+		"products":             []string{checkoutProduct(plan)},
 		"external_customer_id": ext,
 		"metadata":             map[string]string{"user_id": ext},
 	}

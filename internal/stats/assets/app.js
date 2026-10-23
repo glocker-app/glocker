@@ -3862,6 +3862,16 @@ function renderAccessBanner() {
     b.onclick = () => fn(b);
     return b;
   };
+  // Plan buttons: monthly + annual when a monthly plan is configured, else a
+  // single trial/subscribe button (annual). Annual is flagged as the better deal.
+  const planButtons = (singleLabel) => {
+    if (me.billingMonthly) {
+      el.append(btn("$10 / month", (b) => startCheckout("monthly", b)));
+      el.append(btn("$100 / year — save ~2 months", (b) => startCheckout("annual", b)));
+    } else {
+      el.append(btn(singleLabel, (b) => startCheckout("annual", b)));
+    }
+  };
 
   if (s === "trialing") {
     const end = me.subCurrentEnd ? new Date(me.subCurrentEnd) : null;
@@ -3906,10 +3916,10 @@ function renderAccessBanner() {
   el.classList.add("access-banner--warn");
   if (s === "expired") {
     el.append(document.createTextNode("Your subscription has lapsed — the dashboard is read-only and syncing is paused. "));
-    el.append(btn("Subscribe", startCheckout));
+    planButtons("Subscribe");
   } else {
     el.append(document.createTextNode("Start your 2-week free trial to connect devices and use the dashboard. "));
-    el.append(btn("Start free trial", startCheckout));
+    planButtons("Start free trial");
   }
   el.hidden = false;
 }
@@ -3939,7 +3949,7 @@ function showDeviceUpsell(show) {
     btn.className = "btn-primary";
     btn.type = "button";
     btn.textContent = "Upgrade";
-    btn.onclick = () => startCheckout(btn);
+    btn.onclick = () => startCheckout("annual", btn);
     el.append(btn);
   } else {
     el.textContent = "You've reached your device limit. More devices are a paid feature — reply to your welcome email to upgrade.";
@@ -3949,16 +3959,17 @@ function showDeviceUpsell(show) {
 // startCheckout asks the server for a hosted checkout URL and redirects there.
 // Payment happens entirely on the Merchant-of-Record's page — no card details
 // ever touch glockpeek.
-async function startCheckout(btn) {
+async function startCheckout(plan, btn) {
+  const orig = btn ? btn.textContent : "";
   if (btn) { btn.disabled = true; btn.textContent = "Starting…"; }
   try {
-    const res = await fetch("api/billing/checkout", { method: "POST" });
+    const res = await fetch("api/billing/checkout?plan=" + encodeURIComponent(plan || "annual"), { method: "POST" });
     if (!res.ok) throw new Error(`server returned ${res.status}`);
     const { url } = await res.json();
     if (!url) throw new Error("no checkout url");
     location.href = url;
   } catch (err) {
-    if (btn) { btn.disabled = false; btn.textContent = "Upgrade"; }
+    if (btn) { btn.disabled = false; btn.textContent = orig; }
     alert("Could not start checkout. Please try again in a moment.");
   }
 }

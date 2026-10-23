@@ -928,6 +928,14 @@ paths:
         The account id is sent as external_customer_id (never the email).
       operationId: startBillingCheckout
       security: [ { cookieAuth: [] } ]
+      parameters:
+        - name: plan
+          in: query
+          required: false
+          description: >
+            Which plan to check out. "monthly" selects the monthly product when
+            configured; anything else (incl. "annual" or omitted) is the annual plan.
+          schema: { type: string, enum: [annual, monthly] }
       responses:
         "200":
           description: Checkout session created

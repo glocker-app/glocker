@@ -96,8 +96,11 @@ type BillingConfig struct {
 	// (base64, typically "whsec_..."); create a fresh secret so it uses the
 	// Standard Webhooks scheme rather than legacy Polar HMAC.
 	WebhookSecret string `yaml:"webhook_secret"`
-	// ProductID is the Polar subscription product customers check out against.
-	ProductID string `yaml:"product_id"`
+	// ProductID is the Polar subscription product customers check out against
+	// (the annual plan). ProductIDMonthly is the optional monthly plan; empty
+	// means only the annual plan is offered.
+	ProductID        string `yaml:"product_id"`
+	ProductIDMonthly string `yaml:"product_id_monthly"`
 	// APIBase overrides the Polar API base URL. Empty = production
 	// (https://api.polar.sh); set the sandbox (https://sandbox-api.polar.sh) for
 	// testing.

@@ -122,13 +122,14 @@ func main() {
 				successURL = gp.AppURL // default post-checkout redirect: the dashboard
 			}
 			billingOpts = stats.BillingOptions{
-				Enabled:         true,
-				APIToken:        gp.Billing.APIToken,
-				WebhookSecret:   gp.Billing.WebhookSecret,
-				ProductID:       gp.Billing.ProductID,
-				APIBase:         gp.Billing.ResolvedAPIBase(),
-				PaidDeviceLimit: gp.Billing.ResolvedPaidLimit(),
-				SuccessURL:      successURL,
+				Enabled:          true,
+				APIToken:         gp.Billing.APIToken,
+				WebhookSecret:    gp.Billing.WebhookSecret,
+				ProductID:        gp.Billing.ProductID,
+				ProductIDMonthly: gp.Billing.ProductIDMonthly,
+				APIBase:          gp.Billing.ResolvedAPIBase(),
+				PaidDeviceLimit:  gp.Billing.ResolvedPaidLimit(),
+				SuccessURL:       successURL,
 			}
 		}
 	}

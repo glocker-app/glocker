@@ -247,10 +247,11 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		"id": u.ID, "email": u.Email, "auth": authEnabled, "admin": isAdmin(u),
 		"e2e": db.HasVault(u.ID), "encrypted": db.AccountEncrypted(u.ID),
 		// Billing/plan info so the dashboard can show the tier + gate the upgrade CTA.
-		"billing":       billingEnabled,
-		"subStatus":     u.SubStatus,
-		"deviceLimit":   store.EffectiveDeviceLimit(u),
-		"subCurrentEnd": u.SubCurrentEnd,
-		"version":       buildVersion,
+		"billing":        billingEnabled,
+		"billingMonthly": billingEnabled && billing.ProductIDMonthly != "", // offer the monthly plan?
+		"subStatus":      u.SubStatus,
+		"deviceLimit":    store.EffectiveDeviceLimit(u),
+		"subCurrentEnd":  u.SubCurrentEnd,
+		"version":        buildVersion,
 	})
 }
