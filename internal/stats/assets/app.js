@@ -3871,20 +3871,24 @@ function renderAccessBanner() {
 
   el.className = "access-banner";
   el.textContent = "";
-  const btn = (label, fn) => {
+  const btn = (label, fn, cls) => {
     const b = document.createElement("button");
     b.type = "button";
-    b.className = "btn-primary";
+    b.className = cls || "btn-primary";
     b.textContent = label;
     b.onclick = () => fn(b);
     return b;
   };
   // Plan buttons: monthly + annual when a monthly plan is configured, else a
-  // single trial/subscribe button (annual). Annual is flagged as the better deal.
+  // single trial/subscribe button. The two live in one right-aligned cluster;
+  // annual is the emphasised (primary) button, monthly the quieter one.
   const planButtons = (singleLabel) => {
     if (me.billingMonthly) {
-      el.append(btn("$10 / month", (b) => startCheckout("monthly", b)));
-      el.append(btn("$99 / year — save ~2 months", (b) => startCheckout("annual", b)));
+      const group = document.createElement("span");
+      group.className = "banner-actions";
+      group.append(btn("$10 / month", (b) => startCheckout("monthly", b), "btn-ghost"));
+      group.append(btn("$99 / year · save ~2 months", (b) => startCheckout("annual", b)));
+      el.append(group);
     } else {
       el.append(btn(singleLabel, (b) => startCheckout("annual", b)));
     }

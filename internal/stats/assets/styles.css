@@ -1467,7 +1467,8 @@ canvas { max-height: 260px; }
 }
 .access-banner--info { border-left-color: var(--signal); background: rgba(75, 189, 212, 0.07); }
 .access-banner--warn { border-left-color: var(--danger); background: rgba(185, 107, 110, 0.09); color: var(--ink); }
-.access-banner .btn-primary { margin-left: auto; }
+.access-banner > .btn-primary, .access-banner > .btn-ghost, .access-banner > .banner-actions { margin-left: auto; }
+.access-banner .banner-actions { display: flex; align-items: center; gap: 10px; }
 
 /* ── Data-sync panel ──────────────────────────────────── */
 .sync-status { display: flex; flex-direction: column; gap: 8px; }
