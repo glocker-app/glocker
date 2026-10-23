@@ -74,7 +74,7 @@ type MailConfig struct {
 	Domain   string `yaml:"domain"` // Mailgun sending domain, e.g. mg.glockerapp.com
 	APIKey   string `yaml:"api_key"`
 	From     string `yaml:"from"`      // e.g. noreply@mg.glockerapp.com
-	FromName string `yaml:"from_name"` // sender display name (default "glockpeek")
+	FromName string `yaml:"from_name"` // sender display name (default "Glocker")
 	Region   string `yaml:"region"`    // "us" (default) or "eu"
 }
 

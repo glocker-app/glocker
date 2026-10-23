@@ -43,12 +43,12 @@ func TestFromDefaultsAndOverride(t *testing.T) {
 func TestFromHeaderDisplayName(t *testing.T) {
 	// Default display name.
 	m := New(config.MailConfig{Enabled: true, Domain: "mg.glockerapp.com", APIKey: "k"})
-	if m.fromHeader != "glockpeek <noreply@mg.glockerapp.com>" {
+	if m.fromHeader != "Glocker <noreply@mg.glockerapp.com>" {
 		t.Errorf("default fromHeader = %q", m.fromHeader)
 	}
 	// Overridden display name.
-	m2 := New(config.MailConfig{Enabled: true, Domain: "mg.glockerapp.com", APIKey: "k", From: "noreply@mg.glockerapp.com", FromName: "Glocker"})
-	if m2.fromHeader != "Glocker <noreply@mg.glockerapp.com>" {
+	m2 := New(config.MailConfig{Enabled: true, Domain: "mg.glockerapp.com", APIKey: "k", From: "noreply@mg.glockerapp.com", FromName: "Acme"})
+	if m2.fromHeader != "Acme <noreply@mg.glockerapp.com>" {
 		t.Errorf("overridden fromHeader = %q", m2.fromHeader)
 	}
 	// A From already carrying a name is left as-is.

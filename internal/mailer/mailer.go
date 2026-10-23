@@ -40,12 +40,12 @@ func New(cfg config.MailConfig) *Mailer {
 	}
 	// Give the From header a display name so recipients see a name, not "noreply".
 	// Honor a From already in "Name <addr>" form; otherwise wrap the bare address
-	// with from_name (default "glockpeek"). From() still reports the bare address.
+	// with from_name (default "Glocker"). From() still reports the bare address.
 	fromHeader := from
 	if !strings.Contains(from, "<") {
 		name := cfg.FromName
 		if name == "" {
-			name = "glockpeek"
+			name = "Glocker"
 		}
 		fromHeader = fmt.Sprintf("%s <%s>", name, from)
 	}
