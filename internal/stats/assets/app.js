@@ -3867,7 +3867,7 @@ function renderAccessBanner() {
   const planButtons = (singleLabel) => {
     if (me.billingMonthly) {
       el.append(btn("$10 / month", (b) => startCheckout("monthly", b)));
-      el.append(btn("$100 / year — save ~2 months", (b) => startCheckout("annual", b)));
+      el.append(btn("$99 / year — save ~2 months", (b) => startCheckout("annual", b)));
     } else {
       el.append(btn(singleLabel, (b) => startCheckout("annual", b)));
     }
