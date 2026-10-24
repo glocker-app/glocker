@@ -269,7 +269,11 @@ func InstallGlocker(confPath string) error {
 		}
 	}
 
-	// Step 4c: Install glockpeek binary (no tamper protection - just a log parser)
+	// Step 4c: Install glockpeek binary (no tamper protection - just a log parser).
+	// The binary distribution tarball leaves glockpeek out (hosted users sync to
+	// my.glockerapp.com), so its absence is normal — its dashboard service (6b) is
+	// gated on this having succeeded.
+	glockpeekInstalled := false
 	glockpeekSource := filepath.Join(filepath.Dir(exePath), "glockpeek")
 	if _, err := os.Stat(glockpeekSource); err == nil {
 		log.Printf("Installing glockpeek to %s", config.GlockpeekInstallPath)
@@ -286,9 +290,10 @@ func InstallGlocker(confPath string) error {
 				log.Printf("Warning: failed to set glockpeek permissions: %v", err)
 			}
 			log.Println("✓ glockpeek binary installed")
+			glockpeekInstalled = true
 		}
 	} else {
-		log.Printf("Note: glockpeek binary not found at %s, skipping", glockpeekSource)
+		log.Printf("Note: glockpeek binary not found at %s, skipping its dashboard service", glockpeekSource)
 	}
 
 	// Step 4d: Install the glockdoc watchdog and schedule it (systemd timer, else
@@ -384,16 +389,19 @@ func InstallGlocker(confPath string) error {
 
 	// Step 6b: Install the standalone glockpeek dashboard service. It's an
 	// unprivileged localhost reader, so it isn't made immutable — clean to
-	// remove on uninstall.
-	log.Println("Installing glockpeek dashboard service...")
-	if err := utils.CopyFile(GlockpeekServiceFile, GlockpeekServicePath); err != nil {
-		log.Printf("Warning: failed to install glockpeek service: %v", err)
-	} else {
-		exec.Command("systemctl", "daemon-reload").Run()
-		if err := exec.Command("systemctl", "enable", "--now", "glockpeek.service").Run(); err != nil {
-			log.Printf("Warning: failed to enable/start glockpeek service: %v", err)
+	// remove on uninstall. Skipped when glockpeek wasn't installed (e.g. the
+	// binary-distribution tarball omits it) so we never enable a dead unit.
+	if glockpeekInstalled {
+		log.Println("Installing glockpeek dashboard service...")
+		if err := utils.CopyFile(GlockpeekServiceFile, GlockpeekServicePath); err != nil {
+			log.Printf("Warning: failed to install glockpeek service: %v", err)
 		} else {
-			log.Println("✓ glockpeek dashboard service installed and started")
+			exec.Command("systemctl", "daemon-reload").Run()
+			if err := exec.Command("systemctl", "enable", "--now", "glockpeek.service").Run(); err != nil {
+				log.Printf("Warning: failed to enable/start glockpeek service: %v", err)
+			} else {
+				log.Println("✓ glockpeek dashboard service installed and started")
+			}
 		}
 	}
 

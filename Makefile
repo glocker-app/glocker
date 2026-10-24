@@ -268,10 +268,12 @@ release: ## Build + checksum + minisign the release binaries from the tag on HEA
 	python3 scripts/update_domains.py all
 	@if [ -f $(RELEASE_DIR)/.confmade ]; then rm -f conf/conf.yaml $(RELEASE_DIR)/.confmade; fi
 	rm -rf $(TARBALL_STAGE) && mkdir -p $(TARBALL_STAGE)/conf/conf.d $(TARBALL_STAGE)/extras
-	cp $(RELEASE_DIR)/glocker $(RELEASE_DIR)/glocklock $(RELEASE_DIR)/glockpeek $(RELEASE_DIR)/glockdoc $(TARBALL_STAGE)/
+	@# glockpeek (the local tracker/dashboard) is left out — it's ~half the size and
+	@# hosted users sync to my.glockerapp.com. Self-hosters build it from source.
+	cp $(RELEASE_DIR)/glocker $(RELEASE_DIR)/glocklock $(RELEASE_DIR)/glockdoc $(TARBALL_STAGE)/
 	cp conf/conf.yaml.sample $(TARBALL_STAGE)/conf/
 	cp conf/conf.d/domains-*.yaml conf/conf.d/personal-domains.yaml.sample $(TARBALL_STAGE)/conf/conf.d/
-	cp extras/glocker.service extras/glockpeek.service extras/lock-background.png $(TARBALL_STAGE)/extras/
+	cp extras/glocker.service extras/lock-background.png $(TARBALL_STAGE)/extras/
 	install -m 0755 scripts/install.sh $(TARBALL_STAGE)/install.sh
 	tar -C $(RELEASE_DIR) -czf $(RELEASE_DIR)/$(TARBALL) $(TARBALL_NAME)
 	rm -rf $(TARBALL_STAGE)

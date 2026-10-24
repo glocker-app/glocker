@@ -8,7 +8,7 @@ set -eu
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$here"
 
-for bin in glocker glocklock glockpeek glockdoc; do
+for bin in glocker glocklock glockdoc; do
 	[ -x "./$bin" ] || { echo "error: ./$bin missing from the tarball" >&2; exit 1; }
 done
 
@@ -42,4 +42,8 @@ Done. glocker is installed and running.
 
 The browser content-blocker is force-installed by policy — restart Firefox/Chrome
 to pick it up. Guide: https://glockerapp.com/habits.html
+
+Usage tracking syncs to the hosted dashboard at https://my.glockerapp.com. To run
+the tracker (glockpeek) on your own machine, build from source:
+https://github.com/glocker-app/glocker
 EOF

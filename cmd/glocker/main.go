@@ -164,8 +164,15 @@ func main() {
 		fmt.Println("Next steps:")
 		fmt.Printf("  1. Review %s — schedules, forbidden programs, keywords.\n", *confFlag)
 		fmt.Printf("  2. Add your own sites to %s.\n", filepath.Join(filepath.Dir(*confFlag), "conf.d", "personal-domains.yaml"))
-		fmt.Println("  3. Run 'make full-install' to fetch the standard blocklists and install glocker.")
-		fmt.Println("     (A bare 'glocker -install' skips the blocklist download — nothing to block.)")
+		// A prebuilt tarball ships the generated blocklists next to the config; a
+		// bare source checkout doesn't (they're fetched by `make full-install`).
+		// Tailor step 3 to what's actually on disk so neither path reads wrong.
+		if m, _ := filepath.Glob(filepath.Join(filepath.Dir(*confFlag), "conf.d", "domains-*.yaml")); len(m) > 0 {
+			fmt.Println("  3. Install: sudo glocker -install (the standard blocklists are already bundled).")
+		} else {
+			fmt.Println("  3. Run 'make full-install' to fetch the standard blocklists and install glocker.")
+			fmt.Println("     (A bare 'glocker -install' skips the blocklist download — nothing to block.)")
+		}
 		if res.sudoRestricted {
 			fmt.Println("\nsudo: allowed during sudoers.allow_windows, blocked outside them. The sample")
 			fmt.Println("allows sudo all day except 09:00–10:00. Set your own windows at")
