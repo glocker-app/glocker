@@ -919,8 +919,6 @@ has survived an AI audit so I think it's decent. However, I'm happy to
 receive feedback to make the encryption stronger. 
 :::
 
-
-
 # Additional notes on maintaining healthy routines
 
 Here are some additional points I think are useful for people trying
@@ -935,6 +933,15 @@ root cause needs to be dealt with.
 That comfortable feeling which comes when one slips into the
 compulsive patterns needs to be axed before it takes deep
 root. Otherwise, it will become hard, if not impossible, to break
-later. 
+later. It's often hard to do this but setting up barriers so that
+unhealthy routines are not repeated is a simple way to ensure
+that. e.g. If you spend a lot of time doomscrolling on your phone in
+the night, lock it up in a timed lock box. 
+
+It's harder to *remove* a bad habit than to *replace* it. So, if you
+turn to your phone to relax, replace it by turning to a book that you
+enjoy. 
+
+
 
    
