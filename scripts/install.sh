@@ -5,6 +5,10 @@
 # the tarball, then runs this.) It installs nothing until the sudo step below.
 set -eu
 
+# Tell -init to skip its "next, go install" steps: we install right after it and
+# print our own review note at the end.
+export GLOCKER_INSTALLER=1
+
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 cd "$here"
 
@@ -36,12 +40,13 @@ sudo ./glocker -install -conf conf/conf.yaml
 
 cat <<'EOF'
 
-Done. glocker is installed and running.
-  glocker -status      what's blocked right now
-  sudo glocker -check   confirm it's actually enforceable
+Done. glocker is installed and running — run `glocker` to see what's blocked.
+
+Review the schedules, forbidden programs and keywords in /etc/glocker/config.yaml.
+Adding your own sites and other changes: https://glockerapp.com/habits.html
 
 The browser content-blocker is force-installed by policy — restart Firefox/Chrome
-to pick it up. Guide: https://glockerapp.com/habits.html
+to pick it up.
 
 Usage tracking syncs to the hosted dashboard at https://my.glockerapp.com. To run
 the tracker (glockpeek) on your own machine, build from source:

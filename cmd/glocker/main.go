@@ -160,16 +160,15 @@ func main() {
 		if err != nil {
 			log.Fatalf("init failed: %v", err)
 		}
-		fmt.Printf("\nWrote %s (login: %s).\n\n", *confFlag, res.login)
-		fmt.Println("Next steps:")
-		fmt.Printf("  1. Review %s — schedules, forbidden programs, keywords.\n", *confFlag)
-		fmt.Printf("  2. Add your own sites to %s.\n", filepath.Join(filepath.Dir(*confFlag), "conf.d", "personal-domains.yaml"))
-		// A prebuilt tarball ships the generated blocklists next to the config; a
-		// bare source checkout doesn't (they're fetched by `make full-install`).
-		// Tailor step 3 to what's actually on disk so neither path reads wrong.
-		if m, _ := filepath.Glob(filepath.Join(filepath.Dir(*confFlag), "conf.d", "domains-*.yaml")); len(m) > 0 {
-			fmt.Println("  3. Install: sudo glocker -install (the standard blocklists are already bundled).")
-		} else {
+		fmt.Printf("\nWrote %s (login: %s).\n", *confFlag, res.login)
+		// The tarball installer runs -init then -install back to back, so these
+		// "next, go install" steps would print right before the install and just
+		// confuse — it prints its own review note afterwards instead. Source users
+		// (make init) still see them.
+		if os.Getenv("GLOCKER_INSTALLER") == "" {
+			fmt.Println("\nNext steps:")
+			fmt.Printf("  1. Review %s — schedules, forbidden programs, keywords.\n", *confFlag)
+			fmt.Printf("  2. Add your own sites to %s.\n", filepath.Join(filepath.Dir(*confFlag), "conf.d", "personal-domains.yaml"))
 			fmt.Println("  3. Run 'make full-install' to fetch the standard blocklists and install glocker.")
 			fmt.Println("     (A bare 'glocker -install' skips the blocklist download — nothing to block.)")
 		}
