@@ -245,6 +245,12 @@ release-extensions: sign-extensions deploy-extensions ## Sign and publish both b
 # Point at a different key with MINISIGN_KEY=/path/to/key.
 MINISIGN_KEY ?= $(HOME)/.minisign/glocker.key
 RELEASE_DIR := dist/release
+# Prebuilt install tarball (the curl|sh path): binaries + bundled blocklists +
+# conf sample + extras + the packed install.sh, so it installs with no Go and no
+# source tree. It rides the same SHA256SUMS + minisign signature as the binaries.
+TARBALL_NAME  := glocker-$(VERSION)-linux-amd64
+TARBALL       := $(TARBALL_NAME).tar.gz
+TARBALL_STAGE := $(RELEASE_DIR)/$(TARBALL_NAME)
 release: ## Build + checksum + minisign the release binaries from the tag on HEAD (needs minisign + your key)
 	@command -v minisign >/dev/null || { echo "install minisign first — https://jedisct1.github.io/minisign/"; exit 1; }
 	@git describe --tags --exact-match HEAD >/dev/null 2>&1 || { echo "HEAD isn't tagged — tag the release commit first: git tag -a vX.Y.Z -m vX.Y.Z"; exit 1; }
@@ -254,7 +260,22 @@ release: ## Build + checksum + minisign the release binaries from the tag on HEA
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o $(RELEASE_DIR)/glocklock ./cmd/glocklock
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o $(RELEASE_DIR)/glockpeek ./cmd/glockpeek
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o $(RELEASE_DIR)/glockdoc  ./cmd/glockdoc
-	cd $(RELEASE_DIR) && sha256sum glocker glocklock glockpeek glockdoc > SHA256SUMS
+	@echo "→ bundling blocklists into the tarball"
+	@# update_domains.py wires its !include lines into conf/conf.yaml, so it needs
+	@# one. Make a throwaway from the sample only if none exists (never touch a real
+	@# local config); remove only what we created. conf.yaml is gitignored either way.
+	@if [ ! -f conf/conf.yaml ]; then cp conf/conf.yaml.sample conf/conf.yaml; : > $(RELEASE_DIR)/.confmade; fi
+	python3 scripts/update_domains.py all
+	@if [ -f $(RELEASE_DIR)/.confmade ]; then rm -f conf/conf.yaml $(RELEASE_DIR)/.confmade; fi
+	rm -rf $(TARBALL_STAGE) && mkdir -p $(TARBALL_STAGE)/conf/conf.d $(TARBALL_STAGE)/extras
+	cp $(RELEASE_DIR)/glocker $(RELEASE_DIR)/glocklock $(RELEASE_DIR)/glockpeek $(RELEASE_DIR)/glockdoc $(TARBALL_STAGE)/
+	cp conf/conf.yaml.sample $(TARBALL_STAGE)/conf/
+	cp conf/conf.d/domains-*.yaml conf/conf.d/personal-domains.yaml.sample $(TARBALL_STAGE)/conf/conf.d/
+	cp extras/glocker.service extras/glockpeek.service extras/lock-background.png $(TARBALL_STAGE)/extras/
+	install -m 0755 scripts/install.sh $(TARBALL_STAGE)/install.sh
+	tar -C $(RELEASE_DIR) -czf $(RELEASE_DIR)/$(TARBALL) $(TARBALL_NAME)
+	rm -rf $(TARBALL_STAGE)
+	cd $(RELEASE_DIR) && sha256sum glocker glocklock glockpeek glockdoc $(TARBALL) > SHA256SUMS
 	minisign -Sm $(RELEASE_DIR)/SHA256SUMS -s $(MINISIGN_KEY)
 	@echo "✓ signed $(VERSION) — publish with:"
 	@echo "  gh release create $(VERSION) $(RELEASE_DIR)/* -R glocker-app/glocker --target master --title $(VERSION)"
