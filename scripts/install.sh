@@ -25,7 +25,10 @@ echo
 #    give it the terminal even when this script arrived over a pipe.
 if [ -f conf/conf.yaml ]; then
 	echo "conf/conf.yaml already present — keeping it."
-elif [ -r /dev/tty ]; then
+elif ( : < /dev/tty ) 2>/dev/null; then
+	# A controlling terminal is actually usable (interactive curl|sh) — prompt.
+	# ( : < /dev/tty ) really opens it; `[ -r /dev/tty ]` is true even with no
+	# controlling tty (piped/CI), where the redirect would then fail under set -e.
 	./glocker -init -conf conf/conf.yaml < /dev/tty
 else
 	./glocker -init -conf conf/conf.yaml
