@@ -44,14 +44,27 @@ lines; `conf/conf.yaml.sample` documents every option inline.
 
 ## Quick start
 
-You'll need the Go toolchain (1.26+) — `make init` and `make full-install` build
-from source.
+On amd64, the installer downloads the latest signed release, verifies it, and
+installs (asking for sudo):
+
+```bash
+curl -fsSL https://glockerapp.com/glocker-installer.sh | sh
+glocker -status
+```
+
+Prefer to read it first? Download
+[glocker-installer.sh](https://glockerapp.com/glocker-installer.sh) and run it
+yourself, or take the tarball from the
+[releases page](https://github.com/glocker-app/glocker/releases) and run the
+`install.sh` inside it. The config lands in `/etc/glocker/config.yaml`.
+
+To build from source instead (any architecture, and needed to run glockpeek
+locally), you'll need the Go toolchain (1.26+):
 
 ```bash
 make init                 # write conf/conf.yaml from the sample
 $EDITOR conf/conf.yaml     # edit to taste
 make full-install         # build, fetch blocklists, install the systemd service (sudo)
-glocker -status
 ```
 
 Install refuses up front if a capability an enabled feature needs is missing
@@ -101,7 +114,8 @@ device token on the **Devices** page, put it in the `sync:` stanza of
 
 ## Requirements
 
-Linux with systemd · Go 1.26+ to build · Firefox or Chrome/Chromium for the
+Linux with systemd (amd64 for the release; Go 1.26+ to build from source) ·
+Firefox or Chrome/Chromium for the
 extension · root to install.
 
 Tested on Debian, Ubuntu, Fedora, Omarchy and Arch.
