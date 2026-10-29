@@ -89,7 +89,7 @@ glocker -uninstall "reason"
   `ForceEnforcement()` (after `-block`/`-lock` etc.). Also holds enforcement-local
   runtime state (in-memory `-block` / `-block-app` additions)
 - **`enforcement.go`** - `RunOnce()` — dead code, not called by the daemon
-- **`hosts.go`** - `UpdateHosts()` modifies `/etc/hosts`, immutable file protection (chattr)
+- **`hosts.go`** - `UpdateHosts()` rewrites the glocker block in `/etc/hosts`
 - **`sudoers.go`** - `UpdateSudoers()` writes the allowed/blocked line to `/etc/sudoers.d/glocker` (only once a takeover is recorded; see `internal/sudoplan`); `IsSudoAllowed()` window check
 - **`domains.go`** - Domain block-window evaluation (`IsDomainBlockedAt`), temp unblocks
 
@@ -120,7 +120,7 @@ glocker -uninstall "reason"
   - `InstallGlocker()` - Copies binaries (0755, not setuid), config, systemd services;
     creates the `glocker` group and adds `cfg.User` to it; glockdoc watchdog timer/cron
   - `RunningAsRoot()` - Privilege checks
-  - File immutability management
+  - Clears the `chattr +i` flag older versions set (`legacyImmutablePaths`); glocker no longer sets it
 - **`uninstall.go`** - `RestoreSystemChanges()` reverts all system modifications;
   `PurgeWatchdog()` for `-purge`
 - **`gnome.go`** - Installs/enables the GNOME Shell window-tracking extension for the user
@@ -195,7 +195,7 @@ glocker -uninstall "reason"
 - **`internal/connect/`** - `glocker -connect`: fetch the key vault, unwrap the master
   key with the passphrase, install it for the syncer
 - **`internal/e2e/`** - E2E encryption primitives (master key, vault wrap/unwrap, record seal)
-- **`internal/envcheck/`** - Capability checks (systemd, visudo, watchdog scheduler, chattr support)
+- **`internal/envcheck/`** - Capability checks (systemd, visudo, watchdog scheduler)
 - **`internal/precheck/`** - Bypass-route audit behind `glocker -check`
 - **`internal/sudoplan/`** - Per-distro sudo takeover (`plans.go`: Debian, Ubuntu, Fedora, Omarchy, Arch; anything else gets no sudo window). Install removes the user's blanket admin-group membership and moves per-user blanket `sudoers.d` files aside, recording it; uninstall restores it (or, if the user had no sudo of their own and root is locked, leaves a password-sudo `glocker-restored-<user>` drop-in)
 - **`internal/heartbeat/`** - glockdoc's liveness probe (pings the socket, appends `heartbeat.jsonl`)
@@ -305,7 +305,7 @@ The extensions live in `extensions/firefox/` and `extensions/chrome/`. After mak
 - Uses Unix socket `/var/glocker/glocker.sock` for runtime commands
 
 **Enforcement Mechanisms** (configured independently via YAML)
-1. **Hosts file blocking** - Modifies `/etc/hosts` with immutable flag
+1. **Hosts file blocking** - Modifies `/etc/hosts`
 2. **Forbidden programs** - Kills processes during configured time windows
 3. **Sudoers modification** - Restricts sudo access during blocking periods
 4. **Browser extension** - Content/keyword monitoring via the Firefox and Chrome extensions
@@ -384,7 +384,7 @@ type ForbiddenProgram struct {
 ### Control Flow
 
 **Installation** (`glocker -install`):
-1. Copies binary to `/usr/local/bin/glocker`, root-owned 0755 + immutable (internal/install/install.go)
+1. Copies binary to `/usr/local/bin/glocker`, root-owned 0755 (internal/install/install.go)
 2. Copies `conf/conf.yaml` (or `-conf <path>`) to `/etc/glocker/config.yaml`, plus `conf.d/`
 3. Creates the `glocker` group and adds `cfg.User` to it (takes effect on next login)
 4. Installs systemd services from `extras/glocker.service` and `extras/glockpeek.service`
@@ -420,10 +420,10 @@ type ForbiddenProgram struct {
 - `/var/glocker/glocker.sock` - Unix socket for IPC
 - `/var/log/glocker/reports.log` - Content monitoring logs
 - `/var/log/glocker/unblocks.log` - Unblock request logs
-- `/etc/hosts` - Modified with GLOCKER markers and immutable flag
+- `/etc/hosts` - Modified with GLOCKER markers
 - `/etc/sudoers.d/glocker` - glocker's sudo-window drop-in (`/etc/sudoers` itself is never edited)
 - `/var/lib/glocker/sudo/takeover.json` (+ `moved/`) - what install took over from the user's sudo, replayed by uninstall
-- `/usr/local/bin/glocker` - Installed binary (root:root 0755, immutable; not setuid)
+- `/usr/local/bin/glocker` - Installed binary (root:root 0755; not setuid)
 - `/etc/systemd/system/glocker.service` - Systemd service file
 
 **Development files:**
@@ -437,9 +437,9 @@ type ForbiddenProgram struct {
 ### Security Features
 
 **Tamper Resistance**:
-- Root-owned 0755 binary with immutable flag (`chattr +i`); no setuid
+- Root-owned 0755 binary; no setuid
 - Socket `root:glocker` 0660; `uninstall`/`resync` need real root (SO_PEERCRED)
-- Immutable /etc/hosts during blocking
+- /etc/hosts block rewritten every enforcement cycle
 - Sudoers restrictions prevent privilege escalation
 - Mindful-uninstall friction (`mindful_uninstall`, internal/mindful) before uninstall completes
 - No active tamper-detection/self-healing module exists; a heartbeat gap on glockpeek is the tamper signal instead
@@ -688,5 +688,4 @@ Go modules (go.mod):
 
 System dependencies:
 - `systemd` - Service management
-- `chattr` / `lsattr` - File immutability
 - Firefox and/or Chrome/Chromium with extension support

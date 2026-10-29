@@ -32,7 +32,7 @@ through sudoers.
 
 ## Step 1 — stop the daemon
 
-It re-applies everything (immutable flags, hosts, sudoers) every ~60s, so stop it
+It re-applies everything (hosts, sudoers) every ~60s, so stop it
 first or your edits get overwritten:
 
 ```bash
@@ -40,29 +40,10 @@ systemctl stop glocker glockpeek
 systemctl disable glocker glockpeek
 ```
 
-Only `glocker.service` is immutable (`glockpeek.service` isn't), but stopping and
-disabling a service doesn't touch the file, so this still works either way. (`Restart=always` only re-runs a *crashed*
-service; an explicit `stop` stays stopped.)
+(`Restart=always` only re-runs a *crashed* service; an explicit `stop` stays
+stopped.)
 
-## Step 2 — clear the immutable flags
-
-glocker marks these files immutable (`chattr +i`) so a quick edit won't stick.
-Clear them before you can edit or remove them:
-
-```bash
-chattr -i /etc/hosts \
-          /etc/glocker/config.yaml \
-          /etc/glocker/conf.d/*.yaml \
-          /usr/local/bin/glocker \
-          /usr/local/bin/glocklock \
-          /etc/systemd/system/glocker.service
-```
-
-(If `/etc/glocker/conf.d/` doesn't exist, ignore that line.)
-
-"No such file" for anything already gone is fine — ignore it.
-
-## Step 3 — restore /etc/hosts
+## Step 2 — restore /etc/hosts
 
 glocker's block is appended at the end of the file, starting at its marker.
 Delete from that marker to the end:
@@ -77,7 +58,7 @@ Then confirm nothing of yours lived below it (it never should):
 grep GLOCKER /etc/hosts || echo "hosts is clean"
 ```
 
-## Step 4 — restore sudo
+## Step 3 — restore sudo
 
 So your normal `sudo` works again. Install recorded what it took over in
 `/var/lib/glocker/sudo/takeover.json`; put those back, then remove glocker's
@@ -95,7 +76,7 @@ Older installs edited `/etc/sudoers` instead. If it has a line ending in
 `# GLOCKER-MANAGED`, delete it with `visudo` (never edit the file directly — a
 broken `/etc/sudoers` breaks `sudo` for everyone).
 
-## Step 5 — remove glocker's files
+## Step 4 — remove glocker's files
 
 ```bash
 rm -f /usr/local/bin/glocker /usr/local/bin/glocklock \
@@ -138,11 +119,10 @@ rm -f /var/lib/glocker/extensions.json # -extend cooldown state
 #   gsettings get org.gnome.shell enabled-extensions
 ```
 
-## Step 6 — verify
+## Step 5 — verify
 
 ```bash
 pgrep -a glocker || echo "no glocker processes"
-lsattr /etc/hosts                       # no 'i' in the flags
 grep GLOCKER /etc/hosts || echo "hosts clean"
 sudo -v && echo "sudo works"            # run outside a blocked window
 ```

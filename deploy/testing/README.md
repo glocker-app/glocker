@@ -41,7 +41,7 @@ throwaway instance without `require_encryption`. Never point it at a real accoun
 ## B. A real agent in Docker (fuller, but fiddly)
 
 Runs the actual syncer as a "second machine". Caveats: glocker wants root/setuid,
-makes `/etc/hosts` immutable (`chattr`), edits sudoers, and its usage monitor needs
+rewrites `/etc/hosts`, edits sudoers, and its usage monitor needs
 an X display — none of which a container has cleanly. So run it `--privileged`,
 with the enforcement mechanisms disabled in its `conf.yaml` (`domains.enabled:
 false`, `programs.enabled: false`, `sudoers.enabled: false`) and only

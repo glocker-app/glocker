@@ -1,14 +1,14 @@
 # Installing glocker
 
 Glocker is a Linux tool. Installing it means editing one config file and running
-one make target — but because it runs as a privileged service and makes parts of
-your system immutable, it's worth understanding each step.
+one make target — but because it runs as a privileged service and takes over
+your sudo access, it's worth understanding each step.
 
 ## Requirements
 
 - Linux with **systemd**
 - **Go 1.26+** (to build), **python3** (for the blocklist script)
-- **Root access** (`sudo`) — for the install, the systemd service, and the immutable files
+- **Root access** (`sudo`) — for the install and the systemd service
 - **Firefox or Chrome/Chromium** — for the content-monitoring extension
 
 ## 1. Get the code

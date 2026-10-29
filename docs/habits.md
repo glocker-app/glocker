@@ -557,7 +557,7 @@ config file and restart glocker.
 4. `-check` - Runs an audit of your system to see if it is configured
    to allow bypasses. It needs to be run as root. It reports two
    things: the **capabilities** glocker needs to run (systemd, visudo,
-   an immutable filesystem, a watchdog scheduler), and the **bypass
+   a watchdog scheduler), and the **bypass
    and recovery routes** on the machine — extra sudo grants,
    `wheel`/`sudo` group membership, an unlocked root account, root SSH
    login, autologin. It also runs automatically at the end of install,

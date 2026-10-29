@@ -33,7 +33,7 @@ user: "yourusername"
 # close on a block, the nudge when you hit a blocked site, temporary-unblock
 # rules, and the block list itself.
 domains:
-  enabled: true                 # route blocked domains to 127.0.0.1 in /etc/hosts (made immutable)
+  enabled: true                 # route blocked domains to 127.0.0.1 in /etc/hosts
   hosts_path: "/etc/hosts"      # leave as-is unless you know why not
 
   # Browsers killed on every `glocker -block`, so their internal DNS cache is

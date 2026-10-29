@@ -38,7 +38,6 @@ Use Android Device Administrator API to:
 - Prevent uninstallation without password
 - Require manual Settings navigation to disable
 - Send notification to accountability partner on tamper
-- Similar effectiveness to Glocker's `chattr +i` approach
 
 ### 4. Access Code System (Superior to Email)
 
