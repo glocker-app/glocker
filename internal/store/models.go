@@ -42,6 +42,11 @@ type User struct {
 	RulesSeeded bool      `json:"-"`
 	CreatedAt   time.Time `json:"createdAt"`
 
+	// HeardFrom is the optional post-signup "how did you hear about Glocker?"
+	// answer. Nullable: nil until answered; set once (including the sentinel
+	// "(skipped)" when dismissed) so the prompt isn't shown again.
+	HeardFrom *string `json:"-"`
+
 	// Subscription state for the hosted paid tier. The Merchant-of-Record
 	// (Polar) is the source of truth: these fields are written only by the
 	// billing webhook and exist for display + idempotency. DeviceLimit above is

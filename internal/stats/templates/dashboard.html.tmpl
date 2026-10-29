@@ -82,6 +82,25 @@
 
       <div id="access-banner" class="access-banner" hidden></div>
 
+      <div id="heard-prompt" class="access-banner access-banner--info" hidden>
+        <span>How did you hear about Glocker?</span>
+        <div class="banner-actions">
+          <select id="heard-select" aria-label="How did you hear about Glocker?">
+            <option value="">Choose…</option>
+            <option>Search engine</option>
+            <option>Reddit</option>
+            <option>Hacker News</option>
+            <option>A friend or colleague</option>
+            <option>Blog or article</option>
+            <option>YouTube</option>
+            <option>Other</option>
+          </select>
+          <input id="heard-other" type="text" placeholder="where?" maxlength="120" hidden>
+          <button id="heard-save" class="btn-primary">Save</button>
+          <button id="heard-skip" class="btn-ghost">Dismiss</button>
+        </div>
+      </div>
+
       <main id="dash" hidden>
         <!-- Overview -->
         <section class="view active" data-view="overview">

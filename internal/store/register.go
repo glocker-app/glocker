@@ -53,6 +53,12 @@ func (db *DB) RegisterUser(email, password string) (*User, string, error) {
 
 // DeleteUser removes an account and its verification tokens — used to roll back
 // a registration whose verification email couldn't be sent.
+// SetHeardFrom records the account's one-time "how did you hear about Glocker?"
+// answer (the UI only asks while it's nil).
+func (db *DB) SetHeardFrom(userID uint, source string) error {
+	return db.Model(&User{}).Where("id = ?", userID).Update("heard_from", source).Error
+}
+
 func (db *DB) DeleteUser(userID uint) error {
 	return db.Transaction(func(tx *DB) error {
 		tx.Where("user_id = ?", userID).Delete(&VerificationToken{})

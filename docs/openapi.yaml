@@ -255,11 +255,33 @@ paths:
                   admin: { type: boolean }
                   e2e: { type: boolean, description: The account has a key vault. }
                   encrypted: { type: boolean }
+                  askHeardFrom: { type: boolean, description: Show the one-time "how did you hear about Glocker?" prompt (unanswered). }
                   billing: { type: boolean, description: Billing is enabled on this instance. }
                   subStatus: { type: string, description: '"" (free), trialing, active, canceled, past_due, expired.' }
                   deviceLimit: { type: integer, description: Effective cap; -1 = unlimited. }
                   subCurrentEnd: { type: string, format: date-time }
                   version: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/heard-from:
+    post:
+      summary: Record the one-time "how did you hear about Glocker?" answer
+      operationId: setHeardFrom
+      security: [ { cookieAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source: { type: string, description: The channel; empty/omitted stores "(skipped)" so the prompt stops. Truncated to 120 chars. }
+      responses:
+        "200":
+          description: Stored
+          content:
+            application/json:
+              schema: { type: object, properties: { ok: { type: boolean } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /api/logout:

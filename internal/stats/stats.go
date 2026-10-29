@@ -155,6 +155,7 @@ func Register(mux *http.ServeMux, database *store.DB, o Options) {
 
 	// Session-gated: everything that shows or edits account data.
 	mux.HandleFunc("/api/me", requireUser(handleMe))
+	mux.HandleFunc("/api/heard-from", requireUser(handleHeardFrom))
 	mux.HandleFunc("/api/logout", requireUser(handleLogout))
 	mux.HandleFunc("/api/data", requireUser(handleData))
 	mux.HandleFunc("/api/usage", requireUser(handleUsage))

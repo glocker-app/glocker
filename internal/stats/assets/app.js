@@ -456,6 +456,38 @@ function bootProgress(done, total, final) {
   bootUI.root.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
 }
 
+// maybeAskHeardFrom shows the one-time, optional "how did you hear about Glocker?"
+// prompt (post-signup). Best-effort: a failed POST never blocks the dashboard.
+function maybeAskHeardFrom(me) {
+  if (!me || !me.askHeardFrom) return;
+  const el = document.getElementById("heard-prompt");
+  if (!el) return;
+  const sel = document.getElementById("heard-select");
+  const other = document.getElementById("heard-other");
+  sel.onchange = () => {
+    other.hidden = sel.value !== "Other";
+    if (!other.hidden) other.focus();
+  };
+  const send = async (source) => {
+    el.hidden = true;
+    try {
+      await fetch("api/heard-from", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source }),
+      });
+    } catch { /* best-effort — the answer is a nice-to-have */ }
+  };
+  document.getElementById("heard-save").onclick = () => {
+    let v = sel.value;
+    if (!v) { sel.focus(); return; }
+    if (v === "Other") v = other.value.trim() || "Other";
+    send(v);
+  };
+  document.getElementById("heard-skip").onclick = () => send("");
+  el.hidden = false;
+}
+
 async function bootDashboard(me) {
   // The login path calls us with a partial {auth:true}; fetch the full identity
   // (email/admin) so admin-only UI can gate on it without a page reload.
@@ -540,6 +572,7 @@ async function bootDashboard(me) {
 
   document.getElementById("loading").hidden = true;
   document.getElementById("dash").hidden = false;
+  maybeAskHeardFrom(state.me);
 
   // Data-sync panel (last daemon push). Refresh periodically so "N ago" stays
   // current without a reload.
