@@ -2,6 +2,7 @@ package utils
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -118,4 +119,13 @@ func JoinFileLines(lines []string) string {
 		s += "\n"
 	}
 	return s
+}
+
+// ClearLegacyImmutable drops the `chattr +i` flag that glocker up to v0.3.1 set
+// on its files, so they can be rewritten or removed (and so an rpm-ostree system
+// can prune old deployments). Best-effort: the flag usually isn't there.
+func ClearLegacyImmutable(paths ...string) {
+	for _, p := range paths {
+		_ = exec.Command("chattr", "-i", p).Run()
+	}
 }

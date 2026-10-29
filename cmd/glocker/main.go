@@ -762,8 +762,7 @@ func main() {
 	log.Println("Starting glocker daemon...")
 
 	// Warn if the machine is missing a capability glocker relies on (systemd,
-	// visudo, a watchdog scheduler, or a filesystem that supports the immutable flag). The daemon
-	// warns and keeps running — it's already installed, and stopping enforcement
+	// visudo, or a watchdog scheduler). The daemon warns and keeps running — it's already installed, and stopping enforcement
 	// would fail open.
 	envcheck.LogWarnings(envcheck.Check(cfg.Sudoers.Enabled), log.Printf)
 

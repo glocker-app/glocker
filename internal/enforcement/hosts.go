@@ -5,7 +5,6 @@ import (
 	"log"
 	"log/slog"
 	"os"
-	"os/exec"
 	"strings"
 
 	"glocker/internal/config"
@@ -72,14 +71,6 @@ func UpdateHosts(cfg *config.Config, domains []string, dryRun bool) error {
 		return nil
 	}
 
-	// Remove immutable flag temporarily
-	slog.Debug("Removing immutable flag from hosts file", "command", "chattr -i "+hostsPath)
-	if err := exec.Command("chattr", "-i", hostsPath).Run(); err != nil {
-		slog.Debug("Failed to remove immutable flag (may not be set)", "error", err)
-	} else {
-		slog.Debug("Successfully removed immutable flag")
-	}
-
 	// Open file for writing
 	file, err := os.OpenFile(hostsPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
@@ -118,7 +109,7 @@ func UpdateHosts(cfg *config.Config, domains []string, dryRun bool) error {
 
 	// Special-cased local alias for the /stats dashboard: reach it at
 	// http://glocker.localhost instead of typing 127.0.0.1. It lives inside the
-	// glocker-managed block (protected by the immutable flag, removed on
+	// glocker-managed block (rewritten every cycle, removed on
 	// uninstall), and resolving to loopback keeps the dashboard's
 	// localhost-only guard satisfied.
 	if _, err := file.WriteString("127.0.0.1 glocker.localhost\n::1 glocker.localhost\n"); err != nil {
@@ -182,14 +173,6 @@ func UpdateHosts(cfg *config.Config, domains []string, dryRun bool) error {
 	slog.Debug("Successfully wrote hosts file in chunks", "total_chunks", chunksWritten, "total_domains", totalDomains)
 	log.Printf("Hosts file update completed: %d domains written in %d chunks", totalDomains, chunksWritten)
 
-	// Set immutable flag
-	slog.Debug("Setting immutable flag on hosts file", "command", "chattr +i "+hostsPath)
-	if err := exec.Command("chattr", "+i", hostsPath).Run(); err != nil {
-		slog.Debug("Failed to set immutable flag", "error", err)
-	} else {
-		slog.Debug("Successfully set immutable flag")
-	}
-
 	// Update checksum after legitimate change
 	// Note: updateChecksum is in monitoring package, will be integrated later
 	slog.Debug("Updating checksum for hosts file")
@@ -219,9 +202,6 @@ func CleanupHostsFile(cfg *config.Config) error {
 		}
 		originalLines = append(originalLines, line)
 	}
-
-	// Remove immutable flag
-	exec.Command("chattr", "-i", hostsPath).Run()
 
 	// Write back the cleaned content
 	newContent := strings.Join(originalLines, "\n")

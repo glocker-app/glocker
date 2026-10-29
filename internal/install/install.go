@@ -100,8 +100,7 @@ func InstallGlocker(confPath string) error {
 	// Preflight the host capabilities glocker's enabled features need. Abort if a
 	// required one is missing (no systemd to run the service, or no visudo while
 	// sudoers management is on) — installing something that won't work is worse
-	// than refusing. Merely-degrading gaps (no watchdog scheduler, no immutable-flag
-	// support) are warnings.
+	// than refusing. Merely-degrading gaps (no watchdog scheduler) are warnings.
 	envResults := envcheck.Check(cfg.Sudoers.Enabled)
 	if err := envcheck.Verify(envResults); err != nil {
 		return fmt.Errorf("cannot install: %w", err)
@@ -115,7 +114,7 @@ func InstallGlocker(confPath string) error {
 	// Step 1b: If a glocker daemon is already running, stop it BEFORE swapping
 	// files. Stop→(swap)→start guarantees the new binary actually becomes the
 	// running process (a bare `systemctl start` on an already-active unit is a
-	// no-op). hosts/sudoers enforcement is unaffected — /etc/hosts stays immutable
+	// no-op). hosts/sudoers enforcement is unaffected — /etc/hosts keeps its block
 	// and sudoers isn't reverted (only -uninstall reverts those), so the only gap
 	// is a few seconds of daemon-driven monitoring (forbidden-program killing)
 	// during the swap.
@@ -126,6 +125,10 @@ func InstallGlocker(confPath string) error {
 		}
 		log.Println("✓ Stopped running daemon")
 	}
+
+	// Upgrading from a version that set `chattr +i`: drop the flag so the files
+	// below can be replaced.
+	utils.ClearLegacyImmutable(legacyImmutablePaths(&cfg)...)
 
 	// Step 2: Get current executable path
 	exe, err := os.Executable()
@@ -152,10 +155,6 @@ func InstallGlocker(confPath string) error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	// Copy the config file. Clear any prior immutable flag first — on a reinstall
-	// the existing config is `chattr +i`, and CopyFile (os.Create) would fail with
-	// EPERM otherwise.
-	_ = exec.Command("chattr", "-i", config.GlockerConfigFile).Run()
 	if err := utils.CopyFile(confPath, config.GlockerConfigFile); err != nil {
 		return fmt.Errorf("failed to copy config file: %w", err)
 	}
@@ -176,20 +175,15 @@ func InstallGlocker(confPath string) error {
 	if err := os.Chmod(config.GlockerConfigFile, mode); err != nil {
 		log.Printf("Warning: couldn't set config file permissions: %v", err)
 	}
-	if err := exec.Command("chattr", "+i", config.GlockerConfigFile).Run(); err != nil {
-		log.Printf("Warning: couldn't set immutable flag on config file: %v", err)
-	}
 
 	// Step 3b: Install the generated conf.d/ blocklists that the config pulls in
-	// via !include, made immutable like the config itself.
+	// via !include.
 	installConfD(filepath.Join(filepath.Dir(confPath), "conf.d"))
 
-	// Step 4: Install binary. Clear any prior immutable flag, then atomically
-	// replace (temp file + rename) so this works even when the old binary is
-	// immutable or currently running — a plain copy would fail with "text file
-	// busy" (ETXTBSY) on reinstall.
+	// Step 4: Install binary. Atomically replace (temp file + rename) so this works
+	// even when the old binary is currently running — a plain copy would fail with
+	// "text file busy" (ETXTBSY) on reinstall.
 	log.Printf("Installing binary to %s", config.InstallPath)
-	_ = exec.Command("chattr", "-i", config.InstallPath).Run()
 	if err := utils.ReplaceFile(exePath, config.InstallPath); err != nil {
 		return fmt.Errorf("failed to install binary: %w", err)
 	}
@@ -209,10 +203,6 @@ func InstallGlocker(confPath string) error {
 		return fmt.Errorf("failed to set binary permissions: %w", err)
 	}
 
-	// Set immutable on the installed binary
-	if err := exec.Command("chattr", "+i", config.InstallPath).Run(); err != nil {
-		log.Printf("Warning: couldn't set immutable flag: %v", err)
-	}
 	log.Println("✓ Binary installed (0755, not setuid)")
 
 	// Step 4a: Add the managed user to the glocker group (created earlier). Members
@@ -232,7 +222,6 @@ func InstallGlocker(confPath string) error {
 	glocklockSource := filepath.Join(filepath.Dir(exePath), "glocklock")
 	if _, err := os.Stat(glocklockSource); err == nil {
 		log.Printf("Installing glocklock to %s", config.GlocklockInstallPath)
-		_ = exec.Command("chattr", "-i", config.GlocklockInstallPath).Run()
 		if err := utils.ReplaceFile(glocklockSource, config.GlocklockInstallPath); err != nil {
 			log.Printf("Warning: failed to install glocklock binary: %v", err)
 		} else {
@@ -244,11 +233,6 @@ func InstallGlocker(confPath string) error {
 			// Set permissions (755, no setuid needed)
 			if err := os.Chmod(config.GlocklockInstallPath, 0o755); err != nil {
 				log.Printf("Warning: failed to set glocklock permissions: %v", err)
-			}
-
-			// Set immutable on the installed binary
-			if err := exec.Command("chattr", "+i", config.GlocklockInstallPath).Run(); err != nil {
-				log.Printf("Warning: couldn't set immutable flag on glocklock: %v", err)
 			}
 			log.Println("✓ glocklock binary installed")
 		}
@@ -358,9 +342,6 @@ func InstallGlocker(confPath string) error {
 	// Step 6: Install systemd service
 	servicePath := "/etc/systemd/system/glocker.service"
 	log.Println("Installing systemd service...")
-	// Lift the immutable flag first (set at the end of a prior install) so the
-	// copy doesn't fail with EPERM on a reinstall.
-	_ = exec.Command("chattr", "-i", servicePath).Run()
 	if err := utils.CopyFile(SystemdServiceFile, servicePath); err != nil {
 		return fmt.Errorf("failed to create service file: %w", err)
 	}
@@ -382,14 +363,10 @@ func InstallGlocker(confPath string) error {
 		return fmt.Errorf("failed to start service: %w", err)
 	}
 
-	// Protect service file
-	exec.Command("chattr", "+i", servicePath).Run()
-
 	log.Println("✓ Systemd service installed and started")
 
 	// Step 6b: Install the standalone glockpeek dashboard service. It's an
-	// unprivileged localhost reader, so it isn't made immutable — clean to
-	// remove on uninstall. Skipped when glockpeek wasn't installed (e.g. the
+	// unprivileged localhost reader. Skipped when glockpeek wasn't installed (e.g. the
 	// binary-distribution tarball omits it) so we never enable a dead unit.
 	if glockpeekInstalled {
 		log.Println("Installing glockpeek dashboard service...")
@@ -431,8 +408,7 @@ func InstallGlocker(confPath string) error {
 }
 
 // installConfD copies the generated conf.d/ blocklist files (the ones the config
-// pulls in with !include) to /etc/glocker/conf.d/ and makes them immutable, so
-// they can't be quietly emptied to unblock. No-op if conf/conf.d/ is absent
+// pulls in with !include) to /etc/glocker/conf.d/, root-owned. No-op if conf/conf.d/ is absent
 // (a config with only inline domains). Best-effort — warnings, not failures.
 func installConfD(srcDir string) {
 	entries, err := os.ReadDir(srcDir)
@@ -452,13 +428,11 @@ func installConfD(srcDir string) {
 			continue
 		}
 		dst := filepath.Join(config.GlockerConfDDir, e.Name())
-		_ = exec.Command("chattr", "-i", dst).Run() // clear any prior flag (reinstall)
 		if err := utils.CopyFile(filepath.Join(srcDir, e.Name()), dst); err != nil {
 			log.Printf("Warning: couldn't install %s: %v", dst, err)
 			continue
 		}
 		_ = os.Chown(dst, 0, 0)
-		_ = exec.Command("chattr", "+i", dst).Run()
 		installed++
 	}
 	if installed > 0 {
@@ -674,4 +648,14 @@ func RunningAsRoot(real bool) bool {
 		uid = os.Geteuid() // Effective user ID - current privileges (affected by setuid)
 	}
 	return uid == 0
+}
+
+// legacyImmutablePaths are the files glocker up to v0.3.1 marked `chattr +i`.
+func legacyImmutablePaths(cfg *config.Config) []string {
+	paths := []string{"/etc/hosts", cfg.Domains.HostsPath, config.GlockerConfigFile, config.InstallPath,
+		config.GlocklockInstallPath, "/etc/systemd/system/glocker.service"}
+	if confD, err := filepath.Glob(filepath.Join(config.GlockerConfDDir, "*")); err == nil {
+		paths = append(paths, confD...)
+	}
+	return paths
 }

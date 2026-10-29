@@ -37,7 +37,7 @@ func TestCheckMarksRequired(t *testing.T) {
 
 func TestVerifyGatesOnlyOnRequired(t *testing.T) {
 	// A missing advisory capability must not block install; a missing required one must.
-	if err := Verify([]Result{{Name: "immutable", OK: false, Required: false, Detail: "d"}}); err != nil {
+	if err := Verify([]Result{{Name: "watchdog scheduler", OK: false, Required: false, Detail: "d"}}); err != nil {
 		t.Errorf("advisory-missing should not fail Verify: %v", err)
 	}
 	if err := Verify([]Result{{Name: "systemd", OK: false, Required: true, Detail: "d"}}); err == nil {

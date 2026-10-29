@@ -21,6 +21,8 @@ func RestoreSystemChanges(cfg *config.Config) error {
 	log.Println("╚════════════════════════════════════════════════╝")
 	log.Println()
 
+	utils.ClearLegacyImmutable(legacyImmutablePaths(cfg)...)
+
 	// Clean up hosts file
 	log.Println("Restoring hosts file...")
 	if err := cleanupHostsFile(cfg); err != nil {
@@ -72,23 +74,18 @@ func RestoreSystemChanges(cfg *config.Config) error {
 	// Clean up the GNOME window-bridge extension (self-skips if not installed).
 	RemoveGnomeExtension(cfg)
 
-	// Make config file mutable and remove it
 	log.Println("Removing config file...")
-	if err := exec.Command("chattr", "-i", config.GlockerConfigFile).Run(); err != nil {
-		log.Printf("   Warning: couldn't make config file mutable: %v", err)
-	}
 	if err := os.Remove(config.GlockerConfigFile); err != nil {
 		log.Printf("   Warning: couldn't remove config file: %v", err)
 	} else {
 		log.Println("✓ Config file removed")
 	}
 
-	// Remove the conf.d blocklist files (immutable, like the config) so the
-	// config directory below is empty and can be cleaned up.
+	// Remove the conf.d blocklist files so the config directory below is empty
+	// and can be cleaned up.
 	if entries, err := os.ReadDir(config.GlockerConfDDir); err == nil {
 		for _, e := range entries {
 			p := filepath.Join(config.GlockerConfDDir, e.Name())
-			_ = exec.Command("chattr", "-i", p).Run()
 			_ = os.Remove(p)
 		}
 		if err := os.Remove(config.GlockerConfDDir); err == nil {
@@ -115,28 +112,8 @@ func RestoreSystemChanges(cfg *config.Config) error {
 		_ = os.Remove(socketDir)
 	}
 
-	// Make service file mutable (daemon can't delete it while running)
-	log.Println("Making service file mutable...")
-	servicePath := "/etc/systemd/system/glocker.service"
-	if err := exec.Command("chattr", "-i", servicePath).Run(); err != nil {
-		log.Printf("   Warning: couldn't make service file mutable: %v", err)
-	} else {
-		log.Println("✓ Service file made mutable")
-	}
-
-	// Make binary mutable (daemon can't delete itself while running)
-	log.Println("Making glocker binary mutable...")
-	if err := exec.Command("chattr", "-i", config.InstallPath).Run(); err != nil {
-		log.Printf("   Warning: couldn't make binary mutable: %v", err)
-	} else {
-		log.Println("✓ Glocker binary made mutable")
-	}
-
 	// Remove glocklock binary
 	log.Println("Removing glocklock binary...")
-	if err := exec.Command("chattr", "-i", config.GlocklockInstallPath).Run(); err != nil {
-		log.Printf("   Warning: couldn't make glocklock mutable: %v", err)
-	}
 	if err := os.Remove(config.GlocklockInstallPath); err != nil {
 		if !os.IsNotExist(err) {
 			log.Printf("   Warning: couldn't remove glocklock: %v", err)
@@ -145,7 +122,7 @@ func RestoreSystemChanges(cfg *config.Config) error {
 		log.Println("✓ glocklock binary removed")
 	}
 
-	// Stop, disable, and remove the glockpeek dashboard service (not immutable).
+	// Stop, disable, and remove the glockpeek dashboard service.
 	log.Println("Removing glockpeek dashboard service...")
 	exec.Command("systemctl", "disable", "--now", "glockpeek.service").Run()
 	if err := os.Remove(GlockpeekServicePath); err != nil {
@@ -155,7 +132,7 @@ func RestoreSystemChanges(cfg *config.Config) error {
 	}
 	exec.Command("systemctl", "daemon-reload").Run()
 
-	// Remove glockpeek binary (no immutable flag to remove)
+	// Remove glockpeek binary
 	log.Println("Removing glockpeek binary...")
 	if err := os.Remove(config.GlockpeekInstallPath); err != nil {
 		if !os.IsNotExist(err) {
@@ -196,8 +173,6 @@ func PurgeWatchdog() {
 		s.remove()
 	}
 	log.Println("✓ Removed glockdoc schedule (systemd timer / cron)")
-	// The binary isn't immutable, but clear the flag defensively before removing.
-	_ = exec.Command("chattr", "-i", config.GlockdocInstallPath).Run()
 	if err := os.Remove(config.GlockdocInstallPath); err != nil {
 		if !os.IsNotExist(err) {
 			log.Printf("   Warning: couldn't remove %s: %v", config.GlockdocInstallPath, err)
@@ -213,9 +188,6 @@ func cleanupHostsFile(cfg *config.Config) error {
 	if hostsPath == "" {
 		hostsPath = "/etc/hosts"
 	}
-
-	// Remove immutable flag
-	exec.Command("chattr", "-i", hostsPath).Run()
 
 	// Read current hosts file
 	content, err := os.ReadFile(hostsPath)
