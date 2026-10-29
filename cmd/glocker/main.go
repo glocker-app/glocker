@@ -399,6 +399,15 @@ func main() {
 			log.Println("✓ Service disabled")
 		}
 
+		// The daemon is stopped, so its unit, binary and config can go now.
+		// Anything that won't is listed below for a manual rm.
+		for _, p := range []string{"/etc/systemd/system/glocker.service", config.InstallPath, config.GlockerConfigFile} {
+			if err := os.Remove(p); err == nil {
+				log.Printf("✓ Removed %s", p)
+			}
+		}
+		_ = os.Remove(filepath.Dir(config.GlockerConfigFile)) // only if empty
+
 		// Reload systemd daemon
 		log.Println("Reloading systemd daemon...")
 		if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
@@ -407,7 +416,6 @@ func main() {
 			log.Println("✓ Systemd daemon reloaded")
 		}
 
-		// Print manual deletion commands
 		log.Println()
 		log.Println("🎉 Glocker system changes have been restored!")
 		log.Println("   All protections have been removed and original settings restored.")
@@ -424,7 +432,7 @@ func main() {
 			log.Printf("   rm -f %s", keyFile)
 		}
 
-		// Only list what's still there — the daemon already removed some of it.
+		// Only list what's still there.
 		var leftover []string
 		for _, p := range []string{"/etc/systemd/system/glocker.service", config.InstallPath, config.GlockerConfigFile} {
 			if _, err := os.Stat(p); err == nil {
