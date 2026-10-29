@@ -82,6 +82,9 @@ type Report struct {
 	Findings []Finding
 }
 
+// defaultGrubUserCfgs are where grub2-set-password writes GRUB2_PASSWORD.
+var defaultGrubUserCfgs = []string{"/boot/grub2/user.cfg", "/boot/grub/user.cfg"}
+
 var defaultGrubPaths = []string{
 	"/boot/grub/grub.cfg", "/boot/grub2/grub.cfg",
 	"/etc/grub.d/40_custom", "/etc/grub.d/01_users",
@@ -183,6 +186,37 @@ func RootLocked(shadowPath string) bool {
 	return checkRootPassword(shadowPath).Status == StatusClosed
 }
 
+// grubHasPassword reports whether a GRUB config really sets a password. A
+// `set superusers` line alone doesn't count: Fedora's stock grub.cfg always has
+// `password_pbkdf2 root ${GRUB2_PASSWORD}`, which only takes effect once
+// grub2-set-password writes GRUB2_PASSWORD into user.cfg (/etc/grub.d/01_users
+// carries the same line shell-escaped as \${GRUB2_PASSWORD}).
+func grubHasPassword(cfg string, userCfgPaths []string) bool {
+	for _, line := range strings.Split(cfg, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 || (fields[0] != "password_pbkdf2" && fields[0] != "password") {
+			continue
+		}
+		arg := strings.TrimPrefix(fields[2], `\`)
+		if !strings.HasPrefix(arg, "$") {
+			return true // a literal hash/password
+		}
+		name := strings.Trim(arg, "${}")
+		for _, path := range userCfgPaths {
+			userCfg, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			for _, u := range strings.Split(string(userCfg), "\n") {
+				if v, ok := strings.CutPrefix(strings.TrimSpace(u), name+"="); ok && strings.Trim(v, `"'`) != "" {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // checkRecoveryMode reports whether the bootloader is password-protected. An
 // unprotected GRUB means recovery/single-user mode is reachable — which is the
 // break-glass we WANT to keep, so an open result here is framed as "keep it".
@@ -195,8 +229,8 @@ func checkRecoveryMode(paths []string) Finding {
 			continue
 		}
 		sawAny = true
-		s := string(data)
-		if strings.Contains(s, "password_pbkdf2") || strings.Contains(s, "set superusers") {
+		userCfgs := append([]string{filepath.Join(filepath.Dir(p), "user.cfg")}, defaultGrubUserCfgs...)
+		if grubHasPassword(string(data), userCfgs) {
 			f.Status = StatusClosed
 			f.BreakGlass = false
 			f.Detail = "GRUB is password-protected (recovery mode gated)"

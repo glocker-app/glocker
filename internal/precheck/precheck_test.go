@@ -58,6 +58,28 @@ func TestCheckRecoveryMode(t *testing.T) {
 		t.Fatalf("open: got status=%q breakGlass=%v, want OPEN/true", f.Status, f.BreakGlass)
 	}
 
+	// Fedora's stock grub.cfg references ${GRUB2_PASSWORD}, set only by user.cfg.
+	fedoraDir := filepath.Join(dir, "fedora")
+	if err := os.MkdirAll(fedoraDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fedora := filepath.Join(fedoraDir, "grub.cfg")
+	writeFile(t, fedora, "if [ -f ${prefix}/user.cfg ]; then\n  source ${prefix}/user.cfg\n  if [ -n \"${GRUB2_PASSWORD}\" ]; then\n    set superusers=\"root\"\n    export superusers\n    password_pbkdf2 root ${GRUB2_PASSWORD}\n  fi\nfi\n")
+	if f := checkRecoveryMode([]string{fedora}); f.Status != StatusOpen {
+		t.Fatalf("fedora without user.cfg: status = %q, want OPEN", f.Status)
+	}
+	writeFile(t, filepath.Join(fedoraDir, "user.cfg"), "GRUB2_PASSWORD=grub.pbkdf2.sha512.10000.ABC\n")
+	if f := checkRecoveryMode([]string{fedora}); f.Status != StatusClosed {
+		t.Fatalf("fedora with user.cfg: status = %q, want CLOSED", f.Status)
+	}
+
+	// /etc/grub.d/01_users has the same line shell-escaped.
+	users := filepath.Join(dir, "01_users")
+	writeFile(t, users, "cat << EOF\n    password_pbkdf2 root \\${GRUB2_PASSWORD}\nEOF\n")
+	if f := checkRecoveryMode([]string{users}); f.Status != StatusOpen {
+		t.Fatalf("01_users template: status = %q, want OPEN", f.Status)
+	}
+
 	if f := checkRecoveryMode([]string{filepath.Join(dir, "missing.cfg")}); f.Status != StatusUnknown {
 		t.Fatalf("missing: status = %q, want UNKNOWN", f.Status)
 	}
