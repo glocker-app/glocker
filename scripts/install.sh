@@ -46,7 +46,13 @@ cat <<'EOF'
 Done. glocker is installed and running — run `glocker` to see what's blocked.
 
 Review the schedules, forbidden programs and keywords in /etc/glocker/config.yaml.
-Adding your own sites and other changes: https://glockerapp.com/habits.html
+Your own sites are in /etc/glocker/conf.d/personal-domains.yaml. To change either
+(inside your sudo window):
+
+  sudoedit /etc/glocker/config.yaml
+  sudo systemctl restart glocker
+
+More: https://glockerapp.com/habits.html
 
 The browser content-blocker is force-installed by policy — restart Firefox/Chrome
 to pick it up.

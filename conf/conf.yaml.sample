@@ -12,6 +12,9 @@
 #
 # The installed file lives at /etc/glocker/config.yaml and is read by the glocker
 # agent. (The glockpeek dashboard reads its own file — see the note just below.)
+# To change it after install (inside your sudo window):
+#   sudoedit /etc/glocker/config.yaml    # or /etc/glocker/conf.d/personal-domains.yaml
+#   sudo systemctl restart glocker
 # ============================================================================
 
 # The glockpeek dashboard is a separate process with its OWN config file,

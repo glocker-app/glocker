@@ -593,6 +593,15 @@ This is also how you apply changes after editing `conf/conf.yaml`.
 pulled in fresh; for everyday config edits, `make install` is enough since
 it skips the (slow) blocklist download.
 
+If you installed with the one-line installer (`curl … | sh`), there's no
+`conf/` directory to work from. Edit the installed files directly, inside
+your sudo window, and restart the daemon:
+
+    sudoedit /etc/glocker/config.yaml
+    sudo systemctl restart glocker
+
+Your own blocked sites are in `/etc/glocker/conf.d/personal-domains.yaml`.
+
 The install command also installs a prebuilt and signed browser
 extension for firefox. This will prevent you from opening incognito
 windows on all FF profiles and also block you from accessing sites
