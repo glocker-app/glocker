@@ -13,8 +13,8 @@ turning it off slow and deliberate, and logs your usage.
 - **Browser extension** for Firefox and Chrome that blocks pages by keyword.
 - **Screen lock** after repeated violations (`glocklock`).
 - **Slow uninstall**: a stated reason and a typing challenge.
-- **Usage tracking** of the focused window (X11, GNOME, Hyprland), viewable in
-  the `glockpeek` dashboard.
+- **Usage tracking** of the focused window (X11, GNOME, KDE Plasma, Hyprland),
+  viewable in the `glockpeek` dashboard.
 
 ## Install
 

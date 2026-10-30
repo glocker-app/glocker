@@ -114,6 +114,21 @@ func newWaylandSource(opts Options) (Source, string, error) {
 		}
 		return NewGNOMESource(conn), "linux/wayland/gnome", nil
 	}
+	if nameHasOwner(conn, "org.kde.KWin") {
+		// KDE Plasma / KWin on Wayland. Unlike GNOME we can't check for the script
+		// up front (the daemon, not the script, owns the bridge name); the KWin
+		// script pushes to us. NewKWinSource claims app.glocker.KWin; the first
+		// Capture is empty until the script's first push. Idle via ext-idle-notify.
+		runtimeDir := opts.RuntimeDir
+		if runtimeDir == "" {
+			runtimeDir = os.Getenv("XDG_RUNTIME_DIR")
+		}
+		src, err := NewKWinSource(conn, runtimeDir, utils.LiveWaylandSocket(runtimeDir))
+		if err != nil {
+			return nil, "", fmt.Errorf("%w: KDE/Wayland: %v", ErrUnsupportedSession, err)
+		}
+		return src, "linux/wayland/kwin", nil
+	}
 	conn.Close()
 	return nil, "", fmt.Errorf("%w: Wayland session (%s) has no supported backend yet",
 		ErrUnsupportedSession, envOr("XDG_CURRENT_DESKTOP", "unknown"))

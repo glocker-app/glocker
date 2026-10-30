@@ -328,6 +328,8 @@ func InstallGlocker(confPath string) error {
 	// Step 5b: Install the GNOME Shell window-bridge extension (GNOME/Wayland
 	// only; self-skips elsewhere) so usage tracking works there too.
 	InstallGnomeExtension(&cfg)
+	// Same for KDE Plasma / KWin on Wayland (self-skips off KDE).
+	InstallKWinScript(&cfg)
 
 	// Step 5c: Take over the user's sudo access so the sudo window applies.
 	// Before the service starts, since the daemon writes the drop-in.

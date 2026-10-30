@@ -1,0 +1,14 @@
+{
+    "KPackageStructure": "KWin/Script",
+    "KPlugin": {
+        "Id": "glocker-usage",
+        "Name": "Glocker usage bridge",
+        "Description": "Pushes the window list to the glocker daemon for usage tracking.",
+        "Authors": [{ "Name": "glocker" }],
+        "License": "MIT",
+        "Version": "1.0",
+        "EnabledByDefault": false
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js"
+}

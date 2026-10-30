@@ -73,6 +73,8 @@ func RestoreSystemChanges(cfg *config.Config) error {
 
 	// Clean up the GNOME window-bridge extension (self-skips if not installed).
 	RemoveGnomeExtension(cfg)
+	// Same for the KWin script.
+	RemoveKWinScript(cfg)
 
 	log.Println("Removing config file...")
 	if err := os.Remove(config.GlockerConfigFile); err != nil {
