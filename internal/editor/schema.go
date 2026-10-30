@@ -1,4 +1,4 @@
-package main
+package editor
 
 // The sections and fields the editor shows. Each field maps to a config key
 // under its section's path; a dotted key ("monitoring.enabled") reaches into a

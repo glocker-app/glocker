@@ -121,6 +121,7 @@ func main() {
 	// Parse command-line flags
 	installFlag := flag.Bool("install", false, "Install glocker as a system service")
 	initFlag := flag.Bool("init", false, "Generate a starting config from the sample: fills in your login (and optional hosted dashboard + buddy email), keeping the sample's comments. Won't overwrite an existing config. Run as a normal user, before -install; after install, change settings with -edit.")
+	editFlag := flag.Bool("edit", false, "Edit the installed config in a terminal UI. Saving needs sudo, so it works inside your sudo window; without sudo it opens read-only. Saving restarts glocker.")
 	confFlag := flag.String("conf", "conf/conf.yaml", "source config for -install (its dir also holds conf.d/); lets the config live outside the source tree")
 	uninstallReason := flag.String("uninstall", "", "Uninstall Glocker and revert all changes (provide reason)")
 	uninstallNote := flag.String("note", "", "Optional free-form note to attach to -uninstall (e.g. context for the reason)")
@@ -191,6 +192,13 @@ func main() {
 			fmt.Println("\nhosted sync: encrypt is on, so run 'glocker -connect' to install your")
 			fmt.Println("encryption key before the syncer will push anything.")
 		}
+		return
+	}
+
+	// Edit the installed config. Root saves (and restarts the daemon to apply it,
+	// there's no live reload); anyone else browses read-only.
+	if *editFlag {
+		runEdit()
 		return
 	}
 

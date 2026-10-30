@@ -9,6 +9,9 @@ conf/conf.yaml
 conf/glockpeek.yaml
 # Generated blocklists (large); keep the directory in the repo via .gitkeep.
 conf/conf.d/*.yaml
+# `make edit-dev` saves next to the originals.
+conf/*.new
+conf/conf.d/*.new
 sync-findings.md
 # Personal planning notes — kept local, not tracked
 ROADMAP.md

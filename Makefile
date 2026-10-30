@@ -51,6 +51,9 @@ build-all: test-deps
 init: test-deps ## Generate conf/conf.yaml from the sample (fills in your login; keeps comments; won't overwrite)
 	go run ./cmd/glocker -init
 
+edit-dev: ## Run the -edit editor on conf/conf.yaml without root (saves to <file>.new)
+	go run ./cmd/configtui -nogate conf/conf.yaml
+
 install: build-all ## Rebuild and reinstall (in-place; stops+swaps+restarts the daemon)
 	sudo ./glocker -install
 

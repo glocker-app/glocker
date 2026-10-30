@@ -1,4 +1,4 @@
-package main
+package editor
 
 import (
 	"gopkg.in/yaml.v3"

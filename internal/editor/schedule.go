@@ -1,4 +1,4 @@
-package main
+package editor
 
 // scheduleScreen edits a whole weekly schedule on one grid: move a cursor over
 // half-hour cells and paint them, select rectangles, copy a day onto others,

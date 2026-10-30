@@ -49,11 +49,13 @@ glocker -uninstall "reason"
   - Command-line flag definitions (`-status`, `-info`, `-version`, `-connect`,
     `-extend`, `-purge`, `-check`, `-install`, `-uninstall`, `-note`, `-daemon`,
     `-block`, `-block-app`, `-unblock`, `-add-keyword`, `-panic`, `-lock`, `-force`,
-    `-resync`, `-init`, `-conf`)
+    `-resync`, `-init`, `-conf`, `-edit`)
   - Flag handlers with socket communication
   - Default behavior: show status or help
   - Daemon startup logic
 - **`cmd/glocker/status.go`** - shared `-status`/`-info` socket + on-disk-fallback helpers
+- **`cmd/glocker/edit.go`** - `-edit`: opens `/etc/glocker/config.yaml` in `internal/editor`;
+  read-only without root, and as root a save restarts `glocker.service`
 
 ### Configuration (`internal/config/`)
 - **`types.go`** - Configuration structs and constants
@@ -190,6 +192,14 @@ glocker -uninstall "reason"
   that unblocks in 3 minutes and re-blocks in 10 still reports the re-block.
 
 ### Other packages
+- **`internal/editor/`** - the `-edit` terminal UI (bubbletea + huh). Edits the YAML node
+  tree (comments, key order and `!include` lines survive) and replays edits onto the
+  original text so saves are minimal diffs (`preserve.go`). `schema.go` declares every
+  stanza's fields; schedules are painted on a 7×48 half-hour grid (`week.go`,
+  `schedule.go`) and converted back to windows on save. Saves validate with
+  `config.ParseConfig` + `ValidateConfig`, show a diff, write atomically and restore
+  the file's owner. Non-root opens read-only with a banner computed from the sudo
+  windows (`gate.go`). `cmd/configtui` (`make edit-dev`) runs it on any file without root.
 - **`internal/usage/`** - arbtt-style usage tracker (focused window, titles, idle) for
   X11, Hyprland and GNOME; writes `usage.jsonl`
 - **`internal/connect/`** - `glocker -connect`: fetch the key vault, unwrap the master
@@ -270,8 +280,10 @@ sudo glocker -block "example.com,another.com"
 sudo glocker -add-keyword "keyword1,keyword2"
 
 ```
-There is no runtime config-reload command; config changes take effect on
-reinstall (`make install` / `make full-install`, which restarts the daemon).
+There is no runtime config-reload command. `sudo glocker -edit` restarts the daemon
+after a save; a source checkout applies `conf/conf.yaml` edits with a reinstall
+(`make install` / `make full-install`, which restarts the daemon) — which overwrites
+`/etc/glocker/config.yaml`, including anything changed with `-edit`.
 
 ### To test the program, 
 #### Install new version
@@ -427,7 +439,7 @@ type ForbiddenProgram struct {
 - `/etc/systemd/system/glocker.service` - Systemd service file
 
 **Development files:**
-- `cmd/glocker/main.go` - Entry point (other binaries under `cmd/`: glockpeek, glocklock, glockdoc, configcheck, usageprobe, e2ekit)
+- `cmd/glocker/main.go` - Entry point (other binaries under `cmd/`: glockpeek, glocklock, glockdoc, configcheck, usageprobe, e2ekit, configtui)
 - `internal/` - Application packages (see File Map above)
 - `conf/conf.yaml` + `conf/conf.d/*.yaml` - Working config (gitignored, from `make init`) plus included blocklists
 - `extras/glocker.service` - Systemd service template
@@ -609,7 +621,8 @@ Server started by internal/web/server.go:StartWebTrackingServer()
 
 `conf/conf.yaml` (gitignored; `make init`) is small; the extensive blocking lists live in `conf/conf.d/*.yaml`
 (~16MB total) and are pulled in via the include mechanism. When making changes:
-- There is no runtime reload; reinstall (`make install` / `make full-install`) to apply
+- There is no runtime reload; reinstall (`make install` / `make full-install`) to apply, or
+  `sudo glocker -edit` on an installed config (restarts the daemon on save)
 - Check logs with `journalctl -u glocker.service -f`
 
 Violation tracking can trigger automatic actions (e.g., screen lock):
@@ -628,7 +641,7 @@ The codebase is organized into modular packages under `internal/`:
 ```
 glocker/
 ├── cmd/                         # Binary entry points (glocker, glockpeek, glocklock,
-│                                #   glockdoc, configcheck, usageprobe, e2ekit)
+│                                #   glockdoc, configcheck, usageprobe, e2ekit, configtui)
 ├── internal/                    # Application packages (partial list)
 │   ├── accountability/         # glockpeek accountability emails
 │   ├── cli/                    # Command processors
@@ -650,7 +663,7 @@ glocker/
 
 **Package Dependencies:**
 (internal imports, non-test)
-- `cmd/glocker` imports `cli`, `config`, `connect`, `enforcement`, `envcheck`, `install`, `ipc`, `mindful`, `monitoring`, `precheck`, `reports`, `state`, `syncer`, `usage`, `web`
+- `cmd/glocker` imports `cli`, `config`, `connect`, `editor`, `enforcement`, `envcheck`, `install`, `ipc`, `mindful`, `monitoring`, `precheck`, `reports`, `state`, `syncer`, `usage`, `web`
 - `cli` imports `config`, `enforcement`, `monitoring`, `reports`, `schedule`, `state`, `sudoplan`, `syncer`, `web`
 - `ipc` imports `cli`, `config`, `enforcement`, `install`, `syncer`, `web`
 - `install` imports `config`, `envcheck`, `precheck`, `sudoplan`, `utils`, `web`
@@ -661,6 +674,7 @@ glocker/
 - `enforcement` imports `config`, `state`, `sudoplan`, `utils`; `sudoplan` imports `config`, `precheck`, `utils`
 - `usage` imports `config`, `utils`; `lock` imports `utils`; `connect` imports `config`, `e2e`
 - `stats` imports `reports`, `store`; `report` imports `store`; `accountability` imports `config`, `report`, `store`; `mailer`, `reports` import `config`
+- `editor` imports `config`, `utils`
 - `utils` imports `config` (for `TimeWindow`) and nothing else
 - `config`, `state`, `store`, `e2e`, `envcheck`, `precheck`, `heartbeat`, `mindful` import no internal packages
 
@@ -678,13 +692,15 @@ Go modules (go.mod):
 - `github.com/alexedwards/argon2id` - Password hashing for glockpeek hosted auth
 - `gorm.io/gorm` + `gorm.io/driver/postgres` + `github.com/glebarez/sqlite` - glockpeek DB layer (`internal/store`)
 - `github.com/standard-webhooks/standard-webhooks/libraries` - billing webhook verification (glockpeek)
-- `github.com/charmbracelet/bubbletea` + `lipgloss` - mindful-uninstall typing gate (`internal/mindful`)
+- `github.com/charmbracelet/bubbletea` + `lipgloss` - mindful-uninstall typing gate (`internal/mindful`) and the `-edit` UI (`internal/editor`)
+- `github.com/charmbracelet/bubbles` + `huh` - viewport and text forms in `internal/editor`
+- `github.com/pmezard/go-difflib` - line diffs for `-edit`'s minimal saves and review screen
 - `golang.org/x/term` - passphrase/password prompts (glocker, glockpeek, e2ekit)
 - `github.com/godbus/dbus/v5` - D-Bus (GNOME usage source, GNOME lock backend)
 - `github.com/jezek/xgb` - X11 (usage monitor, glocklock X11 backend)
 - `github.com/neurlang/wayland` + `github.com/tuxx/wayland-ext-session-lock-go` - Wayland (glocklock, idle)
 - `golang.org/x/image` - glocklock rendering
-- `github.com/google/renameio/v2` - atomic writes of the Firefox policy file (`install/firefox.go`)
+- `github.com/google/renameio/v2` - atomic writes of the Firefox policy file (`install/firefox.go`) and `-edit` saves
 
 System dependencies:
 - `systemd` - Service management

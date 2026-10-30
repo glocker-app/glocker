@@ -1,4 +1,4 @@
-package main
+package editor
 
 // A week is the schedule as 7×48 half-hour cells. The editor paints cells and
 // converts back to time windows on save; that's lossless for windows on

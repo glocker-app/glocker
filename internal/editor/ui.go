@@ -1,4 +1,4 @@
-package main
+package editor
 
 import (
 	"fmt"
@@ -82,8 +82,9 @@ type app struct {
 	status    string
 	statusErr bool
 	quitArmed bool
-	readOnly  bool    // not root: browse only
-	banner    *banner // bar above everything; nil for none
+	readOnly  bool         // not root: browse only
+	afterSave func() error // run after a successful write (e.g. restart the daemon)
+	banner    *banner      // bar above everything; nil for none
 	w, h      int
 }
 
@@ -544,7 +545,15 @@ func (d *diffScreen) Update(a *app, msg tea.Msg) tea.Cmd {
 			if err != nil {
 				a.setStatus("Write failed: "+err.Error(), true)
 			} else {
-				a.setStatus("Wrote "+strings.Join(written, ", "), false)
+				msg := "Wrote " + strings.Join(written, ", ")
+				if a.afterSave != nil {
+					if err := a.afterSave(); err != nil {
+						a.setStatus(msg+", but "+err.Error(), true)
+						return nil
+					}
+					msg += " · glocker restarted"
+				}
+				a.setStatus(msg, false)
 			}
 			return nil
 		case "n", "esc", "q":

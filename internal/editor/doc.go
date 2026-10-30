@@ -1,4 +1,4 @@
-package main
+package editor
 
 import (
 	"bytes"
@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/google/renameio/v2"
 	"gopkg.in/yaml.v3"
@@ -26,6 +27,7 @@ type File struct {
 	orig     []byte // bytes on disk, for the diff
 	baseline []byte // encoding at load/save time, for change detection
 	mode     os.FileMode
+	uid, gid int // owner to restore after an atomic write; -1 keeps the writer's
 }
 
 // Pack is a generated blocklist pulled in (or not) by an !include line.
@@ -91,7 +93,7 @@ func Load(path string) (*Doc, error) {
 // loadFile reads a YAML file. A missing included file starts as an empty list
 // and is created on save.
 func loadFile(path, rel string) (*File, error) {
-	f := &File{Path: path, Rel: rel, mode: 0o644}
+	f := &File{Path: path, Rel: rel, mode: 0o644, uid: -1, gid: -1}
 	data, err := os.ReadFile(path)
 	switch {
 	case os.IsNotExist(err) && rel != "":
@@ -103,6 +105,9 @@ func loadFile(path, rel string) (*File, error) {
 	}
 	if st, err := os.Stat(path); err == nil {
 		f.mode = st.Mode().Perm()
+		if sys, ok := st.Sys().(*syscall.Stat_t); ok {
+			f.uid, f.gid = int(sys.Uid), int(sys.Gid)
+		}
 	}
 	var root yaml.Node
 	if err := yaml.Unmarshal(data, &root); err != nil {
@@ -276,6 +281,13 @@ func (d *Doc) Write(changes []Change, suffix string) ([]string, error) {
 		dst := c.File.Path + suffix
 		if err := renameio.WriteFile(dst, c.New, c.File.mode); err != nil {
 			return written, err
+		}
+		// The rename leaves a new file owned by us; put the old owner back (the
+		// installed config is root:glocker so group members can read it).
+		if c.File.uid >= 0 && os.Geteuid() == 0 {
+			if err := os.Chown(dst, c.File.uid, c.File.gid); err != nil {
+				return written, err
+			}
 		}
 		c.File.orig, c.File.baseline = c.New, c.enc
 		written = append(written, dst)

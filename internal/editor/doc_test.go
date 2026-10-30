@@ -1,4 +1,4 @@
-package main
+package editor
 
 import (
 	"os"
@@ -164,7 +164,7 @@ func TestDeleteLastWindowDropsKey(t *testing.T) {
 }
 
 func TestSampleEditIsMinimal(t *testing.T) {
-	data, err := os.ReadFile("../conf/conf.yaml.sample")
+	data, err := os.ReadFile("../../conf/conf.yaml.sample")
 	must(t, err)
 	p := filepath.Join(t.TempDir(), "conf.yaml")
 	must(t, os.WriteFile(p, data, 0o644))

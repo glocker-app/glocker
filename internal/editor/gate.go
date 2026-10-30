@@ -1,4 +1,4 @@
-package main
+package editor
 
 // Editing needs root, and with sudo control on, root is only reachable inside
 // the sudo windows. Without root the editor opens read-only and says when sudo

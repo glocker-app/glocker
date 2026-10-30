@@ -1,4 +1,4 @@
-package main
+package editor
 
 // Helpers for editing a yaml.v3 node tree in place. Working on nodes rather
 // than decoded structs keeps comments, key order and !include tags intact.

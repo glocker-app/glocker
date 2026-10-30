@@ -1,4 +1,4 @@
-package main
+package editor
 
 // yaml.v3 re-encodes a file with blank lines dropped and comment alignment
 // collapsed. To keep saves minimal, edits are computed as a line diff between
