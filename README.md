@@ -32,7 +32,7 @@ sudoedit /etc/glocker/config.yaml
 sudo systemctl restart glocker
 ```
 
-To build from source (Go 1.26+):
+To build from source (Go 1.26+, python3 for the blocklist script):
 
 ```bash
 make init            # write conf/conf.yaml from the sample
@@ -42,7 +42,8 @@ make full-install
 
 Uninstall with `sudo glocker -uninstall "reason"`.
 
-Requires Linux with systemd and root to install.
+Requires Linux with systemd and root to install. The content-blocking extension
+needs Firefox or Chrome/Chromium.
 
 ## Verifying a release
 
