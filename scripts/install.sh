@@ -16,6 +16,10 @@ for bin in glocker glocklock glockdoc; do
 	[ -x "./$bin" ] || { echo "error: ./$bin missing from the tarball" >&2; exit 1; }
 done
 
+# An upgrade or a first install? Step 1 can write the config, so note it now.
+upgrade=
+[ -f /etc/glocker/config.yaml ] && upgrade=1
+
 echo "Glocker installs to this machine:"
 echo "  binaries -> /usr/local/bin   config -> /etc/glocker   a systemd service"
 echo
@@ -46,6 +50,15 @@ fi
 echo
 echo "Installing (sudo)…"
 sudo ./glocker -install -conf conf/conf.yaml -replace-config
+
+if [ -n "$upgrade" ]; then
+	cat <<'EOF'
+
+Done. glocker upgraded — run `glocker` to see what's blocked.
+Restart Firefox/Chrome to pick up the updated content-blocker.
+EOF
+	exit 0
+fi
 
 cat <<'EOF'
 

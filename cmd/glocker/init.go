@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"strings"
 
+	"golang.org/x/term"
+
 	"glocker/internal/config"
 )
 
@@ -198,10 +200,12 @@ func detectLogin() string {
 	return ""
 }
 
-func stdinIsTTY() bool {
-	fi, err := os.Stdin.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
-}
+// stdinIsTTY reports whether stdin is a real terminal. It asks the terminal
+// itself (a TCGETS ioctl), not the file's kind: /dev/null is a character device
+// too, so a Stat-based check calls it a tty and the wizard then prints prompts
+// nobody can answer — systemd units, cron and `docker run` without -i all land
+// there.
+func stdinIsTTY() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
 
 // ask prints label, reads a line, and returns it trimmed — or def when the reply
 // is empty (or input is closed).
