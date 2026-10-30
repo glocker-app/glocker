@@ -25,7 +25,14 @@ curl -fsSL https://glockerapp.com/glocker-installer.sh | sh
 glocker -status
 ```
 
-To change the config afterwards (inside your sudo window):
+To change the config afterwards, use the built-in editor inside your sudo window
+(without sudo it opens read-only):
+
+```bash
+sudo glocker -edit
+```
+
+Or edit the file by hand and restart:
 
 ```bash
 sudoedit /etc/glocker/config.yaml

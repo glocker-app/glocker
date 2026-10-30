@@ -281,10 +281,9 @@ func main() {
 			fmt.Println("    sudo systemctl restart glocker")
 		} else {
 			fmt.Println("⚠  WARNING: sync.encrypt is OFF, so this key sits UNUSED and records still")
-			fmt.Println("   upload as PLAINTEXT. To actually encrypt, set it in your agent config:")
-			fmt.Println("       sync:")
-			fmt.Println("         encrypt: true")
-			fmt.Println("   then re-install (make full-install) or restart the glocker service.")
+			fmt.Println("   upload as PLAINTEXT. To actually encrypt, turn on Sync → Encrypt with")
+			fmt.Println("       sudo glocker -edit")
+			fmt.Println("   (or set sync.encrypt: true in /etc/glocker/config.yaml and restart glocker).")
 		}
 		return
 	}
