@@ -29,8 +29,9 @@ the *same* method, with no Go changes.
 automatically for the desktop user — it copies the build matching
 `gnome-shell --version` into `~/.local/share/gnome-shell/extensions/`, enables it
 in the user's dconf, and `glocker -uninstall` removes it again. It self-skips on
-non-GNOME systems and on GNOME older than 45. For the daemon (running as root) to
-reach the session on Wayland, set `usage_monitor.user` in the config. **On
+non-GNOME systems and on GNOME older than 45. The daemon (running as root) reaches
+the session bus through the top-level `user` (`unix:path=/run/user/<uid>/bus`);
+`usage_monitor.dbus_address` overrides it. **On
 Wayland you must log out and back in once after install** — the shell can't
 hot-load a new extension.
 
