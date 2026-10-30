@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	wlos "github.com/neurlang/wayland/os"
 	"github.com/neurlang/wayland/wl"
 	"github.com/neurlang/wayland/wlclient"
 	ext "github.com/tuxx/wayland-ext-session-lock-go"
@@ -216,21 +215,6 @@ func (w *waylandLocker) HandleSessionLockFinished(ext.SessionLockFinishedEvent) 
 
 // ── Per-output lock surface ─────────────────────────────────────────────────
 
-// shmBuffer is one frame buffer shared with the compositor. It is busy from the
-// commit that attaches it until the compositor's release event.
-type shmBuffer struct {
-	buf  *wl.Buffer
-	data []byte // mmap of the buffer's memory
-	busy bool
-}
-
-func (b *shmBuffer) HandleBufferRelease(wl.BufferReleaseEvent) { b.busy = false }
-
-func (b *shmBuffer) destroy() {
-	b.buf.Destroy()
-	_ = wlos.Munmap(b.data)
-}
-
 type waylandSurface struct {
 	parent      *waylandLocker
 	wlSurface   *wl.Surface
@@ -320,30 +304,5 @@ func (s *waylandSurface) paint() error {
 
 // newBuffer allocates one XRGB8888 shm buffer the size of the surface.
 func (s *waylandSurface) newBuffer() (*shmBuffer, error) {
-	stride := s.width * 4
-	size := stride * s.height
-
-	fd, err := wlos.CreateAnonymousFile(int64(size))
-	if err != nil {
-		return nil, err
-	}
-	defer fd.Close()
-	data, err := wlos.Mmap(int(fd.Fd()), 0, size, wlos.ProtRead|wlos.ProtWrite, wlos.MapShared)
-	if err != nil {
-		return nil, err
-	}
-	pool, err := s.parent.shm.CreatePool(fd.Fd(), int32(size))
-	if err != nil {
-		wlos.Munmap(data)
-		return nil, err
-	}
-	buf, err := pool.CreateBuffer(0, int32(s.width), int32(s.height), int32(stride), wl.ShmFormatXrgb8888)
-	pool.Destroy()
-	if err != nil {
-		wlos.Munmap(data)
-		return nil, err
-	}
-	b := &shmBuffer{buf: buf, data: data}
-	buf.AddReleaseHandler(b)
-	return b, nil
+	return newSHMBuffer(s.parent.shm, s.width, s.height)
 }

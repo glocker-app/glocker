@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"github.com/godbus/dbus/v5"
+	"github.com/neurlang/wayland/wl"
+	"github.com/neurlang/wayland/wlclient"
 )
 
 // Session names a display server the locker can drive.
@@ -68,9 +70,47 @@ func selectWayland(cfg Config) (Backend, error) {
 		}
 		conn.Close()
 	}
-	// Non-GNOME (wlroots/KDE) or no session bus: use ext-session-lock.
-	return newWayland(cfg)
+	// Non-GNOME (wlroots/KDE) or no session bus. Prefer ext-session-lock (a true
+	// compositor-enforced lock); fall back to wlr-layer-shell where it's absent —
+	// notably KWin, which advertises layer-shell but not ext-session-lock.
+	globals, err := waylandGlobals()
+	if err != nil {
+		return newWayland(cfg) // can't probe; keep the historical ext-session-lock default
+	}
+	switch {
+	case globals["ext_session_lock_manager_v1"]:
+		return newWayland(cfg)
+	case globals["zwlr_layer_shell_v1"]:
+		return newLayerShell(cfg)
+	default:
+		return nil, fmt.Errorf("Wayland compositor supports neither ext_session_lock_v1 nor zwlr_layer_shell_v1; cannot lock the screen")
+	}
 }
+
+// waylandGlobals connects to the compositor and returns the set of advertised
+// global interface names, so Select can pick a lock protocol the compositor
+// actually offers instead of failing at lock time.
+func waylandGlobals() (map[string]bool, error) {
+	display, err := wlclient.DisplayConnect(nil)
+	if err != nil {
+		return nil, err
+	}
+	defer wlclient.DisplayDisconnect(display)
+	registry, err := display.GetRegistry()
+	if err != nil {
+		return nil, err
+	}
+	p := &globalProbe{names: make(map[string]bool)}
+	registry.AddGlobalHandler(p)
+	if err := wlclient.DisplayRoundtrip(display); err != nil {
+		return nil, err
+	}
+	return p.names, nil
+}
+
+type globalProbe struct{ names map[string]bool }
+
+func (g *globalProbe) HandleRegistryGlobal(ev wl.RegistryGlobalEvent) { g.names[ev.Interface] = true }
 
 // nameHasOwner reports whether a well-known name is currently owned on conn.
 func nameHasOwner(conn *dbus.Conn, name string) bool {
