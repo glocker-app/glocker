@@ -13,15 +13,15 @@ import (
 )
 
 var (
-	cellOn     = lipgloss.NewStyle().Foreground(lipgloss.Color("5"))
-	cellCursor = lipgloss.NewStyle().Reverse(true).Foreground(lipgloss.Color("3"))
+	cellOn     = lipgloss.NewStyle().Foreground(cAccent)
+	cellCursor = lipgloss.NewStyle().Foreground(cBlack).Background(cWarn)
 )
 
 // Where the grid sits on screen, for mouse hits: the content pane starts after
-// the sidebar and separator; the grid after the title, blank and axis lines
+// the sidebar and a space; the grid after the title, blank and axis lines
 // and the day label.
 const (
-	gridX = sideW + 3 + 4
+	gridX = sideW + 1 + 4
 	gridY = 3
 )
 
@@ -182,7 +182,7 @@ func (sc *scheduleScreen) key(a *app, k string) {
 
 func (sc *scheduleScreen) View(a *app, w, h int) string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render(sc.title) + "\n\n")
+	b.WriteString(frameHead("╭", sc.title, titleStyle, w) + "\n\n")
 	axis := []rune(strings.Repeat(" ", slots+2))
 	for hr := 0; hr <= 24; hr += 6 {
 		copy(axis[min(hr*2, slots):], []rune(fmt.Sprint(hr)))

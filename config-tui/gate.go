@@ -2,7 +2,8 @@ package main
 
 // Editing needs root, and with sudo control on, root is only reachable inside
 // the sudo windows. Without root the editor opens read-only and says when sudo
-// next opens, worked out from the config's own sudo windows.
+// next opens; with it, it says when the window closes. Both are worked out
+// from the config's own sudo windows.
 
 import (
 	"fmt"
@@ -34,23 +35,31 @@ func fmtWhen(t, now time.Time) string {
 	return fmt.Sprintf("%s (in %dh %02dm)", clock, int(d.Hours()), int(d.Minutes())%60)
 }
 
-// gateBanner is the read-only message for a non-root user.
-func gateBanner(d *Doc, now time.Time) string {
+// sudoNote describes the sudo window right now, e.g. "sudo open until 20:00
+// (in 1h 00m)".
+func sudoNote(d *Doc, now time.Time) string {
 	s := path(d.cfg(), "sudoers")
-	const pre = "Read-only: editing needs sudo. "
 	if !getBool(s, "enabled") {
-		return pre + "Run `sudo glocker -edit`."
+		return "sudo control off"
 	}
 	allowed, at, ok := nextFlip(windows(s, "allow_windows"), now)
 	switch {
 	case allowed && ok:
 		// at is the first blocked minute; window ends are inclusive.
-		return pre + "Sudo is open until " + fmtWhen(at.Add(-time.Minute), now) + ". Run `sudo glocker -edit`."
+		return "sudo open until " + fmtWhen(at.Add(-time.Minute), now)
 	case allowed:
-		return pre + "Run `sudo glocker -edit`."
+		return "sudo always open"
 	case ok:
-		return pre + "Sudo is blocked until " + fmtWhen(at, now) + "."
+		return "sudo blocked until " + fmtWhen(at, now)
 	default:
-		return pre + "This config never allows sudo."
+		return "this config never allows sudo"
 	}
+}
+
+// gateBanner is the banner for a non-root user (readOnly) or root.
+func gateBanner(d *Doc, now time.Time, readOnly bool) banner {
+	if readOnly {
+		return banner{label: "READ-ONLY", text: "editing needs sudo · " + sudoNote(d, now), alert: true}
+	}
+	return banner{label: "EDIT MODE", text: sudoNote(d, now) + " · s saves"}
 }

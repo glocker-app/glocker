@@ -27,8 +27,11 @@ func TestNextFlip(t *testing.T) {
 		t.Errorf("got %s", fmtWhen(at, sat))
 	}
 	d := &Doc{Main: &File{Root: mustParse(t, "sudoers:\n  enabled: true\n  allow_windows:\n    - {start: \"18:00\", end: \"20:00\", days: [Mon]}\n")}}
-	if got := gateBanner(d, mon10.Add(9*time.Hour)); !strings.Contains(got, "open until 20:00 (in 1h 00m)") {
-		t.Errorf("banner = %q", got)
+	if got := gateBanner(d, mon10.Add(9*time.Hour), true); !got.alert || !strings.Contains(got.text, "open until 20:00 (in 1h 00m)") {
+		t.Errorf("banner = %+v", got)
+	}
+	if got := gateBanner(d, mon10, false); got.alert || !strings.Contains(got.text, "blocked until 18:00") {
+		t.Errorf("banner = %+v", got)
 	}
 	if _, _, ok := nextFlip(nil, mon10); ok {
 		t.Error("no windows never flips")

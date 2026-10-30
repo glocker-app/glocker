@@ -33,9 +33,10 @@ func main() {
 		suffix = ""
 	}
 	a := newApp(d, suffix)
-	if os.Geteuid() != 0 && !*nogate {
-		a.readOnly, a.banner = true, gateBanner(d, time.Now())
-	}
+	// -nogate stands in for root, so it shows the edit-mode banner.
+	a.readOnly = os.Geteuid() != 0 && !*nogate
+	b := gateBanner(d, time.Now(), a.readOnly)
+	a.banner = &b
 	if _, err := tea.NewProgram(a, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

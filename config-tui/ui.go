@@ -12,18 +12,53 @@ import (
 	"github.com/pmezard/go-difflib/difflib"
 )
 
+// The palette of `glocker -status` (internal/cli/style.go): dim grey for
+// structure and labels, one muted amber accent for titles and headings, green
+// and red only where they mean something.
 var (
-	titleStyle  = lipgloss.NewStyle().Bold(true)
-	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
-	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	cursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Bold(true)
-	sideSel     = lipgloss.NewStyle().Bold(true).Reverse(true)
-	okStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	errStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	addStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	delStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	hunkStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
+	cAccent = lipgloss.Color("#C8A055")
+	cDim    = lipgloss.Color("#697382")
+	cGood   = lipgloss.Color("#78B982")
+	cAlert  = lipgloss.Color("#CD5F5F")
+	cWarn   = lipgloss.Color("#E6BE50")
+	cBlack  = lipgloss.Color("#000000")
+
+	titleStyle  = lipgloss.NewStyle().Bold(true).Foreground(cAccent)
+	headerStyle = lipgloss.NewStyle().Foreground(cAccent)
+	dimStyle    = lipgloss.NewStyle().Foreground(cDim)
+	cursorStyle = lipgloss.NewStyle().Bold(true).Foreground(cAccent)
+	sideSel     = lipgloss.NewStyle().Bold(true).Foreground(cBlack).Background(cAccent)
+	okStyle     = lipgloss.NewStyle().Foreground(cGood)
+	errStyle    = lipgloss.NewStyle().Foreground(cAlert)
+	addStyle    = lipgloss.NewStyle().Foreground(cGood)
+	delStyle    = lipgloss.NewStyle().Foreground(cAlert)
+	hunkStyle   = lipgloss.NewStyle().Foreground(cAccent)
 )
+
+// frameHead renders "<corner>─ title ────" across w, like -status's frame.
+func frameHead(corner, title string, st lipgloss.Style, w int) string {
+	rule := strings.Repeat("─", max(w-lipgloss.Width(title)-4, 2))
+	return dimStyle.Render(corner+"─ ") + st.Render(title) + " " + dimStyle.Render(rule)
+}
+
+var gutter = dimStyle.Render("│ ")
+
+// banner is the bar across the top: who can edit and the sudo window.
+type banner struct {
+	label, text string
+	alert       bool // red read-only bar, else yellow edit bar
+}
+
+func (b banner) render(w int) string {
+	bg := cWarn
+	if b.alert {
+		bg = cAlert
+	}
+	badge := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Background(cBlack).Render(" " + b.label + " ")
+	rest := lipgloss.NewStyle().Foreground(cBlack).Background(bg)
+	return lipgloss.NewStyle().Background(bg).Width(w).Render(
+		rest.Render(" ") + badge + rest.Bold(true).Render(" "+truncate(b.text, max(w-lipgloss.Width(b.label)-5, 5))))
+}
 
 const sideW = 24
 
@@ -47,8 +82,8 @@ type app struct {
 	status    string
 	statusErr bool
 	quitArmed bool
-	readOnly  bool   // not root: browse only
-	banner    string // shown above everything while read-only
+	readOnly  bool    // not root: browse only
+	banner    *banner // bar above everything; nil for none
 	w, h      int
 }
 
@@ -86,7 +121,7 @@ func (a *app) pop() {
 	}
 }
 
-func (a *app) contentW() int { return max(a.w-sideW-3, 30) }
+func (a *app) contentW() int { return max(a.w-sideW-1, 30) }
 
 // helpH is the height of the bottom panel: rule, help text, keys, status.
 const helpH = 4
@@ -95,16 +130,20 @@ func (a *app) bodyH() int { return max(a.h-helpH-a.bannerH(), 6) }
 
 // bannerH is the lines the read-only banner takes (bar + gap).
 func (a *app) bannerH() int {
-	if a.banner == "" {
+	if a.banner == nil {
 		return 0
 	}
 	return 2
 }
 
-var bannerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3"))
-
 // refuse explains why an edit didn't happen.
-func (a *app) refuse() { a.setStatus(a.banner, true) }
+func (a *app) refuse() {
+	msg := "Read-only."
+	if a.banner != nil {
+		msg = "Read-only: " + a.banner.text + "."
+	}
+	a.setStatus(msg, true)
+}
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
@@ -154,8 +193,7 @@ func (a *app) View() string {
 	bh := a.bodyH()
 	side := a.sidebar(bh)
 	content := lipgloss.NewStyle().Width(a.contentW()).MaxHeight(bh).Render(a.top().View(a, a.contentW(), bh))
-	sep := dimStyle.Render(strings.TrimSuffix(strings.Repeat("│\n", bh), "\n"))
-	body := lipgloss.JoinHorizontal(lipgloss.Top, side, " ", sep, " ", content)
+	body := lipgloss.JoinHorizontal(lipgloss.Top, side, " ", content)
 
 	var text, keys string
 	if a.focusSide {
@@ -165,8 +203,8 @@ func (a *app) View() string {
 		text, keys = a.top().Help(a)
 	}
 	top := ""
-	if a.banner != "" {
-		top = bannerStyle.Width(a.w).Render(truncate(" "+a.banner, a.w)) + "\n\n"
+	if a.banner != nil {
+		top = a.banner.render(a.w) + "\n\n"
 	}
 	rule := dimStyle.Render(strings.Repeat("─", a.w))
 	helpLine := lipgloss.NewStyle().MaxWidth(a.w).Render(text)
@@ -176,7 +214,7 @@ func (a *app) View() string {
 
 func (a *app) sidebar(h int) string {
 	var b strings.Builder
-	b.WriteString(titleStyle.Render("glocker config") + "\n\n")
+	b.WriteString(titleStyle.Render("glocker") + dimStyle.Render(" · config") + "\n\n")
 	for i, s := range a.sections {
 		dot := " "
 		if s.state != nil {
@@ -193,6 +231,8 @@ func (a *app) sidebar(h int) string {
 			label = sideSel.Render(label)
 		case i == a.sec:
 			label = titleStyle.Render(label)
+		default:
+			label = dimStyle.Render(label)
 		}
 		b.WriteString(dot + " " + label + "\n")
 	}
@@ -374,7 +414,7 @@ func (l *listScreen) View(a *app, w, h int) string {
 	var b strings.Builder
 	used := 0
 	if l.title != "" {
-		b.WriteString(titleStyle.Render(l.title) + "\n\n")
+		b.WriteString(frameHead("╭", l.title, titleStyle, w) + "\n" + dimStyle.Render("│") + "\n")
 		used = 2
 	}
 	labelW := 0
@@ -401,21 +441,21 @@ func (l *listScreen) View(a *app, w, h int) string {
 		switch r.kind {
 		case rowHeader:
 			if i > l.offset {
-				b.WriteString("\n")
+				b.WriteString(dimStyle.Render("│") + "\n")
 			}
-			b.WriteString(headerStyle.Render(r.label) + "\n")
+			b.WriteString(frameHead("├", r.label, headerStyle, w) + "\n")
 		case rowNote:
-			b.WriteString("  " + dimStyle.Render(truncate(r.label, w-2)) + "\n")
+			b.WriteString(gutter + "  " + dimStyle.Italic(true).Render(truncate(r.label, w-4)) + "\n")
 		default:
-			mark, label := "  ", truncate(r.label, max(labelW, w/2))
+			plain := truncate(r.label, max(labelW, w/2))
+			mark, label := "  ", dimStyle.Render(plain)
 			if i == l.cursor && focused {
-				mark = cursorStyle.Render("› ")
-				label = cursorStyle.Render(label)
+				mark, label = cursorStyle.Render("› "), cursorStyle.Render(plain)
 			}
-			line := mark + label
+			line := gutter + mark + label
 			if r.value != "" {
 				pad := max(labelW-lipgloss.Width(r.label), 0) + 2
-				line += strings.Repeat(" ", pad) + dimStyle.Render(truncate(r.value, max(w-labelW-6, 8)))
+				line += strings.Repeat(" ", pad) + truncate(r.value, max(w-labelW-8, 8))
 			}
 			b.WriteString(line + "\n")
 		}
@@ -518,7 +558,7 @@ func (d *diffScreen) Update(a *app, msg tea.Msg) tea.Cmd {
 }
 
 func (d *diffScreen) View(a *app, w, h int) string {
-	return titleStyle.Render("Review changes") + "\n\n" + d.vp.View() + "\n" +
+	return frameHead("╭", "Review changes", titleStyle, w) + "\n\n" + d.vp.View() + "\n" +
 		dimStyle.Render("↑↓ scroll · y write · n back")
 }
 
