@@ -27,17 +27,22 @@ function trackable(w) {
     return ("" + (w.resourceClass || "")) !== "";
 }
 
-// A window stays in workspace.windowList() for a moment after it closes, and a
-// trailing windowActivated (focus moving off it) can re-snapshot that stale list
-// — so excluding it from just the removal push isn't enough; a closed window
-// would linger. Instead remember removed windows and filter them from every
-// snapshot. Bounded so the list can't grow without limit over a long session.
-const removed = [];
-const removedMax = 64;
+// A just-closed window keeps appearing in workspace.windowList() until the next
+// unrelated window event: windowRemoved races the list update, and object
+// identity doesn't match the stale entry, so it can't be filtered that way.
+// Track removed windows by their stable internalId and drop them from every
+// snapshot. Bounded so the set can't grow without limit over a long session.
+const removedIds = [];
+const removedMax = 128;
 
-function wasRemoved(w) {
-    for (let i = 0; i < removed.length; i++) {
-        if (removed[i] === w) return true;
+function winId(w) {
+    return w && w.internalId ? "" + w.internalId : "";
+}
+
+function isRemoved(id) {
+    if (id === "") return false;
+    for (let i = 0; i < removedIds.length; i++) {
+        if (removedIds[i] === id) return true;
     }
     return false;
 }
@@ -48,7 +53,7 @@ function snapshot() {
     const list = workspace.windowList();
     for (let i = 0; i < list.length; i++) {
         const w = list[i];
-        if (!trackable(w) || wasRemoved(w)) continue;
+        if (!trackable(w) || isRemoved(winId(w))) continue;
         out.push({
             class: "" + (w.resourceClass || ""),
             instance: "" + (w.resourceName || ""),
@@ -68,12 +73,15 @@ function push() {
     }
 }
 
-// Re-push whenever the snapshot could change. windowRemoved also records the
-// window so later snapshots drop it even if it briefly survives in windowList().
+// Re-push whenever the snapshot could change. windowRemoved records the window's
+// id first so this push — and any later one that still sees it — drops it.
 workspace.windowActivated.connect(push);
 workspace.windowRemoved.connect(function (w) {
-    removed.push(w);
-    if (removed.length > removedMax) removed.shift();
+    const id = winId(w);
+    if (id !== "") {
+        removedIds.push(id);
+        if (removedIds.length > removedMax) removedIds.shift();
+    }
     push();
 });
 workspace.windowAdded.connect(function (w) {
