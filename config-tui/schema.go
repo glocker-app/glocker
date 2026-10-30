@@ -280,7 +280,7 @@ func (a *app) fieldRows(s *section, f field) []row {
 	case kList:
 		items := seqStrings(mapGet(m, leaf))
 		r.value = orZero(strings.Join(items, ", "), orZero(f.zero, "none"))
-		r.keys = "enter edit list"
+		r.keys, r.nav = "enter edit list", true
 		r.act = func(k string) tea.Cmd {
 			if k != "enter" {
 				return nil

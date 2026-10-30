@@ -68,7 +68,9 @@ func (sc *scheduleScreen) move(dd, ds int) {
 func (sc *scheduleScreen) Update(a *app, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.MouseMsg:
-		sc.mouse(msg)
+		if !a.readOnly {
+			sc.mouse(msg, a.bannerH())
+		}
 	case tea.KeyMsg:
 		sc.err = ""
 		if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 {
@@ -82,8 +84,8 @@ func (sc *scheduleScreen) Update(a *app, msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func (sc *scheduleScreen) mouse(m tea.MouseMsg) {
-	d, s := m.Y-gridY, m.X-gridX
+func (sc *scheduleScreen) mouse(m tea.MouseMsg, top int) {
+	d, s := m.Y-gridY-top, m.X-gridX
 	inside := d >= 0 && d < 7 && s >= 0 && s < slots
 	switch {
 	case m.Action == tea.MouseActionPress && m.Button == tea.MouseButtonLeft && inside:
@@ -99,7 +101,16 @@ func (sc *scheduleScreen) mouse(m tea.MouseMsg) {
 	}
 }
 
+// viewKeys are allowed read-only.
+var viewKeys = map[string]bool{"left": true, "h": true, "right": true, "l": true, "up": true, "k": true,
+	"down": true, "j": true, "shift+left": true, "H": true, "shift+right": true, "L": true,
+	"home": true, "0": true, "end": true, "$": true, "esc": true, "enter": true}
+
 func (sc *scheduleScreen) key(a *app, k string) {
+	if a.readOnly && !viewKeys[k] {
+		a.refuse()
+		return
+	}
 	switch k {
 	case "left", "h":
 		sc.move(0, -1)

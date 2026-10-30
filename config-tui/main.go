@@ -6,14 +6,16 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func main() {
 	inplace := flag.Bool("inplace", false, "overwrite the files instead of writing <file>.new")
+	nogate := flag.Bool("nogate", false, "allow editing without root (prototyping)")
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: config-tui [-inplace] <conf.yaml>\n")
+		fmt.Fprintf(os.Stderr, "usage: config-tui [-inplace] [-nogate] <conf.yaml>\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -30,7 +32,11 @@ func main() {
 	if *inplace {
 		suffix = ""
 	}
-	if _, err := tea.NewProgram(newApp(d, suffix), tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
+	a := newApp(d, suffix)
+	if os.Geteuid() != 0 && !*nogate {
+		a.readOnly, a.banner = true, gateBanner(d, time.Now())
+	}
+	if _, err := tea.NewProgram(a, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

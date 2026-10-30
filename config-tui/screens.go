@@ -98,7 +98,7 @@ func (a *app) textForm(title, initial, help string, validate func(string) error,
 
 // scheduleRow is one row summarising a schedule; enter opens the grid.
 func (a *app) scheduleRow(label, value, help string, open func() *scheduleScreen) row {
-	return row{label: label, value: value, help: help, keys: "enter edit schedule", act: func(k string) tea.Cmd {
+	return row{label: label, value: value, help: help, keys: "enter edit schedule", nav: true, act: func(k string) tea.Cmd {
 		if k == "enter" {
 			return a.push(open())
 		}
@@ -149,7 +149,7 @@ func (a *app) domainRows() []row {
 	rows := []row{header("Your domains")}
 	for _, e := range a.doc.Domains() {
 		rows = append(rows, row{label: getStr(e.Node, "name"), value: domainSummary(e.Node),
-			help: "In " + filepath.Base(e.File.Path) + ".", keys: "enter open · d delete",
+			help: "In " + filepath.Base(e.File.Path) + ".", keys: "enter open · d delete", nav: true,
 			act: func(k string) tea.Cmd {
 				switch {
 				case k == "enter":
@@ -244,7 +244,7 @@ func (a *app) programRows() []row {
 	list := path(a.doc.cfg(), "programs", "list")
 	if list != nil {
 		for _, n := range list.Content {
-			rows = append(rows, row{label: getStr(n, "name"), value: programSummary(n), keys: "enter open · d delete",
+			rows = append(rows, row{label: getStr(n, "name"), value: programSummary(n), keys: "enter open · d delete", nav: true,
 				act: func(k string) tea.Cmd {
 					switch {
 					case k == "enter":

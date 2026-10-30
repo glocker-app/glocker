@@ -47,6 +47,8 @@ type app struct {
 	status    string
 	statusErr bool
 	quitArmed bool
+	readOnly  bool   // not root: browse only
+	banner    string // shown above everything while read-only
 	w, h      int
 }
 
@@ -89,7 +91,20 @@ func (a *app) contentW() int { return max(a.w-sideW-3, 30) }
 // helpH is the height of the bottom panel: rule, help text, keys, status.
 const helpH = 4
 
-func (a *app) bodyH() int { return max(a.h-helpH, 6) }
+func (a *app) bodyH() int { return max(a.h-helpH-a.bannerH(), 6) }
+
+// bannerH is the lines the read-only banner takes (bar + gap).
+func (a *app) bannerH() int {
+	if a.banner == "" {
+		return 0
+	}
+	return 2
+}
+
+var bannerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("0")).Background(lipgloss.Color("3"))
+
+// refuse explains why an edit didn't happen.
+func (a *app) refuse() { a.setStatus(a.banner, true) }
 
 func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if ws, ok := msg.(tea.WindowSizeMsg); ok {
@@ -149,9 +164,13 @@ func (a *app) View() string {
 	} else {
 		text, keys = a.top().Help(a)
 	}
+	top := ""
+	if a.banner != "" {
+		top = bannerStyle.Width(a.w).Render(truncate(" "+a.banner, a.w)) + "\n\n"
+	}
 	rule := dimStyle.Render(strings.Repeat("─", a.w))
 	helpLine := lipgloss.NewStyle().MaxWidth(a.w).Render(text)
-	return lipgloss.NewStyle().Height(bh).Render(body) + "\n" + rule + "\n" + helpLine + "\n" +
+	return top + lipgloss.NewStyle().Height(bh).Render(body) + "\n" + rule + "\n" + helpLine + "\n" +
 		dimStyle.Render(truncate(keys, a.w)) + "\n" + a.statusLine()
 }
 
@@ -203,6 +222,10 @@ func (a *app) quit() tea.Cmd {
 }
 
 func (a *app) save() tea.Cmd {
+	if a.readOnly {
+		a.refuse()
+		return nil
+	}
 	if err := a.doc.Validate(); err != nil {
 		a.setStatus("Not saved: "+err.Error(), true)
 		return nil
@@ -247,6 +270,7 @@ type row struct {
 	value string
 	help  string
 	keys  string
+	nav   bool                     // act only opens another screen, allowed read-only
 	act   func(key string) tea.Cmd // nil: not actionable
 }
 
@@ -313,6 +337,10 @@ func (l *listScreen) Update(a *app, msg tea.Msg) tea.Cmd {
 		return a.save()
 	default:
 		if l.selectable(rows, l.cursor) && rows[l.cursor].act != nil {
+			if a.readOnly && !(rows[l.cursor].nav && k == "enter") {
+				a.refuse()
+				return nil
+			}
 			a.setStatus("", false)
 			cmd := rows[l.cursor].act(k)
 			l.clamp(l.build())

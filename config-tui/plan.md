@@ -39,7 +39,10 @@ editing UX. Does not modify any existing glocker code.
   7×48 half-hour grid: keyboard painting, box select, copy/paste a day, mouse
   drag. Windows are derived on save (fewest windows; overnight joined when
   shorter); untouched grids are not rewritten. Edits snap to 30 minutes.
-- Out of scope for now: loosening-vs-tightening friction, root gating.
+- Root gating: not root → read-only, with a banner saying when sudo next
+  opens (from the config's sudo windows). Browsing works; edits and save are
+  refused. `-nogate` turns this off for prototyping.
+- Out of scope for now: loosening-vs-tightening friction.
 
 ## Implementation steps
 
@@ -54,3 +57,4 @@ editing UX. Does not modify any existing glocker code.
 - [x] Program kill mode. Check: flipping moves the list between kill_windows and allow_windows.
 - [x] Window picker with week grid. Check: typed 22:00–06:00 renders as overnight; digit bursts handled (test).
 - [x] Schedule grid replaces the window list + picker. Check: sample sudo windows round-trip unchanged; overnight windows round-trip (tests); box-clearing weekday evenings writes the expected windows.
+- [x] Read-only gate for non-root. Check: banner shows the next sudo change; toggles, schedule painting and save are refused (tmux); window-time math tested.

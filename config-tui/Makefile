@@ -12,6 +12,9 @@ test: ## run the tests
 	go test ./...
 
 run: build ## edit $(CONF), writing <file>.new next to each changed file
+	./config-tui -nogate $(CONF)
+
+run-readonly: build ## open $(CONF) as a non-root user would see it (read-only)
 	./config-tui $(CONF)
 
-.PHONY: help build test run
+.PHONY: help build test run run-readonly
