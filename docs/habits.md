@@ -113,18 +113,29 @@ Glocker is a suite of 4 programs.
   if glocker is active and if not, report it to anyone. 
   
 
-The behaviour of Glocker is controlled by the config file in
-`conf/conf.yaml` in the source directory. There's a sample file
-(`conf/conf.yaml.sample`) there. You need to copy it, remove the
-`.sample` and edit it before installing glocker. Let's walk through
-the config file. It's a good way to understand what the
-capabilities of the program are. 
+The behaviour of Glocker is controlled by the config file. For an
+installed system, it's located at `/etc/glocker/config.yaml`. A sample
+is there in the source tree at `conf/conf.yaml.sample`. If you're
+installing from source, you can make a copy of it named `conf/conf.yaml` and edit
+it. When you install glocker using `make full-install`, it will copy
+this file to `/etc/glocker`.
+
+Let's walk through the config file. It's a good way to understand what
+the capabilities of the program are.
 
 
 ## The glocker config file. 
 
 We will cover the config file below. It's quite detailed. To get a
-quick initial file with decent basics, use `glocker -init`
+quick initial file with decent basics, use `glocker -init`. On a
+deployed system, you can edit or browse the config using a TUI
+interface by invoking `sudo glocker -edit` or just directly editing
+the `/etc/glocker/config.yaml` file. In all the paragraphs below where
+I say you need to edit the config file, you can manually edit it or
+use `sudo glocker -edit`. If you use the `-edit` feature and save the
+config, glocker restarts automatically to pick up the new
+config. If you've edited it manually you need to restart glocker using
+`sudo systemctl restart glocker`. 
 
 ::: {.video data-yt="Gr3iOxcVxH8" data-poster="video-config.jpg" data-title="Configuring glocker"}
 [Watch: configuring glocker](https://youtu.be/Gr3iOxcVxH8)
@@ -222,11 +233,13 @@ browser), an alarm can be configured using the
 Sometimes, you end up visiting a site which you decide you want to
 stay off of. You can use the `glocker -block` to block it on an ad-hoc
 basis. This will block the domain but it will not survive a
-reinstall. We will come back to this later. However, for many programs
+restart or reinstall (saving in `-edit` restarts glocker). We will come back to this later. However, for many programs
 (mostly browsers), resolved hostnames are cached. If you include a
 program inside the `domains.kill_on_block` list, glocker will kill
 them when you block a domain so that resolved domains will get
-cleared. It's a little inconvenient but it's effective. 
+cleared. It's a little inconvenient but it's effective. To make it
+permanent, you need to edit the config file. 
+
 
 #### Programs
 
@@ -261,7 +274,9 @@ how we unblock domains using `-unblock`. And similar to the domains,
 there's a `-block-app` command for `glocker` which will allow you to
 mark a program as not allowed. It will start killing it if it
 starts. And just like domains, this is not a persistent change. It
-will not survive a reinstall.
+will not survive a restart or reinstall (saving in `-edit` restarts
+glocker). If you want it to be, you need to edit the config file and
+add it there. 
 
 I add browsers which aren't supported by Glocker and which bypass
 local DNS lookup (e.g. like Mullvad) to this so that they're not
@@ -532,8 +547,8 @@ socket. In this section, we will discuss the common ones. You can use
 1. `-extend` - Allows temporary usage of a program outside of it's
    actual allowed window. Details are discussed above. 
    
-Restrictions made using the above commands don't survive a
-reinstall. If you want to make them permanent, you need to edit the
+Restrictions made using the above commands don't survive a restart
+or reinstall (saving in `-edit` restarts glocker). If you want to make them permanent, you need to edit the
 config file and restart glocker.
 
 ### Lifecycle
@@ -574,6 +589,24 @@ to facilitate pushing data during development. You can ignore it.
 
 ## Installation
 
+### Using the installer 
+
+On amd64, run `curl -fsSL https://glockerapp.com/glocker-installer.sh | sh`. It
+downloads and verifies the latest signed release, runs the setup wizard
+(`glocker -init`) and installs it, asking for sudo.
+
+There's no `conf/` directory with this install; the config lives in
+`/etc/glocker/`. Change it with `sudo glocker -edit` inside your sudo window
+(without sudo it opens read-only), or edit the files by hand and restart the
+daemon:
+
+    sudoedit /etc/glocker/config.yaml
+    sudo systemctl restart glocker
+
+Your own blocked sites are in `/etc/glocker/conf.d/personal-domains.yaml`.
+
+
+### Source install 
 Glocker is installed through the `Makefile` in the source directory. Run
 `make` on its own to see the list of available targets. Before your first
 install, run `make init` — it writes `conf/conf.yaml` from the sample and fills
@@ -586,21 +619,15 @@ in your login and desktop session (or copy `conf/conf.yaml.sample` to
 `make install` is what you'll use most of the time. It rebuilds all four
 binaries and reinstalls glocker in place. If glocker is already running, it
 stops the daemon, swaps in the new binaries and config, and starts it again.
-This is also how you apply changes after editing `conf/conf.yaml`.
+This is also how you apply changes after editing
+`conf/conf.yaml`. Remember, if you've edited your
+`/etc/glocker/config.yaml` and then run `make install`, the version in
+`conf/conf.yaml` will overwrite the one in `/etc/`.
 
 `make full-install` does the same thing but first refreshes the blocklists
 (see below). Use it for a first install or when you want the public lists
 pulled in fresh; for everyday config edits, `make install` is enough since
 it skips the (slow) blocklist download.
-
-If you installed with the one-line installer (`curl … | sh`), there's no
-`conf/` directory to work from. Edit the installed files directly, inside
-your sudo window, and restart the daemon:
-
-    sudoedit /etc/glocker/config.yaml
-    sudo systemctl restart glocker
-
-Your own blocked sites are in `/etc/glocker/conf.d/personal-domains.yaml`.
 
 The install command also installs a prebuilt and signed browser
 extension for firefox. This will prevent you from opening incognito
@@ -618,13 +645,15 @@ you do. The few commands that can disable enforcement or re-push data
 — `-uninstall`, `-resync` — still require real root, so run them with
 `sudo`.
 
+
 The blocklists are handled by `update_domains.py`, run for you by `make
 update-blocklists` (which `full-install` calls). It downloads several large
 public domain lists (StevenBlack, Hagezi, etc.) and writes them into
 `conf.d/` as YAML files, which `conf.yaml` pulls in via `!include`. This is
 what keeps the blocking list current without you having to maintain
 thousands of domains by hand. You can run it on its own whenever you want to
-update the lists.
+update the lists. You can also manage the files which are included by
+editing the config file.
 
 There is no `make uninstall`. Uninstallation is done directly through the
 glocker command, `sudo glocker -uninstall {reason}`, as described in the
@@ -836,7 +865,7 @@ so that even I can't read it — see the Encryption section below).
 Next, point your running glocker at the dashboard. The setup wizard does this
 for you: `glocker -init` asks whether to sync to a hosted glockpeek and takes
 the URL and token. If glocker is already installed, set them by hand in the
-`sync` stanza of `conf/conf.yaml` instead:
+`sync` stanza of the config file instead:
 
     sync:
       enabled: true
