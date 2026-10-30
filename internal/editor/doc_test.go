@@ -191,3 +191,37 @@ func TestSampleEditIsMinimal(t *testing.T) {
 		t.Errorf("diffs = %q", diffs)
 	}
 }
+
+func TestMigrationsCoverEveryVersion(t *testing.T) {
+	if len(migrations) != config.CurrentConfigVersion {
+		t.Fatalf("%d migration steps for config version %d", len(migrations), config.CurrentConfigVersion)
+	}
+}
+
+func TestMigrateStampsVersionOnce(t *testing.T) {
+	d, err := Load(setup(t, true))
+	must(t, err)
+	from, err := d.Migrate()
+	must(t, err)
+	if from != 0 {
+		t.Fatalf("from = %d", from)
+	}
+	ch, err := d.Changes()
+	must(t, err)
+	if len(ch) != 1 || string(ch[0].New) != "config_version: 1\n"+mainYAML {
+		t.Fatalf("changes = %+v", ch)
+	}
+	_, err = d.Write(ch, "")
+	must(t, err)
+	d, err = Load(d.Main.Path)
+	must(t, err)
+	if v, _ := d.Version(); v != config.CurrentConfigVersion {
+		t.Fatalf("version = %d", v)
+	}
+	if _, err := d.Migrate(); err != nil {
+		t.Fatal(err)
+	}
+	if ch, _ := d.Changes(); len(ch) != 0 {
+		t.Fatalf("current config changed on migrate: %+v", ch)
+	}
+}

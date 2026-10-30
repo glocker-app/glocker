@@ -84,7 +84,8 @@ func hasControlChar(s string) bool {
 
 // printGroupedUsage renders `glocker -h` in labelled sections instead of one flat
 // alphabetical list. Descriptions come from the flag definitions (so they stay in
-// one place); -daemon and -conf are internal and intentionally omitted.
+// one place); -daemon, -conf and -replace-config are internal and intentionally
+// omitted.
 func printGroupedUsage() {
 	out := flag.CommandLine.Output()
 	fmt.Fprintln(out, "glocker — a Linux distraction blocker.")
@@ -95,7 +96,7 @@ func printGroupedUsage() {
 		names []string
 	}{
 		{"Status & info", []string{"status", "info", "version"}},
-		{"Setup & lifecycle", []string{"init", "install", "uninstall", "note", "purge", "connect", "force"}},
+		{"Setup & lifecycle", []string{"init", "install", "edit", "uninstall", "note", "purge", "connect", "force"}},
 		{"Runtime controls", []string{"block", "block-app", "unblock", "add-keyword", "extend", "panic", "lock"}},
 		{"Sync", []string{"resync"}},
 		{"Diagnostics", []string{"check"}},
@@ -123,6 +124,7 @@ func main() {
 	initFlag := flag.Bool("init", false, "Generate a starting config from the sample: fills in your login (and optional hosted dashboard + buddy email), keeping the sample's comments. Won't overwrite an existing config. Run as a normal user, before -install; after install, change settings with -edit.")
 	editFlag := flag.Bool("edit", false, "Edit the installed config in a terminal UI. Saving needs sudo, so it works inside your sudo window; without sudo it opens read-only. Saving restarts glocker.")
 	confFlag := flag.String("conf", "conf/conf.yaml", "source config for -install (its dir also holds conf.d/); lets the config live outside the source tree")
+	replaceConfigFlag := flag.Bool("replace-config", false, "With -install: replace an installed config with -conf without asking (the tarball installer passes it after the user picks a fresh config in -init)")
 	uninstallReason := flag.String("uninstall", "", "Uninstall Glocker and revert all changes (provide reason)")
 	uninstallNote := flag.String("note", "", "Optional free-form note to attach to -uninstall (e.g. context for the reason)")
 	daemonFlag := flag.Bool("daemon", false, "Run as daemon (for systemd service)")
@@ -166,6 +168,12 @@ func main() {
 
 	// Generate a starting config from the commented sample (normal user, pre-install).
 	if *initFlag {
+		// On an upgrade through the tarball installer, keep the installed config
+		// unless the user wants a fresh one; -install then keeps (and converts) it.
+		if os.Getenv("GLOCKER_INSTALLER") != "" && !wantFreshConfig() {
+			fmt.Printf("Keeping your installed config (%s).\n", config.GlockerConfigFile)
+			return
+		}
 		res, err := runInit(*confFlag)
 		if err != nil {
 			log.Fatalf("init failed: %v", err)
@@ -245,7 +253,7 @@ func main() {
 		if !install.RunningAsRoot(true) {
 			log.Fatal("Installation must be run as root (use sudo)")
 		}
-		if err := install.InstallGlocker(*confFlag); err != nil {
+		if err := install.InstallGlocker(*confFlag, *replaceConfigFlag); err != nil {
 			log.Fatalf("Installation failed: %v", err)
 		}
 		return

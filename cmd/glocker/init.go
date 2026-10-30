@@ -153,6 +153,20 @@ func lineOf(text, stanza, key string) int {
 	return 0
 }
 
+// wantFreshConfig reports whether -init should write a new config: always when
+// glocker isn't installed yet, else only if the user asks for one. With no
+// terminal the installed config is kept.
+func wantFreshConfig() bool {
+	if _, err := os.Stat(config.GlockerConfigFile); err != nil {
+		return true
+	}
+	if !stdinIsTTY() {
+		return false
+	}
+	q := fmt.Sprintf("glocker is already installed. Keep your config (%s), or start a new one with the setup wizard? [K/n]: ", config.GlockerConfigFile)
+	return strings.HasPrefix(strings.ToLower(ask(bufio.NewReader(os.Stdin), q, "k")), "n")
+}
+
 // seedPersonalDomains copies conf.d/personal-domains.yaml.sample to
 // conf.d/personal-domains.yaml when the latter is absent, so the user has an
 // editable, update_domains.py-safe file for their own blocked sites.

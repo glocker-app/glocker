@@ -17,6 +17,12 @@ const (
 	// GlockerConfDDir holds the generated blocklist files that config.yaml pulls
 	// in via `!include conf.d/<file>`. Installed alongside the config.
 	GlockerConfDDir = "/etc/glocker/conf.d"
+	// ConfigBackupDir holds dated copies of the installed config, taken by
+	// -install before it converts or replaces it.
+	ConfigBackupDir = "/var/lib/glocker/config-backups"
+	// ConfigChecksumFile records the installed config as -install left it, so a
+	// later install can tell whether it was edited since.
+	ConfigChecksumFile = "/var/lib/glocker/config.sha256"
 
 	// DefaultGlockpeekURL is where the syncer ships records when Sync.GlockpeekURL
 	// is unset — the local glockpeek on its default port.
@@ -107,6 +113,12 @@ type PanicConfig struct {
 	Command  string `yaml:"command"`
 	Duration int    `yaml:"duration"` // minutes to stay suspended (0 → 30)
 }
+
+// CurrentConfigVersion is the config format this build reads. Bump it only for
+// a change an older config can't load as-is (a rename, removal or change of
+// meaning), and add the matching step to internal/editor/migrate.go. New keys
+// are optional with a default and don't bump it.
+const CurrentConfigVersion = 1
 
 // LogDir holds all of glocker's runtime log files (mutable state → /var).
 const LogDir = "/var/log/glocker"
@@ -294,6 +306,10 @@ type ProgramsConfig struct {
 // blocking features into their own stanzas (domains, programs, content) and
 // keeps the self-contained ones flat.
 type Config struct {
+	// ConfigVersion is the config's format version (absent = 0). It changes only
+	// on a backward-incompatible change; -install converts older configs.
+	ConfigVersion int `yaml:"config_version"`
+
 	LogLevel string `yaml:"log_level"`
 	// User is the human account this machine belongs to. It's a machine-wide
 	// identity used by sudoers (whose sudo to restrict) and the usage monitor

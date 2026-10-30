@@ -1,4 +1,4 @@
-.PHONY: test-deps build-all init install full-install update-blocklists test release migrate deploy deploy-full deploy-rules sign-extensions deploy-extensions release-extensions sign-firefox-extension deploy-firefox-extension release-firefox-extension sign-chrome-extension deploy-chrome-extension release-chrome-extension db-backup help
+.PHONY: dev-tarball test-deps build-all init install full-install update-blocklists test release migrate deploy deploy-full deploy-rules sign-extensions deploy-extensions release-extensions sign-firefox-extension deploy-firefox-extension release-firefox-extension sign-chrome-extension deploy-chrome-extension release-chrome-extension db-backup help
 
 .DEFAULT_GOAL:=help
 help: ## display this help message
@@ -253,7 +253,25 @@ RELEASE_DIR := dist/release
 # source tree. It rides the same SHA256SUMS + minisign signature as the binaries.
 TARBALL_NAME  := glocker-$(VERSION)-linux-amd64
 TARBALL       := $(TARBALL_NAME).tar.gz
-TARBALL_STAGE := $(RELEASE_DIR)/$(TARBALL_NAME)
+# Stage the binaries in $(1) with the bundled blocklists, conf sample, extras and
+# install.sh, and pack $(1)/$(TARBALL). Shared by release and dev-tarball.
+define pack_tarball
+	rm -rf $(1)/$(TARBALL_NAME) && mkdir -p $(1)/$(TARBALL_NAME)/conf/conf.d $(1)/$(TARBALL_NAME)/extras $(1)/$(TARBALL_NAME)/extensions
+	@# glockpeek (the local tracker/dashboard) is left out — it's ~half the size and
+	@# hosted users sync to my.glockerapp.com. Self-hosters build it from source.
+	cp $(1)/glocker $(1)/glocklock $(1)/glockdoc $(1)/$(TARBALL_NAME)/
+	cp conf/conf.yaml.sample $(1)/$(TARBALL_NAME)/conf/
+	cp conf/conf.d/domains-*.yaml conf/conf.d/personal-domains.yaml.sample $(1)/$(TARBALL_NAME)/conf/conf.d/
+	cp extras/glocker.service extras/lock-background.png $(1)/$(TARBALL_NAME)/extras/
+	@# Usage-tracking bridges for GNOME/Wayland and KDE/KWin: glocker -install copies
+	@# them into the desktop user's home (relative to this tarball root), so without
+	@# them a curl|sh install can't track windows on GNOME or KDE.
+	cp -r extensions/gnome extensions/kwin $(1)/$(TARBALL_NAME)/extensions/
+	install -m 0755 scripts/install.sh $(1)/$(TARBALL_NAME)/install.sh
+	tar -C $(1) -czf $(1)/$(TARBALL) $(TARBALL_NAME)
+	rm -rf $(1)/$(TARBALL_NAME)
+endef
+
 release: ## Build + checksum + minisign the release binaries from the tag on HEAD (needs minisign + your key)
 	@command -v minisign >/dev/null || { echo "install minisign first — https://jedisct1.github.io/minisign/"; exit 1; }
 	@git describe --tags --exact-match HEAD >/dev/null 2>&1 || { echo "HEAD isn't tagged — tag the release commit first: git tag -a vX.Y.Z -m vX.Y.Z"; exit 1; }
@@ -270,21 +288,16 @@ release: ## Build + checksum + minisign the release binaries from the tag on HEA
 	@if [ ! -f conf/conf.yaml ]; then cp conf/conf.yaml.sample conf/conf.yaml; : > $(RELEASE_DIR)/.confmade; fi
 	python3 scripts/update_domains.py all
 	@if [ -f $(RELEASE_DIR)/.confmade ]; then rm -f conf/conf.yaml $(RELEASE_DIR)/.confmade; fi
-	rm -rf $(TARBALL_STAGE) && mkdir -p $(TARBALL_STAGE)/conf/conf.d $(TARBALL_STAGE)/extras $(TARBALL_STAGE)/extensions
-	@# glockpeek (the local tracker/dashboard) is left out — it's ~half the size and
-	@# hosted users sync to my.glockerapp.com. Self-hosters build it from source.
-	cp $(RELEASE_DIR)/glocker $(RELEASE_DIR)/glocklock $(RELEASE_DIR)/glockdoc $(TARBALL_STAGE)/
-	cp conf/conf.yaml.sample $(TARBALL_STAGE)/conf/
-	cp conf/conf.d/domains-*.yaml conf/conf.d/personal-domains.yaml.sample $(TARBALL_STAGE)/conf/conf.d/
-	cp extras/glocker.service extras/lock-background.png $(TARBALL_STAGE)/extras/
-	@# Usage-tracking bridges for GNOME/Wayland and KDE/KWin: glocker -install copies
-	@# them into the desktop user's home (relative to this tarball root), so without
-	@# them a curl|sh install can't track windows on GNOME or KDE.
-	cp -r extensions/gnome extensions/kwin $(TARBALL_STAGE)/extensions/
-	install -m 0755 scripts/install.sh $(TARBALL_STAGE)/install.sh
-	tar -C $(RELEASE_DIR) -czf $(RELEASE_DIR)/$(TARBALL) $(TARBALL_NAME)
-	rm -rf $(TARBALL_STAGE)
+	$(call pack_tarball,$(RELEASE_DIR))
 	cd $(RELEASE_DIR) && sha256sum glocker glocklock glockpeek glockdoc $(TARBALL) > SHA256SUMS
 	minisign -Sm $(RELEASE_DIR)/SHA256SUMS -s $(MINISIGN_KEY)
 	@echo "✓ signed $(VERSION) — publish with:"
 	@echo "  gh release create $(VERSION) $(RELEASE_DIR)/* -R glocker-app/glocker --target master --title $(VERSION)"
+
+DEV_DIR := dist/dev
+dev-tarball: test-deps ## Build an unsigned install tarball into dist/dev (for VM tests; uses the blocklists already in conf/conf.d)
+	@ls conf/conf.d/domains-*.yaml >/dev/null 2>&1 || { echo "no blocklists in conf/conf.d — run make update-blocklists first"; exit 1; }
+	rm -rf $(DEV_DIR) && mkdir -p $(DEV_DIR)
+	for b in glocker glocklock glockdoc; do CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GOLDFLAGS) -trimpath -o $(DEV_DIR)/$$b ./cmd/$$b || exit 1; done
+	$(call pack_tarball,$(DEV_DIR))
+	@echo "✓ $(DEV_DIR)/$(TARBALL)"

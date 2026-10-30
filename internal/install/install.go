@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"glocker/internal/config"
+	"glocker/internal/editor"
 	"glocker/internal/envcheck"
 	"glocker/internal/precheck"
 	"glocker/internal/utils"
@@ -74,27 +75,22 @@ func logOpenBypassRoutes(managedUser string) {
 // confPath is the source config to install (its directory also holds conf.d/).
 // Callers pass a path so the config can live outside the source tree (e.g. a
 // private ops repo) while code assets (extras/*.service) stay relative to CWD.
-func InstallGlocker(confPath string) error {
+// On an upgrade the installed config is kept unless replaceConfig is set or it
+// is unchanged since the last install (see configplan.go).
+func InstallGlocker(confPath string, replaceConfig bool) error {
 	log.Println("╔════════════════════════════════════════════════╗")
 	log.Println("║              GLOCKER FULL INSTALL              ║")
 	log.Println("╚════════════════════════════════════════════════╝")
 	log.Println()
 
-	// Step 1: Validate config file before installation. LoadFile resolves any
-	// !include directives (conf.d/ list files) relative to the config's dir first.
-	log.Println("Validating configuration file...")
-	if _, statErr := os.Stat(confPath); os.IsNotExist(statErr) {
-		return fmt.Errorf("%s not found — run `glocker -init` (or `make init`) to create one from the sample", confPath)
-	}
-	cfgPtr, err := config.LoadFile(confPath)
+	// Step 1: Decide which config to install, convert it to the current
+	// config_version and validate it — all before anything on the machine changes.
+	log.Println("Checking the configuration...")
+	plan, err := planConfig(confPath, replaceConfig, systemConfigPaths, askTTY)
 	if err != nil {
-		return fmt.Errorf("reading/parsing %s: %w", confPath, err)
+		return err
 	}
-	cfg := *cfgPtr
-
-	if err := config.ValidateConfig(&cfg); err != nil {
-		return fmt.Errorf("configuration validation failed: %w", err)
-	}
+	cfg := *plan.cfg
 	log.Println("✓ Configuration file is valid")
 
 	// Preflight the host capabilities glocker's enabled features need. Abort if a
@@ -146,19 +142,26 @@ func InstallGlocker(confPath string) error {
 	// config's group. Idempotent; the user is added to it later (step 4a).
 	glockerGID := ensureGlockerGroup()
 
-	// Step 3: Copy config file from confPath to target location
-	log.Printf("Copying config file from %s to %s", confPath, config.GlockerConfigFile)
-
-	// Create config directory if it doesn't exist
+	// Step 3: Install the config planned in step 1.
 	configDir := filepath.Dir(config.GlockerConfigFile)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
-
-	if err := utils.CopyFile(confPath, config.GlockerConfigFile); err != nil {
-		return fmt.Errorf("failed to copy config file: %w", err)
+	backup, err := plan.apply()
+	if err != nil {
+		return fmt.Errorf("failed to install config: %w", err)
 	}
-	log.Printf("✓ Config file copied to %s", config.GlockerConfigFile)
+	if backup != "" {
+		log.Printf("✓ Backed up the previous config to %s", backup)
+	}
+	switch {
+	case plan.replace:
+		log.Printf("✓ Installed %s to %s", confPath, config.GlockerConfigFile)
+	case plan.from != config.CurrentConfigVersion:
+		log.Printf("✓ Kept %s, converted from config version %d to %d", config.GlockerConfigFile, plan.from, config.CurrentConfigVersion)
+	default:
+		log.Printf("✓ Kept %s", config.GlockerConfigFile)
+	}
 
 	// The config carries sync.token (a hosted-account bearer credential), so it must
 	// not be world-readable. But the managed user needs to read it for `-info` and
@@ -179,6 +182,14 @@ func InstallGlocker(confPath string) error {
 	// Step 3b: Install the generated conf.d/ blocklists that the config pulls in
 	// via !include.
 	installConfD(filepath.Join(filepath.Dir(confPath), "conf.d"))
+	if err := recordChecksum(systemConfigPaths); err != nil {
+		log.Printf("Warning: couldn't record the config checksum: %v", err)
+	}
+	// Reload from disk so the rest of the install sees the config as installed,
+	// generated blocklists included.
+	if c, err := config.LoadFile(config.GlockerConfigFile); err == nil {
+		cfg = *c
+	}
 
 	// Step 4: Install binary. Atomically replace (temp file + rename) so this works
 	// even when the old binary is currently running — a plain copy would fail with
@@ -410,8 +421,10 @@ func InstallGlocker(confPath string) error {
 }
 
 // installConfD copies the generated conf.d/ blocklist files (the ones the config
-// pulls in with !include) to /etc/glocker/conf.d/, root-owned. No-op if conf/conf.d/ is absent
-// (a config with only inline domains). Best-effort — warnings, not failures.
+// pulls in with !include) to /etc/glocker/conf.d/, root-owned, replacing the old
+// ones. Editable includes (personal-domains.yaml) are left to the config plan.
+// No-op if conf/conf.d/ is absent (a config with only inline domains).
+// Best-effort — warnings, not failures.
 func installConfD(srcDir string) {
 	entries, err := os.ReadDir(srcDir)
 	if err != nil {
@@ -426,7 +439,7 @@ func installConfD(srcDir string) {
 	}
 	installed := 0
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") || !editor.IsGenerated(filepath.Join(srcDir, e.Name())) {
 			continue
 		}
 		dst := filepath.Join(config.GlockerConfDDir, e.Name())

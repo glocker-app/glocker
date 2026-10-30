@@ -66,10 +66,11 @@ glocker -uninstall "reason"
   - `SetupLogging()` - Configures log output
 - **`persist.go`** - Input validators for names accepted over the socket
   - `ValidateDomainName()` / `ValidateProgramName()` - used by `-block` / `-block-app`
-  - Note: runtime commands (`-block`, `-block-app`, `-add-keyword`) apply **in memory only**; they do NOT write the config file. `conf/conf.yaml` (plus the includes under `conf/conf.d/`) is the source of truth, reinstalled onto `/etc/glocker/config.yaml` by `make install` / `make full-install`.
+  - Note: runtime commands (`-block`, `-block-app`, `-add-keyword`) apply **in memory only**; they do NOT write the config file. The installed `/etc/glocker/config.yaml` (plus its editable includes) is the user's config; see "Config versioning and upgrades" for when `-install` replaces it.
 - **`include.go`** - Include mechanism: `conf/conf.yaml` pulls in blocklist files from `conf/conf.d/*.yaml`
 - **`glockpeek.go`** - Loads glockpeek's separate server config (`GlockpeekConfig`)
 - **`validator.go`** - `ValidateConfig()` - validates time windows and required fields
+- **`types.go`** also holds `CurrentConfigVersion` (see "Config versioning and upgrades")
 
 ### CLI Commands (`internal/cli/`)
 - **`commands.go`** - Command processors for socket requests
@@ -123,6 +124,8 @@ glocker -uninstall "reason"
     creates the `glocker` group and adds `cfg.User` to it; glockdoc watchdog timer/cron
   - `RunningAsRoot()` - Privilege checks
   - Clears the `chattr +i` flag older versions set (`legacyImmutablePaths`); glocker no longer sets it
+- **`configplan.go`** - What `-install` does with the config: keep, replace or convert
+  the installed one, backups and the install checksum (see "Config versioning and upgrades")
 - **`uninstall.go`** - `RestoreSystemChanges()` reverts all system modifications;
   `PurgeWatchdog()` for `-purge`
 - **`gnome.go`** - Installs/enables the GNOME Shell window-tracking extension for the user
@@ -282,8 +285,8 @@ sudo glocker -add-keyword "keyword1,keyword2"
 ```
 There is no runtime config-reload command. `sudo glocker -edit` restarts the daemon
 after a save; a source checkout applies `conf/conf.yaml` edits with a reinstall
-(`make install` / `make full-install`, which restarts the daemon) — which overwrites
-`/etc/glocker/config.yaml`, including anything changed with `-edit`.
+(`make install` / `make full-install`, which restarts the daemon). If the installed
+config was edited since the last install, the reinstall asks before replacing it.
 
 ### To test the program, 
 #### Install new version
@@ -397,7 +400,8 @@ type ForbiddenProgram struct {
 
 **Installation** (`glocker -install`):
 1. Copies binary to `/usr/local/bin/glocker`, root-owned 0755 (internal/install/install.go)
-2. Copies `conf/conf.yaml` (or `-conf <path>`) to `/etc/glocker/config.yaml`, plus `conf.d/`
+2. Installs the config per `configplan.go` (fresh: `conf/conf.yaml` or `-conf <path>`;
+   upgrade: keep/convert/replace), plus the generated `conf.d/` blocklists
 3. Creates the `glocker` group and adds `cfg.User` to it (takes effect on next login)
 4. Installs systemd services from `extras/glocker.service` and `extras/glockpeek.service`
 
@@ -616,6 +620,32 @@ Server started by internal/web/server.go:StartWebTrackingServer()
 3. On violation: `POST http://127.0.0.1/report` with JSON payload
 4. Glocker logs to file and increments violation counter (internal/web/handlers.go)
 5. If violations exceed threshold: executes lock command (internal/monitoring/violations.go)
+
+## Config versioning and upgrades
+
+- `config_version` (top of the main config; absent = 0) is the config **format**
+  version, covering the whole config including editable includes.
+  `config.CurrentConfigVersion` is what this build reads.
+- **New keys are always optional with a default** (like nullable columns) and do
+  NOT bump the version. Bump it only for a rename, removal or change of meaning,
+  and add the step to `migrations` in `internal/editor/migrate.go` (step i turns
+  version i into i+1 on the node tree, so comments survive). A test checks there's
+  one step per version.
+- `-install` (`internal/install/configplan.go`) decides before touching anything:
+  - nothing installed → install the source config (converted if older);
+  - installed config newer than the build → abort (no downgrades); no conversion
+    path or invalid after converting → abort; both say how to go ahead;
+  - otherwise keep the installed config, converting it in place, unless a source
+    config is given and either `-replace-config` is set, it matches the installed
+    one, or the installed one is unchanged since the last install
+    (`/var/lib/glocker/config.sha256`) — else it asks on /dev/tty (no tty = keep).
+- Anything that changes the installed config is backed up first to
+  `/var/lib/glocker/config-backups/<date>-<n>/` (newest 6 kept).
+- Generated blocklists (`update_domains.py` marker) are always replaced; editable
+  includes like `personal-domains.yaml` only travel with the main config.
+- The tarball `install.sh`: `-init` asks keep/fresh when a config is installed
+  (keep writes nothing), then `-install -replace-config`.
+- `make dev-tarball` builds an unsigned tarball into `dist/dev/` for VM tests.
 
 ## Configuration Notes
 

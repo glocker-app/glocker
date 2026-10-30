@@ -24,6 +24,9 @@
 # This file is the agent's; that file is the server's. On a personal desktop you
 # may not need one at all (glockpeek defaults to local mode + sqlite).
 
+# Config format version. glocker -install converts older configs; leave it alone.
+config_version: 1
+
 # ── General ───────────────────────────────────────────────────────────────────
 # Log verbosity: debug | info | warn | error
 log_level: "info"

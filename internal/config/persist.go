@@ -2,9 +2,8 @@ package config
 
 // Input validation for names accepted over the socket protocol. Runtime
 // commands (-block, -block-app, -add-keyword) apply their changes in memory
-// only; nothing here writes the config file, so the on-disk config
-// (conf/conf.yaml, copied to /etc/glocker/config.yaml at install) stays the
-// single source of truth and can't drift from a `make full-install`.
+// only; nothing here writes the config file, so the installed config
+// (/etc/glocker/config.yaml) stays the single source of truth.
 
 import (
 	"fmt"

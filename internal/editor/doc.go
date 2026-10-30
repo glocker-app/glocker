@@ -2,6 +2,8 @@ package editor
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -68,7 +70,7 @@ func Load(path string) (*Doc, error) {
 		}
 		included[filepath.Clean(n.Value)] = true
 		full := filepath.Join(d.BaseDir, n.Value)
-		if isGenerated(full) {
+		if IsGenerated(full) {
 			d.Packs = append(d.Packs, newPack(full, n.Value, true))
 			continue
 		}
@@ -83,7 +85,7 @@ func Load(path string) (*Doc, error) {
 	sort.Strings(matches)
 	for _, full := range matches {
 		rel, _ := filepath.Rel(d.BaseDir, full)
-		if !included[rel] && isGenerated(full) {
+		if !included[rel] && IsGenerated(full) {
 			d.Packs = append(d.Packs, newPack(full, rel, false))
 		}
 	}
@@ -121,7 +123,8 @@ func loadFile(path, rel string) (*File, error) {
 	return f, err
 }
 
-func isGenerated(path string) bool {
+// IsGenerated reports whether path is a blocklist written by update_domains.py.
+func IsGenerated(path string) bool {
 	fh, err := os.Open(path)
 	if err != nil {
 		return false
@@ -243,9 +246,17 @@ func (d *Doc) Changes() ([]Change, error) {
 }
 
 // Validate runs glocker's own parser and validator over the edited config.
-// Editable includes are inlined; generated packs are left out since they're
-// large and machine-written.
 func (d *Doc) Validate() error {
+	cfg, err := d.Parse()
+	if err != nil {
+		return err
+	}
+	return config.ValidateConfig(cfg)
+}
+
+// Parse decodes the edited config. Editable includes are inlined; generated
+// packs are left out since they're large and machine-written.
+func (d *Doc) Parse() (*config.Config, error) {
 	root := clone(d.Main.Root)
 	list := path(body(root), "domains", "list")
 	if list != nil {
@@ -265,13 +276,39 @@ func (d *Doc) Validate() error {
 	}
 	data, err := encode(root)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	cfg, err := config.ParseConfig(data, d.BaseDir)
-	if err != nil {
-		return err
+	return config.ParseConfig(data, d.BaseDir)
+}
+
+// Contents is every file (main first, then editable includes) as it would be
+// written now: unchanged files as they are on disk, changed ones with the edit
+// replayed onto the original text.
+func (d *Doc) Contents() ([]Change, error) {
+	var out []Change
+	for _, f := range d.files() {
+		b, err := encode(f.Root)
+		if err != nil {
+			return nil, err
+		}
+		data := f.orig
+		if data == nil || !bytes.Equal(b, f.baseline) {
+			data = preserve(f.orig, f.baseline, b)
+		}
+		out = append(out, Change{f, data, b})
 	}
-	return config.ValidateConfig(cfg)
+	return out, nil
+}
+
+// Fingerprint hashes the files as they were loaded (main and editable
+// includes), so two configs or two points in time can be compared.
+func (d *Doc) Fingerprint() string {
+	h := sha256.New()
+	for _, f := range d.files() {
+		fmt.Fprintf(h, "%s\x00%d\x00", f.Rel, len(f.orig))
+		h.Write(f.orig)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // Write saves each change atomically, to path+suffix or in place if suffix is "".
