@@ -1,6 +1,44 @@
 package install
 
-import "testing"
+import (
+	"encoding/json"
+	"slices"
+	"testing"
+)
+
+func TestAddShellVersion(t *testing.T) {
+	base := []byte(`{"uuid":"x","shell-version":["48","49"],"url":"u"}`)
+
+	// A newer major is appended and the rest of the metadata is preserved.
+	out, changed, err := addShellVersion(base, 50)
+	if err != nil {
+		t.Fatalf("addShellVersion: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected changed=true for a new major")
+	}
+	var meta map[string]any
+	if err := json.Unmarshal(out, &meta); err != nil {
+		t.Fatalf("result is not valid JSON: %v", err)
+	}
+	if got := toStringList(meta["shell-version"]); !slices.Contains(got, "50") || !slices.Contains(got, "48") {
+		t.Errorf("shell-version = %v, want 48 and 50 present", got)
+	}
+	if meta["uuid"] != "x" || meta["url"] != "u" {
+		t.Errorf("other fields not preserved: %+v", meta)
+	}
+
+	// An already-covered major is a no-op (no rewrite churn).
+	if _, changed, err := addShellVersion(base, 49); err != nil || changed {
+		t.Errorf("addShellVersion(49) changed=%v err=%v, want false/nil", changed, err)
+	}
+
+	// Unknown version (0) never changes the list; handled by syncShellVersion,
+	// but guard the pure function too.
+	if _, changed, _ := addShellVersion(base, 0); changed {
+		t.Error("addShellVersion(0) should not change the list")
+	}
+}
 
 func TestAppendEnabledExtension(t *testing.T) {
 	const uuid = "glocker-usage@glocker.app"

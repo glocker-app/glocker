@@ -1,7 +1,10 @@
 package install
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -31,8 +34,9 @@ func InstallGnomeExtension(cfg *config.Config) {
 	if _, err := exec.LookPath("gnome-shell"); err != nil {
 		return // not a GNOME system
 	}
-	if v := gnomeShellMajor(); v > 0 && v < 45 {
-		log.Printf("GNOME extension: shell %d is older than 45 (needs a legacy build); skipping", v)
+	major := gnomeShellMajor()
+	if major > 0 && major < 45 {
+		log.Printf("GNOME extension: shell %d is older than 45 (needs a legacy build); skipping", major)
 		return
 	}
 	username := desktopUser(cfg)
@@ -51,13 +55,28 @@ func InstallGnomeExtension(cfg *config.Config) {
 		log.Printf("GNOME extension: install failed (%v)", err)
 		return
 	}
-	log.Printf("✓ GNOME window-tracking extension installed for %s", username)
+	// GNOME marks an extension OUT OF DATE and refuses to load it when the running
+	// shell's major isn't in shell-version (major-only match on 40+). Rewrite the
+	// copied metadata to include the detected major so a newer GNOME than the
+	// shipped list still loads it, instead of silently disabling tracking.
+	if err := syncShellVersion(dst, major, u); err != nil {
+		log.Printf("GNOME extension: couldn't match shell-version to GNOME %d (%v); it may show as out of date", major, err)
+	}
+
+	if major > 0 {
+		log.Printf("✓ GNOME window-tracking extension installed for %s (GNOME %d)", username, major)
+	} else {
+		log.Printf("✓ GNOME window-tracking extension installed for %s", username)
+	}
 
 	if err := enableExtensionForUser(username, u.Uid); err != nil {
 		log.Printf("  couldn't auto-enable it (%v)", err)
 		log.Printf("  enable it in your GNOME session: gnome-extensions enable %s", gnomeExtUUID)
 	}
-	log.Println("  On Wayland, log out and back in to activate window tracking.")
+	// On Wayland the shell can't hot-load a new extension; it activates on the next
+	// session start. Whether it then actually tracks is reported by the usage agent
+	// at runtime (it logs the backend it selected), not guessable here.
+	log.Println("  On Wayland, log out and back in to load it.")
 }
 
 // desktopUser is the user whose GNOME session to target: the configured
@@ -89,6 +108,86 @@ func parseGnomeMajor(s string) int {
 		}
 	}
 	return 0
+}
+
+// syncShellVersion ensures the copied extension declares the running GNOME major
+// in shell-version, rewriting metadata.json in the user's home if needed. The
+// file is read as root (which can read it) but written back as the user (it's on
+// a user-owned path). Best-effort: on any error the shipped list stands.
+func syncShellVersion(dst string, major int, u *user.User) error {
+	if major <= 0 {
+		return nil // couldn't detect the version; leave the shipped list
+	}
+	path := filepath.Join(dst, "metadata.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	out, changed, err := addShellVersion(raw, major)
+	if err != nil || !changed {
+		return err
+	}
+	return writeFileAsUser(path, out, u)
+}
+
+// addShellVersion returns metadata JSON with major added to shell-version (if
+// absent) and whether it changed. Pure, so it's unit-testable without a GNOME
+// environment.
+func addShellVersion(raw []byte, major int) ([]byte, bool, error) {
+	if major <= 0 {
+		return raw, false, nil
+	}
+	var meta map[string]any
+	if err := json.Unmarshal(raw, &meta); err != nil {
+		return nil, false, err
+	}
+	versions := toStringList(meta["shell-version"])
+	want := strconv.Itoa(major)
+	if slices.Contains(versions, want) {
+		return raw, false, nil
+	}
+	meta["shell-version"] = append(versions, want)
+	out, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return nil, false, err
+	}
+	return append(out, '\n'), true, nil
+}
+
+// toStringList coerces a JSON array value into []string, dropping non-strings.
+func toStringList(v any) []string {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, e := range arr {
+		if s, ok := e.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// writeFileAsUser writes content to a user-owned path AS THE USER (via a
+// uid-dropped tee), same symlink-safety argument as copyExtensionTo: as the user
+// a redirected write can only hit something they could already write.
+func writeFileAsUser(path string, content []byte, u *user.User) error {
+	uid, err1 := strconv.Atoi(u.Uid)
+	gid, err2 := strconv.Atoi(u.Gid)
+	if err1 != nil || err2 != nil {
+		return fmt.Errorf("bad uid/gid for %s: %v / %v", u.Username, err1, err2)
+	}
+	c := exec.Command("tee", path)
+	c.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid)}}
+	c.Stdin = bytes.NewReader(content)
+	c.Stdout = io.Discard
+	var errb bytes.Buffer
+	c.Stderr = &errb
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("write %s as %s: %w: %s", path, u.Username, err, strings.TrimSpace(errb.String()))
+	}
+	return nil
 }
 
 // copyExtensionTo installs the extension source into the user's home. It runs

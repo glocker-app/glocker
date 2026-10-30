@@ -2,6 +2,7 @@
   "uuid": "glocker-usage@glocker.app",
   "name": "Glocker Usage",
   "description": "Exposes the current window list (app class, title, focus) over a private session-bus name so glocker's usage tracker can read it. GNOME/Mutter blocks apps from querying this directly on Wayland; this read-only bridge fills that gap. No data leaves the machine.",
-  "shell-version": ["45", "46", "47", "48"],
+  "shell-version": ["45", "46", "47", "48", "49", "50"],
+  "session-modes": ["user", "unlock-dialog"],
   "url": "https://glockerapp.com"
 }
