@@ -1,11 +1,15 @@
 package enforcement
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"github.com/google/renameio/v2"
 
 	"glocker/internal/config"
 )
@@ -71,107 +75,39 @@ func UpdateHosts(cfg *config.Config, domains []string, dryRun bool) error {
 		return nil
 	}
 
-	// Open file for writing
-	file, err := os.OpenFile(hostsPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		slog.Debug("Failed to open hosts file for writing", "error", err, "path", hostsPath)
-		return fmt.Errorf("opening hosts file for writing: %w", err)
-	}
-	defer file.Close()
-
-	slog.Debug("Writing hosts file in chunks", "path", hostsPath)
-
-	// Write original content first
-	if len(originalLines) > 0 {
-		// Remove any trailing empty lines from original content
-		for len(originalLines) > 0 && strings.TrimSpace(originalLines[len(originalLines)-1]) == "" {
-			originalLines = originalLines[:len(originalLines)-1]
-		}
-
-		originalContent := strings.Join(originalLines, "\n")
-		if originalContent != "" {
-			originalContent += "\n"
-		}
-
-		if _, err := file.WriteString(originalContent); err != nil {
-			slog.Debug("Failed to write original content", "error", err)
-			return fmt.Errorf("writing original content: %w", err)
-		}
-		slog.Debug("Wrote original hosts content", "lines", len(originalLines))
+	// Drop trailing blank lines from the preserved original content.
+	for len(originalLines) > 0 && strings.TrimSpace(originalLines[len(originalLines)-1]) == "" {
+		originalLines = originalLines[:len(originalLines)-1]
 	}
 
-	// Add empty line and start marker
-	if _, err := file.WriteString("\n" + config.HostsMarkerStart + "\n"); err != nil {
-		slog.Debug("Failed to write start marker", "error", err)
-		return fmt.Errorf("writing start marker: %w", err)
+	// One-time backup of the original (pre-glocker) hosts, so uninstall can restore
+	// it even if our markers are later lost. On a clean first run originalLines IS
+	// the real original (no marker found); on later cycles it's the same content
+	// above the marker, and the backup already exists so this is a no-op.
+	backupOriginalHosts(originalLines)
+
+	// Build the whole new file in memory, then write it atomically (temp file +
+	// rename). The old path truncated /etc/hosts in place and streamed ~50 MB in
+	// chunks; a daemon killed mid-write (e.g. during an install/uninstall cycle)
+	// left a truncated, NUL-holed hosts file. An atomic replace can't tear.
+	var buf bytes.Buffer
+	if s := strings.Join(originalLines, "\n"); s != "" {
+		buf.WriteString(s)
+		buf.WriteByte('\n')
 	}
-	slog.Debug("Wrote glocker start marker")
-
-	// Special-cased local alias for the /stats dashboard: reach it at
-	// http://glocker.localhost instead of typing 127.0.0.1. It lives inside the
-	// glocker-managed block (rewritten every cycle, removed on
-	// uninstall), and resolving to loopback keeps the dashboard's
-	// localhost-only guard satisfied.
-	if _, err := file.WriteString("127.0.0.1 glocker.localhost\n::1 glocker.localhost\n"); err != nil {
-		slog.Debug("Failed to write glocker.localhost alias", "error", err)
-		return fmt.Errorf("writing glocker.localhost alias: %w", err)
-	}
-
-	// Write domains in chunks
-	const chunkSize = 1000
-	totalDomains := len(domains)
-	chunksWritten := 0
-
-	for i := 0; i < totalDomains; i += chunkSize {
-		end := i + chunkSize
-		if end > totalDomains {
-			end = totalDomains
-		}
-
-		// Build chunk content
-		var chunkBuilder strings.Builder
-		for j := i; j < end; j++ {
-			domain := domains[j]
-			chunkBuilder.WriteString(fmt.Sprintf("127.0.0.1 %s\n", domain))
-			chunkBuilder.WriteString(fmt.Sprintf("127.0.0.1 www.%s\n", domain))
-			chunkBuilder.WriteString(fmt.Sprintf("::1 %s\n", domain))
-			chunkBuilder.WriteString(fmt.Sprintf("::1 www.%s\n", domain))
-		}
-
-		// Write chunk to file
-		if _, err := file.WriteString(chunkBuilder.String()); err != nil {
-			slog.Debug("Failed to write domain chunk", "error", err, "chunk", chunksWritten+1)
-			return fmt.Errorf("writing domain chunk %d: %w", chunksWritten+1, err)
-		}
-
-		chunksWritten++
-
-		// Flush and log progress every 1000 chunks or at the end
-		if chunksWritten%1000 == 0 || end == totalDomains {
-			if err := file.Sync(); err != nil {
-				slog.Debug("Failed to sync file", "error", err)
-			}
-
-			domainsProcessed := end
-			log.Printf("Hosts file progress: %d/%d domains written (%d chunks, %.1f%%)",
-				domainsProcessed, totalDomains, chunksWritten,
-				float64(domainsProcessed)/float64(totalDomains)*100)
-
-			slog.Debug("Hosts file chunk progress",
-				"chunks_written", chunksWritten,
-				"domains_processed", domainsProcessed,
-				"total_domains", totalDomains,
-				"latest_domain", domains[end-1])
-		}
+	buf.WriteString("\n" + config.HostsMarkerStart + "\n")
+	// Local alias for the /stats dashboard (http://glocker.localhost), inside the
+	// managed block so it's removed on uninstall.
+	buf.WriteString("127.0.0.1 glocker.localhost\n::1 glocker.localhost\n")
+	for _, domain := range domains {
+		fmt.Fprintf(&buf, "127.0.0.1 %s\n127.0.0.1 www.%s\n::1 %s\n::1 www.%s\n", domain, domain, domain, domain)
 	}
 
-	// Final sync
-	if err := file.Sync(); err != nil {
-		slog.Debug("Failed to final sync file", "error", err)
+	if err := renameio.WriteFile(hostsPath, buf.Bytes(), 0o644); err != nil {
+		slog.Debug("Failed to write hosts file", "error", err, "path", hostsPath)
+		return fmt.Errorf("writing hosts file: %w", err)
 	}
-
-	slog.Debug("Successfully wrote hosts file in chunks", "total_chunks", chunksWritten, "total_domains", totalDomains)
-	log.Printf("Hosts file update completed: %d domains written in %d chunks", totalDomains, chunksWritten)
+	log.Printf("Hosts file update completed: %d domains written", len(domains))
 
 	// Update checksum after legitimate change
 	// Note: updateChecksum is in monitoring package, will be integrated later
@@ -194,21 +130,63 @@ func CleanupHostsFile(cfg *config.Config) error {
 
 	lines := strings.Split(string(content), "\n")
 	var originalLines []string
-
-	// Remove everything after the start marker
+	markerFound := false
 	for _, line := range lines {
 		if strings.Contains(line, config.HostsMarkerStart) {
+			markerFound = true
 			break
 		}
 		originalLines = append(originalLines, line)
 	}
 
-	// Write back the cleaned content
-	newContent := strings.Join(originalLines, "\n")
-	if err := os.WriteFile(hostsPath, []byte(newContent), 0644); err != nil {
-		return fmt.Errorf("writing cleaned hosts file: %w", err)
+	var out []byte
+	switch {
+	case markerFound:
+		// Normal path: drop our appended block, keep everything above it (preserves
+		// any edits the user made to their own hosts entries).
+		s := strings.Join(originalLines, "\n")
+		if s != "" && !strings.HasSuffix(s, "\n") {
+			s += "\n"
+		}
+		out = []byte(s)
+	default:
+		// No marker — e.g. the file was corrupted and lost it. Rather than leave the
+		// whole blocklist behind, restore the original we backed up at install time.
+		backup, berr := os.ReadFile(config.HostsBackupPath)
+		if berr != nil {
+			log.Printf("hosts cleanup: no marker and no backup (%v); leaving %s unchanged", berr, hostsPath)
+			return nil
+		}
+		log.Printf("hosts cleanup: no marker found; restoring original from %s", config.HostsBackupPath)
+		out = backup
 	}
 
-	log.Printf("Cleaned up hosts file: removed glocker entries")
+	// Atomic replace (temp file + rename) so an interrupted cleanup can't corrupt it.
+	if err := renameio.WriteFile(hostsPath, out, 0o644); err != nil {
+		return fmt.Errorf("writing cleaned hosts file: %w", err)
+	}
+	log.Printf("Cleaned up hosts file: restored original entries")
 	return nil
+}
+
+// backupOriginalHosts saves the pre-glocker hosts content once, so uninstall can
+// recover the user's original even if our in-file markers are later lost. No-op
+// if the backup already exists.
+func backupOriginalHosts(originalLines []string) {
+	if _, err := os.Stat(config.HostsBackupPath); err == nil {
+		return // already captured
+	}
+	if err := os.MkdirAll(filepath.Dir(config.HostsBackupPath), 0o755); err != nil {
+		slog.Debug("hosts backup: mkdir failed", "error", err)
+		return
+	}
+	content := strings.Join(originalLines, "\n")
+	if content != "" && !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	if err := renameio.WriteFile(config.HostsBackupPath, []byte(content), 0o644); err != nil {
+		slog.Debug("hosts backup: write failed", "error", err)
+		return
+	}
+	slog.Debug("hosts backup: saved original", "path", config.HostsBackupPath, "lines", len(originalLines))
 }

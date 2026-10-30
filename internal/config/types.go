@@ -111,6 +111,11 @@ type PanicConfig struct {
 // LogDir holds all of glocker's runtime log files (mutable state → /var).
 const LogDir = "/var/log/glocker"
 
+// HostsBackupPath holds a copy of the original (pre-glocker) /etc/hosts, taken
+// once at first enforcement, so uninstall can restore it even if the in-file
+// markers are ever lost. A var (not const) so tests can redirect it.
+var HostsBackupPath = "/var/lib/glocker/hosts.orig"
+
 // Default log-file paths, used when the matching config field is unset. Defined
 // once here; reports / web / syncer / install all reference these.
 const (
