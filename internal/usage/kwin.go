@@ -12,9 +12,15 @@ import (
 // KWinSource reads window state on KDE Plasma / KWin on Wayland. KWin blocks apps
 // from querying windows, and a KWin script — unlike a GNOME Shell extension —
 // cannot export a D-Bus interface, only call out. So the roles are flipped
-// relative to GNOMESource: the DAEMON owns app.glocker.KWin on the user's session
-// bus and exports Push(json); the glocker KWin script (extensions/kwin) pushes the
-// window list to it on every window event. Capture returns the last push.
+// relative to GNOMESource: the capture agent owns app.glocker.KWin on the user's
+// session bus and exports Push(json); the glocker KWin script (extensions/kwin)
+// pushes the window list to it on every window event. Capture returns the last
+// push.
+//
+// The agent runs as the desktop user (the daemon re-execs it uid-dropped — see
+// RunAgent), so claiming the name and receiving the script's callDBus both
+// happen on the user's own bus. The root daemon couldn't do this: dbus-broker
+// refuses its cross-uid connection, and callDBus can only reach the session bus.
 //
 // Idle time comes from ext-idle-notify-v1 (shared waylandIdle, as on Hyprland),
 // since the script doesn't report it.

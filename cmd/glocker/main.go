@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"log/slog"
 	"net"
 	"os"
 	"os/exec"
@@ -14,6 +13,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -125,6 +125,7 @@ func main() {
 	uninstallReason := flag.String("uninstall", "", "Uninstall Glocker and revert all changes (provide reason)")
 	uninstallNote := flag.String("note", "", "Optional free-form note to attach to -uninstall (e.g. context for the reason)")
 	daemonFlag := flag.Bool("daemon", false, "Run as daemon (for systemd service)")
+	usageAgentFlag := flag.Bool("usage-agent", false, "internal: uid-dropped usage capture agent (spawned by the daemon; not for direct use)")
 	statusFlag := flag.Bool("status", false, "Show runtime status (violations, temp unblocks, panic mode)")
 	infoFlag := flag.Bool("info", false, "Show configuration info (domains, programs, keywords)")
 	blockHosts := flag.String("block", "", "Comma-separated list of hosts to add to always block list")
@@ -151,6 +152,14 @@ func main() {
 	// Handle version flag
 	if *versionFlag {
 		fmt.Println("glocker " + version)
+		return
+	}
+
+	// Internal: the uid-dropped capture agent the daemon spawns. Runs as the
+	// desktop user (the daemon set the Credential + session environment), so it
+	// must dodge every root check below. Samples go to stdout; logs to stderr.
+	if *usageAgentFlag {
+		runUsageAgent()
 		return
 	}
 
@@ -804,9 +813,27 @@ func main() {
 		go web.StartWebTrackingServer(cfg)
 	}
 
-	// Start the arbtt-style usage tracker.
+	// Daemon-lifetime context, cancelled on shutdown so child processes (the
+	// usage capture agent) are torn down cleanly rather than orphaned.
+	daemonCtx, cancelDaemon := context.WithCancel(context.Background())
+	defer cancelDaemon()
+
+	// Start the arbtt-style usage tracker. The daemon can't capture the desktop
+	// itself (the user's session bus refuses a root connection on dbus-broker, and
+	// a KWin script can only call back onto that bus), so it supervises a child
+	// dropped to the desktop user that streams samples back; the daemon owns the
+	// log.
 	if cfg.UsageMonitor.Enabled {
-		go startUsageMonitor(cfg)
+		selfPath, err := os.Executable()
+		if err != nil {
+			selfPath = os.Args[0]
+		}
+		logFile := cfg.UsageMonitor.LogFile
+		if logFile == "" {
+			logFile = config.DefaultUsageLogFile
+		}
+		sup := usage.NewSupervisor(selfPath, cfg.User, logFile, cfg.UsageMonitor.Interval(), usageAgentEnv(cfg), log.Printf)
+		go sup.Run(daemonCtx)
 	}
 
 	// Ship local records to glockpeek. Local-first: this only mirrors the /var
@@ -840,59 +867,69 @@ func main() {
 			enforcement.EnforcementCheck(cfg)
 		case sig := <-sigChan:
 			log.Printf("Received signal %v, shutting down...", sig)
+			cancelDaemon()
 			return
 		}
 	}
 }
 
-// startUsageMonitor runs the arbtt-style usage tracker for the daemon's
-// lifetime, sampling the focused window + idle time into the configured JSONL
-// log. A missing or unreachable session is logged and retried each interval
-// (see usage.AutoSource); it never brings down the daemon.
-func startUsageMonitor(cfg *config.Config) {
-	um := cfg.UsageMonitor
+// runUsageAgent is the body of `glocker -usage-agent`: the capture half of the
+// usage tracker, re-exec'd by the daemon and already dropped to the desktop
+// user's uid. It streams samples to stdout (the daemon owns the log) and logs to
+// stderr (the daemon relays it). It exits cleanly on SIGTERM (systemd stop) and
+// non-zero when its output pipe breaks (the daemon died).
+func runUsageAgent() {
+	log.SetFlags(0) // the daemon timestamps the relayed lines
+	log.SetOutput(os.Stderr)
 
-	logFile := um.LogFile
-	if logFile == "" {
-		logFile = config.DefaultUsageLogFile
+	interval := time.Duration(config.DefaultUsageInterval) * time.Second
+	if v := os.Getenv("GLOCKER_USAGE_INTERVAL"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			interval = time.Duration(n) * time.Second
+		}
 	}
-	interval := um.Interval()
-	// Pick a backend for the user's session (Hyprland, GNOME/Wayland or X11;
-	// others degrade gracefully). The daemon runs as root with none of the
-	// session's environment, so point it at the desktop user's runtime dir
-	// (Wayland/Hyprland sockets) and session bus; X11 uses Display/XAuthority.
-	// The source re-selects on its own: the daemon usually starts before anyone
-	// logs in, and sessions come and go.
-	var runtimeDir string
-	dbusAddr := um.DBusAddress
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := usage.RunAgent(ctx, os.Stdout, interval, usage.AgentOptionsFromEnv(), log.Printf); err != nil {
+		os.Exit(1)
+	}
+}
+
+// usageAgentEnv builds the environment the daemon hands the capture agent. The
+// agent runs as the user but outside their login session, so it carries none of
+// the session's own environment — the daemon supplies the reach: the runtime dir
+// and session-bus address derived from the configured user (Wayland/dbus), and
+// the X display/authority from config (X11). The sampling interval rides along
+// so the agent needn't read the root-owned config.
+func usageAgentEnv(cfg *config.Config) []string {
+	um := cfg.UsageMonitor
+	env := []string{
+		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+		fmt.Sprintf("GLOCKER_USAGE_INTERVAL=%d", int(um.Interval().Seconds())),
+	}
 	if cfg.User != "" {
 		if u, err := user.Lookup(cfg.User); err == nil {
-			runtimeDir = "/run/user/" + u.Uid
+			runtimeDir := "/run/user/" + u.Uid
+			dbusAddr := um.DBusAddress
 			if dbusAddr == "" {
 				dbusAddr = "unix:path=" + runtimeDir + "/bus"
 			}
+			env = append(env,
+				"XDG_RUNTIME_DIR="+runtimeDir,
+				"DBUS_SESSION_BUS_ADDRESS="+dbusAddr,
+				"HOME="+u.HomeDir,
+			)
 		} else {
 			log.Printf("usage monitor: cannot resolve user %q (%v)", cfg.User, err)
 		}
 	}
-	source := usage.NewAutoSource(usage.Options{
-		Display: um.Display, XAuthority: um.XAuthority, DBusAddress: dbusAddr, RuntimeDir: runtimeDir,
-	}, log.Printf)
-	defer source.Close()
-
-	sink, err := usage.NewJSONLFileSink(logFile)
-	if err != nil {
-		log.Printf("usage monitor: cannot open log %s: %v", logFile, err)
-		return
+	if um.Display != "" {
+		env = append(env, "DISPLAY="+um.Display)
 	}
-	defer sink.Close()
-
-	tracker := usage.NewTracker(source, sink, usage.Config{
-		Interval: interval,
-		OnError:  func(err error) { slog.Debug("usage monitor sample error", "err", err) },
-	})
-	log.Printf("usage monitor: sampling every %s to %s", interval, logFile)
-	if err := tracker.Run(context.Background()); err != nil && err != context.Canceled {
-		log.Printf("usage monitor stopped: %v", err)
+	if um.XAuthority != "" {
+		env = append(env, "XAUTHORITY="+um.XAuthority)
 	}
+	return env
 }

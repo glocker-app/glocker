@@ -116,9 +116,9 @@ func newWaylandSource(opts Options) (Source, string, error) {
 	}
 	if nameHasOwner(conn, "org.kde.KWin") {
 		// KDE Plasma / KWin on Wayland. Unlike GNOME we can't check for the script
-		// up front (the daemon, not the script, owns the bridge name); the KWin
-		// script pushes to us. NewKWinSource claims app.glocker.KWin; the first
-		// Capture is empty until the script's first push. Idle via ext-idle-notify.
+		// up front (we own the bridge name, not the script); the KWin script pushes
+		// to us. NewKWinSource claims app.glocker.KWin; the first Capture is empty
+		// until the script's first push. Idle via ext-idle-notify.
 		runtimeDir := opts.RuntimeDir
 		if runtimeDir == "" {
 			runtimeDir = os.Getenv("XDG_RUNTIME_DIR")
