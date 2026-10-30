@@ -20,8 +20,9 @@ const (
 	// ConfigBackupDir holds dated copies of the installed config, taken by
 	// -install before it converts or replaces it.
 	ConfigBackupDir = "/var/lib/glocker/config-backups"
-	// ConfigChecksumFile records the installed config as -install left it, so a
-	// later install can tell whether it was edited since.
+	// ConfigChecksumFile records the config as -install itself last wrote it, so a
+	// later install can tell whether it was edited since. An install that keeps a
+	// user-edited config leaves this alone — it wrote nothing to record.
 	ConfigChecksumFile = "/var/lib/glocker/config.sha256"
 
 	// DefaultGlockpeekURL is where the syncer ships records when Sync.GlockpeekURL

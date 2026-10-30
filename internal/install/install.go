@@ -182,8 +182,13 @@ func InstallGlocker(confPath string, replaceConfig bool) error {
 	// Step 3b: Install the generated conf.d/ blocklists that the config pulls in
 	// via !include.
 	installConfD(filepath.Join(filepath.Dir(confPath), "conf.d"))
-	if err := recordChecksum(systemConfigPaths); err != nil {
-		log.Printf("Warning: couldn't record the config checksum: %v", err)
+	// Only when this install wrote the config itself. On a keep the file on disk
+	// is the user's — recording it would mark their edits as ours, and the next
+	// upgrade would see "unchanged since install" and replace them without asking.
+	if plan.replace {
+		if err := recordChecksum(systemConfigPaths); err != nil {
+			log.Printf("Warning: couldn't record the config checksum: %v", err)
+		}
 	}
 	// Reload from disk so the rest of the install sees the config as installed,
 	// generated blocklists included.

@@ -59,14 +59,18 @@ func noAsk(t *testing.T) func(string) bool {
 	return func(q string) bool { t.Fatalf("unexpected prompt: %s", q); return false }
 }
 
+// install mirrors what InstallGlocker does with a plan: apply it, and record the
+// checksum only when the install wrote the config itself.
 func install(t *testing.T, p *configPlan) string {
 	t.Helper()
 	backup, err := p.apply()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := recordChecksum(p.paths); err != nil {
-		t.Fatal(err)
+	if p.replace {
+		if err := recordChecksum(p.paths); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return backup
 }
@@ -218,6 +222,41 @@ func TestSourceInstallAsksOnlyWhenEdited(t *testing.T) {
 	install(t, p)
 	if !strings.Contains(read(t, paths.installed), `"debug"`) {
 		t.Error("replace didn't install the source")
+	}
+}
+
+// A config the user edited stays edited for every later upgrade, not just the
+// next one: keeping it must not record it as what the install left behind.
+func TestKeptEditedConfigStillAsksOnEveryUpgrade(t *testing.T) {
+	paths := testPaths(t)
+	srcDir := t.TempDir()
+	src := setupConfig(t, srcDir, v0Config, personal)
+	p, err := planConfig(src, false, paths, noAsk(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	install(t, p)
+
+	// The user edits the installed config, and the source moves on.
+	edited := strings.Replace(read(t, paths.installed), `"info"`, `"warn"`, 1)
+	write(t, paths.installed, edited)
+	write(t, src, strings.Replace(v0Config, `"info"`, `"debug"`, 1))
+
+	// Two upgrades in a row, with no further edits: both must ask, and keeping
+	// must leave the edit in place.
+	for i := 1; i <= 2; i++ {
+		asked := false
+		p, err = planConfig(src, false, paths, func(string) bool { asked = true; return false })
+		if err != nil {
+			t.Fatal(err)
+		}
+		install(t, p)
+		if !asked {
+			t.Errorf("upgrade %d replaced the edited config without asking", i)
+		}
+		if p.replace || read(t, paths.installed) != edited {
+			t.Errorf("upgrade %d didn't keep the edit: replace=%v", i, p.replace)
+		}
 	}
 }
 
