@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
@@ -95,32 +96,14 @@ func (a *app) textForm(title, initial, help string, validate func(string) error,
 		huh.NewInput().Title(title).Value(&v).Validate(validate)))
 }
 
-// windowRows lists the windows under get()[leaf] with edit/delete, plus an add
-// row. get reads without creating; mk creates the parent for writes.
-func (a *app) windowRows(get, mk func() *yaml.Node, leaf, title, empty, help string) []row {
-	var rows []row
-	ws := windows(get(), leaf)
-	if len(ws) == 0 && empty != "" {
-		rows = append(rows, note(empty))
-	}
-	for i, w := range ws {
-		others := append(append([]config.TimeWindow{}, ws[:i]...), ws[i+1:]...)
-		rows = append(rows, row{label: fmtWindow(w), help: help, keys: "enter edit · d delete", act: func(k string) tea.Cmd {
-			switch {
-			case k == "enter":
-				return a.push(newPicker(title, w, others, func(nw config.TimeWindow) { setWindow(mk(), leaf, i, nw) }))
-			case isDelete(k):
-				delWindow(mk(), leaf, i)
-			}
-			return nil
-		}})
-	}
-	return append(rows, row{label: "+ Add window", help: help, keys: "enter add", act: func(k string) tea.Cmd {
+// scheduleRow is one row summarising a schedule; enter opens the grid.
+func (a *app) scheduleRow(label, value, help string, open func() *scheduleScreen) row {
+	return row{label: label, value: value, help: help, keys: "enter edit schedule", act: func(k string) tea.Cmd {
 		if k == "enter" {
-			return a.push(newPicker(title, config.TimeWindow{}, ws, func(nw config.TimeWindow) { setWindow(mk(), leaf, -1, nw) }))
+			return a.push(open())
 		}
 		return nil
-	}})
+	}}
 }
 
 func flagRow(label, help string, m *yaml.Node, key string) row {
@@ -208,19 +191,33 @@ func (a *app) domainRows() []row {
 func (a *app) domainDetail(e DomainEntry) *listScreen {
 	return &listScreen{title: "Domain", build: func() []row {
 		n := e.Node
+		ws := windows(n, "block_windows")
 		blocked := "always"
-		if len(windows(n, "block_windows")) > 0 {
-			blocked = "during the windows below"
+		if len(ws) > 0 {
+			blocked = fmtWindows(ws)
 		}
-		rows := []row{
+		return []row{
 			a.nameRow(n, "Domain", "In "+filepath.Base(e.File.Path)+".", config.ValidateDomainName),
 			flagRow("Unblockable", "Allow temporary passes with `glocker -unblock`.", n, "unblockable"),
 			flagRow("Log blocking", "Log every blocked visit to this domain.", n, "log_blocking"),
-			{kind: rowNote, label: "Blocked " + blocked},
-			header("Windows"),
+			a.scheduleRow("Blocked", blocked, "When this domain is blocked.", func() *scheduleScreen {
+				w := weekFromWindows(ws)
+				if len(ws) == 0 {
+					w = weekOf(func(time.Time) bool { return true })
+				}
+				return newSchedule(getStr(n, "name")+" · blocked", "blocked", "open", w, func(w week) string {
+					switch {
+					case w.empty():
+						return "Nothing is blocked. Delete the domain instead."
+					case w.full():
+						mapDel(n, "block_windows")
+					default:
+						setWindows(n, "block_windows", w.windows())
+					}
+					return ""
+				})
+			}),
 		}
-		return append(rows, a.windowRows(self(n), self(n), "block_windows", "Blocked during", "",
-			"Blocked only during these windows. No windows means always blocked.")...)
 	}}
 }
 
@@ -276,58 +273,33 @@ func (a *app) programRows() []row {
 	}})
 }
 
-// programDetail shows one list of windows plus a mode, rather than the
-// config's separate kill_windows/allow_windows: with no windows the program is
-// always killed; with windows, space flips between killed during them and
-// killed outside them (moving the list between the two keys).
+// programDetail shows when the program is killed as one schedule. The config
+// can say this with kill_windows or allow_windows; the grid shows the result
+// and saves as kill_windows.
 func (a *app) programDetail(n *yaml.Node) *listScreen {
 	return &listScreen{title: "Program", build: func() []row {
-		kw, aw := windows(n, "kill_windows"), windows(n, "allow_windows")
-		rows := []row{
+		killed := programKilled(windows(n, "kill_windows"), windows(n, "allow_windows"))
+		value := "always"
+		if !killed.full() {
+			value = fmtWindows(killed.windows())
+		}
+		return []row{
 			a.nameRow(n, "Program", "Process name.", config.ValidateProgramName),
 			flagRow("Extendible", "Allow a one-hour `glocker -extend`, once per 24h.", n, "extendible"),
-		}
-		modeHelp := "Space flips between killed during and killed outside the windows."
-		switch {
-		case len(kw) > 0 && len(aw) > 0:
-			rows = append(rows, note("Has both kill and allow windows; allow windows are ignored."),
-				header("Killed during"))
-			rows = append(rows, a.windowRows(self(n), self(n), "kill_windows", "Killed during", "", "")...)
-			rows = append(rows, header("Allowed during (ignored)"))
-			return append(rows, a.windowRows(self(n), self(n), "allow_windows", "Allowed during", "", "")...)
-		case len(kw) > 0:
-			rows = append(rows, row{label: "Killed", value: "during the windows below", help: modeHelp, keys: "space flip",
-				act: func(k string) tea.Cmd {
-					if isToggle(k) {
-						moveKey(n, "kill_windows", "allow_windows")
+			a.scheduleRow("Killed", value, "When this program is killed on sight.", func() *scheduleScreen {
+				return newSchedule(getStr(n, "name")+" · killed", "killed", "allowed", killed, func(w week) string {
+					switch {
+					case w.empty():
+						return "Never killed. Delete the program instead."
+					case w.full():
+						mapDel(n, "kill_windows")
+					default:
+						setWindows(n, "kill_windows", w.windows())
 					}
-					return nil
-				}}, header("Windows"))
-			return append(rows, a.windowRows(self(n), self(n), "kill_windows", "Killed during", "", modeHelp)...)
-		case len(aw) > 0:
-			rows = append(rows, row{label: "Killed", value: "outside the windows below", help: modeHelp, keys: "space flip",
-				act: func(k string) tea.Cmd {
-					if isToggle(k) {
-						moveKey(n, "allow_windows", "kill_windows")
-					}
-					return nil
-				}}, header("Windows"))
-			return append(rows, a.windowRows(self(n), self(n), "allow_windows", "Allowed during", "", modeHelp)...)
-		default:
-			rows = append(rows, note("Killed always"), header("Windows"))
-			return append(rows, a.windowRows(self(n), self(n), "kill_windows", "Killed during", "",
-				"Add a window to kill it only at certain times.")...)
+					mapDel(n, "allow_windows")
+					return ""
+				})
+			}),
 		}
 	}}
-}
-
-// moveKey renames a mapping key, keeping its value node (and comments).
-func moveKey(m *yaml.Node, from, to string) {
-	v := mapGet(m, from)
-	if v == nil {
-		return
-	}
-	mapDel(m, from)
-	mapDel(m, to)
-	mapSet(m, to, v)
 }

@@ -30,7 +30,7 @@ func main() {
 	if *inplace {
 		suffix = ""
 	}
-	if _, err := tea.NewProgram(newApp(d, suffix), tea.WithAltScreen()).Run(); err != nil {
+	if _, err := tea.NewProgram(newApp(d, suffix), tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

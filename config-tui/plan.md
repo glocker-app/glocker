@@ -33,10 +33,12 @@ editing UX. Does not modify any existing glocker code.
   - Domains: inline entries plus non-generated includes (personal-domains.yaml,
     where new domains go). Generated blocklists are on/off toggles (keep/drop
     the include line); unincluded ones in conf.d/ show as off.
-  - Programs: one window list plus a mode (killed always / during / outside the
-    windows) instead of separate kill_windows/allow_windows.
-- Time-window picker: inline from/to and day toggles, typed digits or ↑↓, and
-  a week grid drawn with glocker's own window evaluation (overnight-correct).
+  - Programs: one "killed" schedule; saved as kill_windows (allow_windows
+    folded in and dropped).
+- Schedules (domain blocked, program killed, sudo allowed) are edited on one
+  7×48 half-hour grid: keyboard painting, box select, copy/paste a day, mouse
+  drag. Windows are derived on save (fewest windows; overnight joined when
+  shorter); untouched grids are not rewritten. Edits snap to 30 minutes.
 - Out of scope for now: loosening-vs-tightening friction, root gating.
 
 ## Implementation steps
@@ -51,3 +53,4 @@ editing UX. Does not modify any existing glocker code.
 - [x] All agent stanzas editable via the schema. Check: viewing every section of a near-empty config leaves it unchanged (test).
 - [x] Program kill mode. Check: flipping moves the list between kill_windows and allow_windows.
 - [x] Window picker with week grid. Check: typed 22:00–06:00 renders as overnight; digit bursts handled (test).
+- [x] Schedule grid replaces the window list + picker. Check: sample sudo windows round-trip unchanged; overnight windows round-trip (tests); box-clearing weekday evenings writes the expected windows.

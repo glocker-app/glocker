@@ -210,3 +210,18 @@ func ensurePath(m *yaml.Node, keys ...string) *yaml.Node {
 	}
 	return m
 }
+
+// setWindows replaces m[key] with ws (keeping the list node and its comments);
+// an empty ws drops the key.
+func setWindows(m *yaml.Node, key string, ws []config.TimeWindow) {
+	if len(ws) == 0 {
+		mapDel(m, key)
+		return
+	}
+	seq := ensure(m, key, yaml.SequenceNode)
+	seq.Style = 0
+	seq.Content = nil
+	for _, w := range ws {
+		seq.Content = append(seq.Content, windowNode(w))
+	}
+}

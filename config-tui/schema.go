@@ -97,20 +97,21 @@ func sections() []*section {
 		}},
 		{title: "Sudo", help: "Sudo is only available inside the allowed windows. This is what makes the rest hard to undo.", path: []string{"sudoers"}, state: enabledState, fields: []field{
 			{key: "enabled", label: "Sudo control", kind: kBool, help: "Restrict sudo to the windows below."},
-			{key: "allow_windows", label: "Sudo allowed during", kind: kWindows, zero: "never",
-				help: "Outside these windows only the restricted sudo line applies."},
+			{key: "allow_windows", label: "Sudo allowed", kind: kWindows, zero: "never", opts: []string{"sudo allowed", "sudo blocked"},
+				help: "Outside these times only the restricted sudo line applies."},
 			{kind: kHeader, label: "Advanced"},
 			{key: "allowed_sudoers_line", label: "Allowed line", kind: kStr, validate: notEmpty, help: "sudoers line in effect inside the windows."},
 			{key: "blocked_sudoers_line", label: "Restricted line", kind: kStr, validate: notEmpty, help: "sudoers line in effect outside the windows."},
 		}},
 		{title: "Mindful uninstall", help: "`glocker -uninstall` first needs a sentence typed as it is revealed.", path: []string{"mindful_uninstall"}, state: enabledState, fields: []field{
 			{key: "enabled", label: "Typing challenge", kind: kBool, help: "Require the challenge before uninstalling."},
-			{key: "lines", label: "Sentences", kind: kInt, zero: dflt(config.DefaultMindfulLines), help: "Sentences to type on a normal uninstall."},
-			{key: "recent_lines", label: "Sentences on repeat", kind: kInt, zero: dflt(config.DefaultMindfulRecentLines), help: "Sentences to type when you uninstalled recently."},
-			{key: "recency_hours", label: "Repeat window", kind: kInt, unit: " h", zero: dflt(config.DefaultMindfulRecencyHours), help: "An uninstall within this many hours of the last counts as a repeat."},
+			{kind: kHeader, label: "Tuning"},
 			{key: "interval_ms", label: "Reveal every", kind: kInt, unit: " ms", zero: dflt(config.DefaultMindfulIntervalMs), help: "Time between revealed characters."},
 			{key: "deadline_ms", label: "Miss after", kind: kInt, unit: " ms", zero: dflt(config.DefaultMindfulDeadlineMs), help: "A character not typed within this resets the challenge."},
 			{key: "grace_ms", label: "Start delay", kind: kInt, unit: " ms", zero: dflt(config.DefaultMindfulGraceMs), help: "Pause before the first character."},
+			{key: "lines", label: "Sentences", kind: kInt, zero: dflt(config.DefaultMindfulLines), help: "Sentences to type on a normal uninstall."},
+			{key: "recency_hours", label: "Repeat window", kind: kInt, unit: " h", zero: dflt(config.DefaultMindfulRecencyHours), help: "An uninstall within this many hours of the last counts as a repeat."},
+			{key: "recent_lines", label: "Sentences on repeat", kind: kInt, zero: dflt(config.DefaultMindfulRecentLines), help: "Sentences to type on a repeat uninstall."},
 			{key: "sentences", label: "Custom sentences", kind: kList, zero: "built-in", help: "Your own sentence pool. Empty uses the built-in one."},
 		}},
 		{title: "Lifecycle", help: "Install and uninstall records.", path: []string{"lifecycle"}, fields: []field{
@@ -287,8 +288,13 @@ func (a *app) fieldRows(s *section, f field) []row {
 			return a.push(a.listEditor(f, get, mk, leaf))
 		}
 	case kWindows:
-		rows := []row{header(f.label)}
-		return append(rows, a.windowRows(get, mk, leaf, f.label, f.zero, f.help)...)
+		ws := windows(m, leaf)
+		r = a.scheduleRow(f.label, orZero(fmtWindows(ws), f.zero), f.help, func() *scheduleScreen {
+			return newSchedule(f.label, f.opts[0], f.opts[1], weekFromWindows(ws), func(w week) string {
+				setWindows(mk(), leaf, w.windows())
+				return ""
+			})
+		})
 	}
 	return []row{r}
 }
