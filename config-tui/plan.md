@@ -35,3 +35,12 @@ editing UX. Does not modify any existing glocker code.
 - Time-window editor shared by all screens: start/end + day toggles.
 - Out of scope for now: other stanzas (sync, mail, accountability, panic, …),
   loosening-vs-tightening friction, root gating.
+
+## Implementation steps
+
+- [x] Module setup; nested module can import `glocker/internal/config`. Check: `go build` succeeds.
+- [x] YAML node model: load, classify includes, add/delete domains, toggle packs, validate, write. Check: `make test` passes.
+- [x] Minimal saves: edits replayed onto the original text. Check: editing one value in the sample changes exactly one line.
+- [x] Screens: Domains, Programs, Keywords, Unblocking, Sudo, General, plus a shared window form. Check: every field can be edited from the keyboard in tmux.
+- [x] Save flow: validate, show diff, confirm, atomic write to `<file>.new` (`-inplace` to overwrite). Check: an invalid window blocks the save; the written file reloads with `config.LoadFile`.
+- [x] Quit guard on unsaved changes.
