@@ -267,13 +267,17 @@ release: ## Build + checksum + minisign the release binaries from the tag on HEA
 	@if [ ! -f conf/conf.yaml ]; then cp conf/conf.yaml.sample conf/conf.yaml; : > $(RELEASE_DIR)/.confmade; fi
 	python3 scripts/update_domains.py all
 	@if [ -f $(RELEASE_DIR)/.confmade ]; then rm -f conf/conf.yaml $(RELEASE_DIR)/.confmade; fi
-	rm -rf $(TARBALL_STAGE) && mkdir -p $(TARBALL_STAGE)/conf/conf.d $(TARBALL_STAGE)/extras
+	rm -rf $(TARBALL_STAGE) && mkdir -p $(TARBALL_STAGE)/conf/conf.d $(TARBALL_STAGE)/extras $(TARBALL_STAGE)/extensions
 	@# glockpeek (the local tracker/dashboard) is left out — it's ~half the size and
 	@# hosted users sync to my.glockerapp.com. Self-hosters build it from source.
 	cp $(RELEASE_DIR)/glocker $(RELEASE_DIR)/glocklock $(RELEASE_DIR)/glockdoc $(TARBALL_STAGE)/
 	cp conf/conf.yaml.sample $(TARBALL_STAGE)/conf/
 	cp conf/conf.d/domains-*.yaml conf/conf.d/personal-domains.yaml.sample $(TARBALL_STAGE)/conf/conf.d/
 	cp extras/glocker.service extras/lock-background.png $(TARBALL_STAGE)/extras/
+	@# Usage-tracking bridges for GNOME/Wayland and KDE/KWin: glocker -install copies
+	@# them into the desktop user's home (relative to this tarball root), so without
+	@# them a curl|sh install can't track windows on GNOME or KDE.
+	cp -r extensions/gnome extensions/kwin $(TARBALL_STAGE)/extensions/
 	install -m 0755 scripts/install.sh $(TARBALL_STAGE)/install.sh
 	tar -C $(RELEASE_DIR) -czf $(RELEASE_DIR)/$(TARBALL) $(TARBALL_NAME)
 	rm -rf $(TARBALL_STAGE)
