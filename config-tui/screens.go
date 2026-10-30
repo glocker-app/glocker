@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -19,8 +17,7 @@ import (
 // ── formatting ───────────────────────────────────────────────────────────────
 
 func fmtDays(days []string) string {
-	j := strings.Join(days, ",")
-	switch j {
+	switch strings.Join(days, ",") {
 	case "Mon,Tue,Wed,Thu,Fri":
 		return "Weekdays"
 	case "Sat,Sun":
@@ -32,7 +29,11 @@ func fmtDays(days []string) string {
 }
 
 func fmtWindow(w config.TimeWindow) string {
-	return fmt.Sprintf("%s %s–%s", fmtDays(w.Days), w.Start, w.End)
+	s := fmt.Sprintf("%s %s–%s", fmtDays(w.Days), w.Start, w.End)
+	if w.End < w.Start {
+		s += " (overnight)"
+	}
+	return s
 }
 
 func fmtWindows(ws []config.TimeWindow) string {
@@ -67,16 +68,9 @@ func commas(n int) string {
 
 func isToggle(k string) bool { return k == "enter" || k == " " }
 
-// ── form helpers ─────────────────────────────────────────────────────────────
+func isDelete(k string) bool { return k == "d" || k == "delete" || k == "backspace" }
 
-var hhmm = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
-
-func validHHMM(s string) error {
-	if !hhmm.MatchString(s) {
-		return errors.New("use HH:MM, 24-hour")
-	}
-	return nil
-}
+// ── forms ────────────────────────────────────────────────────────────────────
 
 func validInt(s string) error {
 	if n, err := strconv.Atoi(s); err != nil || n < 0 {
@@ -92,73 +86,45 @@ func notEmpty(s string) error {
 	return nil
 }
 
-func (a *app) textForm(title, initial string, validate func(string) error, save func(string)) tea.Cmd {
+func (a *app) textForm(title, initial, help string, validate func(string) error, save func(string)) tea.Cmd {
+	if validate == nil {
+		validate = func(string) error { return nil }
+	}
 	v := initial
-	return a.push(newForm(func() { save(strings.TrimSpace(v)) },
+	return a.push(newForm(help, func() { save(strings.TrimSpace(v)) },
 		huh.NewInput().Title(title).Value(&v).Validate(validate)))
 }
 
-func (a *app) windowForm(title string, w config.TimeWindow, save func(config.TimeWindow)) tea.Cmd {
-	if w.Start == "" {
-		w = config.TimeWindow{Start: "09:00", End: "17:00", Days: weekDays[:5]}
-	}
-	start, end, days := w.Start, w.End, slices.Clone(w.Days)
-	return a.push(newForm(func() {
-		slices.SortFunc(days, func(x, y string) int { return slices.Index(weekDays, x) - slices.Index(weekDays, y) })
-		save(config.TimeWindow{Start: start, End: end, Days: days})
-	},
-		huh.NewNote().Title(title),
-		huh.NewInput().Title("From").Value(&start).Validate(validHHMM),
-		huh.NewInput().Title("To").Value(&end).Validate(validHHMM),
-		huh.NewMultiSelect[string]().Title("Days").Options(huh.NewOptions(weekDays...)...).Value(&days).
-			Validate(func(d []string) error {
-				if len(d) == 0 {
-					return errors.New("pick at least one day")
-				}
-				return nil
-			}),
-	))
-}
-
-// windowRows lists m[key]'s windows with edit/delete, plus an add row.
-func (a *app) windowRows(m *yaml.Node, key, title, empty string) []row {
+// windowRows lists the windows under get()[leaf] with edit/delete, plus an add
+// row. get reads without creating; mk creates the parent for writes.
+func (a *app) windowRows(get, mk func() *yaml.Node, leaf, title, empty, help string) []row {
 	var rows []row
-	ws := windows(m, key)
+	ws := windows(get(), leaf)
 	if len(ws) == 0 && empty != "" {
 		rows = append(rows, note(empty))
 	}
 	for i, w := range ws {
-		rows = append(rows, row{label: fmtWindow(w), act: func(k string) tea.Cmd {
-			switch k {
-			case "enter":
-				return a.windowForm(title, w, func(nw config.TimeWindow) { setWindow(m, key, i, nw) })
-			case "d", "delete", "backspace":
-				delWindow(m, key, i)
+		others := append(append([]config.TimeWindow{}, ws[:i]...), ws[i+1:]...)
+		rows = append(rows, row{label: fmtWindow(w), help: help, keys: "enter edit · d delete", act: func(k string) tea.Cmd {
+			switch {
+			case k == "enter":
+				return a.push(newPicker(title, w, others, func(nw config.TimeWindow) { setWindow(mk(), leaf, i, nw) }))
+			case isDelete(k):
+				delWindow(mk(), leaf, i)
 			}
 			return nil
 		}})
 	}
-	rows = append(rows, row{label: "+ Add window", act: func(k string) tea.Cmd {
+	return append(rows, row{label: "+ Add window", help: help, keys: "enter add", act: func(k string) tea.Cmd {
 		if k == "enter" {
-			return a.windowForm(title, config.TimeWindow{}, func(nw config.TimeWindow) { setWindow(m, key, -1, nw) })
+			return a.push(newPicker(title, config.TimeWindow{}, ws, func(nw config.TimeWindow) { setWindow(mk(), leaf, -1, nw) }))
 		}
 		return nil
 	}})
-	return rows
 }
 
-func toggleRow(label string, m *yaml.Node, key string) row {
-	return row{label: label, value: onOff(getBool(m, key)), act: func(k string) tea.Cmd {
-		if isToggle(k) {
-			mapSet(m, key, boolNode(!getBool(m, key)))
-		}
-		return nil
-	}}
-}
-
-// flagRow toggles an omitempty bool (absent = false).
-func flagRow(label string, m *yaml.Node, key string) row {
-	return row{label: label, value: yesNo(getBool(m, key)), act: func(k string) tea.Cmd {
+func flagRow(label, help string, m *yaml.Node, key string) row {
+	return row{label: label, value: yesNo(getBool(m, key)), help: help, keys: "space toggle", act: func(k string) tea.Cmd {
 		if isToggle(k) {
 			setFlag(m, key, !getBool(m, key))
 		}
@@ -166,12 +132,12 @@ func flagRow(label string, m *yaml.Node, key string) row {
 	}}
 }
 
-func (a *app) nameRow(m *yaml.Node, title string, validate func(string) error) row {
-	return row{label: "Name", value: getStr(m, "name"), act: func(k string) tea.Cmd {
+func (a *app) nameRow(m *yaml.Node, title, help string, validate func(string) error) row {
+	return row{label: "Name", value: getStr(m, "name"), help: help, keys: "enter edit", act: func(k string) tea.Cmd {
 		if k != "enter" {
 			return nil
 		}
-		return a.textForm(title, getStr(m, "name"), validate, func(v string) {
+		return a.textForm(title, getStr(m, "name"), help, validate, func(v string) {
 			if n := mapGet(m, "name"); n != nil {
 				n.Value = v
 			} else {
@@ -180,6 +146,8 @@ func (a *app) nameRow(m *yaml.Node, title string, validate func(string) error) r
 		})
 	}}
 }
+
+func self(m *yaml.Node) func() *yaml.Node { return func() *yaml.Node { return m } }
 
 // ── domains ──────────────────────────────────────────────────────────────────
 
@@ -194,59 +162,66 @@ func domainSummary(m *yaml.Node) string {
 	return s
 }
 
-func (a *app) domainsTab() *listScreen {
-	return &listScreen{build: func() []row {
-		dom := ensure(a.doc.cfg(), "domains", yaml.MappingNode)
-		rows := []row{toggleRow("Domain blocking", dom, "enabled"), header("Your domains")}
-		for _, e := range a.doc.Domains() {
-			rows = append(rows, row{label: getStr(e.Node, "name"), value: domainSummary(e.Node), act: func(k string) tea.Cmd {
-				switch k {
-				case "enter":
+func (a *app) domainRows() []row {
+	rows := []row{header("Your domains")}
+	for _, e := range a.doc.Domains() {
+		rows = append(rows, row{label: getStr(e.Node, "name"), value: domainSummary(e.Node),
+			help: "In " + filepath.Base(e.File.Path) + ".", keys: "enter open · d delete",
+			act: func(k string) tea.Cmd {
+				switch {
+				case k == "enter":
 					return a.push(a.domainDetail(e))
-				case "d", "delete", "backspace":
+				case isDelete(k):
 					e.Delete()
 				}
 				return nil
 			}})
+	}
+	rows = append(rows, row{label: "+ Add domain", help: "Subdomains are blocked too.", keys: "enter add", act: func(k string) tea.Cmd {
+		if k != "enter" {
+			return nil
 		}
-		rows = append(rows, row{label: "+ Add domain", act: func(k string) tea.Cmd {
-			if k != "enter" {
-				return nil
-			}
-			return a.textForm("Domain", "", config.ValidateDomainName, func(v string) {
-				a.push(a.domainDetail(a.doc.AddDomain(v)))
-			})
-		}})
-		if len(a.doc.Packs) > 0 {
-			rows = append(rows, header("Blocklists"))
+		return a.textForm("Domain", "", "e.g. youtube.com", config.ValidateDomainName, func(v string) {
+			a.push(a.domainDetail(a.doc.AddDomain(v)))
+		})
+	}})
+	if len(a.doc.Packs) > 0 {
+		rows = append(rows, header("Blocklists"))
+	}
+	for _, p := range a.doc.Packs {
+		box := "[ ]"
+		if p.Enabled {
+			box = "[x]"
 		}
-		for _, p := range a.doc.Packs {
-			box := "[ ]"
-			if p.Enabled {
-				box = "[x]"
-			}
-			rows = append(rows, row{label: box + " " + p.Name, value: commas(p.Count) + " domains", act: func(k string) tea.Cmd {
+		rows = append(rows, row{label: box + " " + p.Name, value: commas(p.Count) + " domains",
+			help: "Generated list in " + p.Rel + ", blocked 24/7.", keys: "space toggle",
+			act: func(k string) tea.Cmd {
 				if isToggle(k) {
 					a.doc.TogglePack(p)
 				}
 				return nil
 			}})
-		}
-		return rows
-	}}
+	}
+	return rows
 }
 
 func (a *app) domainDetail(e DomainEntry) *listScreen {
-	file := filepath.Base(e.File.Path)
-	return &listScreen{nested: true, build: func() []row {
-		rows := []row{
-			a.nameRow(e.Node, "Domain", config.ValidateDomainName),
-			flagRow("Unblockable", e.Node, "unblockable"),
-			flagRow("Log blocking", e.Node, "log_blocking"),
-			header("Blocked during"),
+	return &listScreen{title: "Domain", build: func() []row {
+		n := e.Node
+		blocked := "always"
+		if len(windows(n, "block_windows")) > 0 {
+			blocked = "during the windows below"
 		}
-		return append(rows, a.windowRows(e.Node, "block_windows", "Blocked during", "always")...)
-	}, title: "Domain · " + file}
+		rows := []row{
+			a.nameRow(n, "Domain", "In "+filepath.Base(e.File.Path)+".", config.ValidateDomainName),
+			flagRow("Unblockable", "Allow temporary passes with `glocker -unblock`.", n, "unblockable"),
+			flagRow("Log blocking", "Log every blocked visit to this domain.", n, "log_blocking"),
+			{kind: rowNote, label: "Blocked " + blocked},
+			header("Windows"),
+		}
+		return append(rows, a.windowRows(self(n), self(n), "block_windows", "Blocked during", "",
+			"Blocked only during these windows. No windows means always blocked.")...)
+	}}
 }
 
 // ── programs ─────────────────────────────────────────────────────────────────
@@ -259,7 +234,7 @@ func programSummary(m *yaml.Node) string {
 	case len(aw) > 0:
 		s = "allowed " + fmtWindows(aw)
 	default:
-		s = "killed 24/7"
+		s = "killed always"
 	}
 	if getBool(m, "extendible") {
 		s += " · extendible"
@@ -267,161 +242,92 @@ func programSummary(m *yaml.Node) string {
 	return s
 }
 
-func (a *app) programsTab() *listScreen {
-	return &listScreen{build: func() []row {
-		prog := ensure(a.doc.cfg(), "programs", yaml.MappingNode)
-		list := ensure(prog, "list", yaml.SequenceNode)
-		rows := []row{toggleRow("Program blocking", prog, "enabled"), header("Programs")}
+func (a *app) programRows() []row {
+	rows := []row{header("Programs")}
+	list := path(a.doc.cfg(), "programs", "list")
+	if list != nil {
 		for _, n := range list.Content {
-			rows = append(rows, row{label: getStr(n, "name"), value: programSummary(n), act: func(k string) tea.Cmd {
-				switch k {
-				case "enter":
-					return a.push(a.programDetail(n))
-				case "d", "delete", "backspace":
-					if i := indexOf(list, n); i >= 0 {
-						removeAt(list, i)
-					}
-				}
-				return nil
-			}})
-		}
-		return append(rows, row{label: "+ Add program", act: func(k string) tea.Cmd {
-			if k != "enter" {
-				return nil
-			}
-			return a.textForm("Program (process name)", "", config.ValidateProgramName, func(v string) {
-				n := &yaml.Node{Kind: yaml.MappingNode}
-				mapSet(n, "name", strNode(v))
-				list.Style = 0
-				list.Content = append(list.Content, n)
-				a.push(a.programDetail(n))
-			})
-		}})
-	}}
-}
-
-func (a *app) programDetail(n *yaml.Node) *listScreen {
-	return &listScreen{nested: true, title: "Program", build: func() []row {
-		rows := []row{
-			a.nameRow(n, "Program (process name)", config.ValidateProgramName),
-			flagRow("Extendible", n, "extendible"),
-			header("Killed during"),
-		}
-		empty := ""
-		if len(windows(n, "allow_windows")) == 0 {
-			empty = "always"
-		}
-		rows = append(rows, a.windowRows(n, "kill_windows", "Killed during", empty)...)
-		rows = append(rows, header("Allowed during"))
-		if len(windows(n, "kill_windows")) > 0 && len(windows(n, "allow_windows")) > 0 {
-			rows = append(rows, note("ignored while kill windows are set"))
-		}
-		return append(rows, a.windowRows(n, "allow_windows", "Allowed during", "")...)
-	}}
-}
-
-// ── keywords ─────────────────────────────────────────────────────────────────
-
-func (a *app) keywordsTab() *listScreen {
-	sections := []struct{ key, title, prompt string }{
-		{"url_keywords", "URL keywords", "Keyword matched against the address"},
-		{"content_keywords", "Page keywords", "Keyword matched against page text"},
-		{"whitelist", "Never scanned", "Site"},
-	}
-	return &listScreen{build: func() []row {
-		kw := ensure(ensure(a.doc.cfg(), "content", yaml.MappingNode), "keywords", yaml.MappingNode)
-		var rows []row
-		for _, s := range sections {
-			seq := ensure(kw, s.key, yaml.SequenceNode)
-			rows = append(rows, header(s.title))
-			for _, item := range seq.Content {
-				rows = append(rows, row{label: item.Value, act: func(k string) tea.Cmd {
-					switch k {
-					case "enter":
-						return a.textForm(s.prompt, item.Value, notEmpty, func(v string) { item.Value = v })
-					case "d", "delete", "backspace":
-						if i := indexOf(seq, item); i >= 0 {
-							removeAt(seq, i)
+			rows = append(rows, row{label: getStr(n, "name"), value: programSummary(n), keys: "enter open · d delete",
+				act: func(k string) tea.Cmd {
+					switch {
+					case k == "enter":
+						return a.push(a.programDetail(n))
+					case isDelete(k):
+						if i := indexOf(list, n); i >= 0 {
+							removeAt(list, i)
 						}
 					}
 					return nil
 				}})
-			}
-			rows = append(rows, row{label: "+ Add", act: func(k string) tea.Cmd {
-				if k != "enter" {
-					return nil
-				}
-				return a.textForm(s.prompt, "", notEmpty, func(v string) { seq.Content = append(seq.Content, strNode(v)) })
-			}})
 		}
-		return rows
-	}}
-}
-
-// ── unblocking ───────────────────────────────────────────────────────────────
-
-func (a *app) intRow(label, unit string, m *yaml.Node, key, zero string) row {
-	v := getInt(m, key)
-	shown := fmt.Sprintf("%d%s", v, unit)
-	if v == 0 && zero != "" {
-		shown = zero
 	}
-	return row{label: label, value: shown, act: func(k string) tea.Cmd {
+	return append(rows, row{label: "+ Add program", help: "Matched against the process name.", keys: "enter add", act: func(k string) tea.Cmd {
 		if k != "enter" {
 			return nil
 		}
-		return a.textForm(label, strconv.Itoa(getInt(m, key)), validInt, func(s string) {
-			n, _ := strconv.Atoi(s)
-			mapSet(m, key, intNode(n))
+		return a.textForm("Program", "", "Process name, e.g. steam.", config.ValidateProgramName, func(v string) {
+			n := &yaml.Node{Kind: yaml.MappingNode}
+			mapSet(n, "name", strNode(v))
+			l := ensure(ensurePath(a.doc.cfg(), "programs"), "list", yaml.SequenceNode)
+			l.Style = 0
+			l.Content = append(l.Content, n)
+			a.push(a.programDetail(n))
 		})
-	}}
+	}})
 }
 
-func (a *app) unblockingTab() *listScreen {
-	return &listScreen{build: func() []row {
-		u := ensure(ensure(a.doc.cfg(), "domains", yaml.MappingNode), "unblocking", yaml.MappingNode)
-		reasons := seqStrings(mapGet(u, "reasons"))
-		return []row{
-			{label: "Reasons", value: strings.Join(reasons, ", "), act: func(k string) tea.Cmd {
-				if k != "enter" {
-					return nil
-				}
-				return a.textForm("Reasons (comma-separated)", strings.Join(reasons, ", "), notEmpty, func(v string) {
-					var out []string
-					for _, r := range strings.Split(v, ",") {
-						if r = strings.TrimSpace(r); r != "" {
-							out = append(out, r)
-						}
+// programDetail shows one list of windows plus a mode, rather than the
+// config's separate kill_windows/allow_windows: with no windows the program is
+// always killed; with windows, space flips between killed during them and
+// killed outside them (moving the list between the two keys).
+func (a *app) programDetail(n *yaml.Node) *listScreen {
+	return &listScreen{title: "Program", build: func() []row {
+		kw, aw := windows(n, "kill_windows"), windows(n, "allow_windows")
+		rows := []row{
+			a.nameRow(n, "Program", "Process name.", config.ValidateProgramName),
+			flagRow("Extendible", "Allow a one-hour `glocker -extend`, once per 24h.", n, "extendible"),
+		}
+		modeHelp := "Space flips between killed during and killed outside the windows."
+		switch {
+		case len(kw) > 0 && len(aw) > 0:
+			rows = append(rows, note("Has both kill and allow windows; allow windows are ignored."),
+				header("Killed during"))
+			rows = append(rows, a.windowRows(self(n), self(n), "kill_windows", "Killed during", "", "")...)
+			rows = append(rows, header("Allowed during (ignored)"))
+			return append(rows, a.windowRows(self(n), self(n), "allow_windows", "Allowed during", "", "")...)
+		case len(kw) > 0:
+			rows = append(rows, row{label: "Killed", value: "during the windows below", help: modeHelp, keys: "space flip",
+				act: func(k string) tea.Cmd {
+					if isToggle(k) {
+						moveKey(n, "kill_windows", "allow_windows")
 					}
-					mapSet(u, "reasons", strSeq(out))
-				})
-			}},
-			a.intRow("Unblock length", " min", u, "temp_unblock_time", ""),
-			a.intRow("Max per day", "", u, "max_per_day", "unlimited"),
+					return nil
+				}}, header("Windows"))
+			return append(rows, a.windowRows(self(n), self(n), "kill_windows", "Killed during", "", modeHelp)...)
+		case len(aw) > 0:
+			rows = append(rows, row{label: "Killed", value: "outside the windows below", help: modeHelp, keys: "space flip",
+				act: func(k string) tea.Cmd {
+					if isToggle(k) {
+						moveKey(n, "allow_windows", "kill_windows")
+					}
+					return nil
+				}}, header("Windows"))
+			return append(rows, a.windowRows(self(n), self(n), "allow_windows", "Allowed during", "", modeHelp)...)
+		default:
+			rows = append(rows, note("Killed always"), header("Windows"))
+			return append(rows, a.windowRows(self(n), self(n), "kill_windows", "Killed during", "",
+				"Add a window to kill it only at certain times.")...)
 		}
 	}}
 }
 
-// ── sudo ─────────────────────────────────────────────────────────────────────
-
-func (a *app) sudoTab() *listScreen {
-	return &listScreen{build: func() []row {
-		s := ensure(a.doc.cfg(), "sudoers", yaml.MappingNode)
-		rows := []row{toggleRow("Sudo control", s, "enabled"), header("Sudo allowed during")}
-		return append(rows, a.windowRows(s, "allow_windows", "Sudo allowed during", "never")...)
-	}}
-}
-
-// ── general ──────────────────────────────────────────────────────────────────
-
-func (a *app) generalTab() *listScreen {
-	return &listScreen{build: func() []row {
-		c := a.doc.cfg()
-		return []row{{label: "User", value: getStr(c, "user"), act: func(k string) tea.Cmd {
-			if k != "enter" {
-				return nil
-			}
-			return a.textForm("Linux login name", getStr(c, "user"), notEmpty, func(v string) { mapSet(c, "user", strNode(v)) })
-		}}}
-	}}
+// moveKey renames a mapping key, keeping its value node (and comments).
+func moveKey(m *yaml.Node, from, to string) {
+	v := mapGet(m, from)
+	if v == nil {
+		return
+	}
+	mapDel(m, from)
+	mapDel(m, to)
+	mapSet(m, to, v)
 }

@@ -24,18 +24,20 @@ editing UX. Does not modify any existing glocker code.
 - Save: diff of old vs new text shown first, confirm, atomic write. Writes to
   `-o` path (default `<input>.new`) so the real config is never touched while
   prototyping.
-- Screens (tabs):
+- Layout: sidebar listing every stanza (with an on/off dot) beside the
+  selected stanza's fields, and a help panel at the bottom with the focused
+  field's description and the keys that apply.
+- Stanzas are declared in `schema.go` as typed fields (bool, int, string,
+  list, windows, enum, unset/yes/no). Viewing never creates missing stanzas;
+  writes create them on demand.
   - Domains: inline entries plus non-generated includes (personal-domains.yaml,
-    where new domains go) — add/remove, toggle unblockable, edit block windows.
-    Generated blocklists (update_domains.py) are on/off toggles: keep/drop the
-    include line; unincluded ones in conf.d/ show as off.
-  - Programs: same shape as domains (kill/allow windows, extendible).
-  - Keywords: URL/content keywords + whitelist.
-  - Unblocking: reasons, temp_unblock_time, max_per_day.
-  - Sudo: allow windows.
-- Time-window editor shared by all screens: start/end + day toggles.
-- Out of scope for now: other stanzas (sync, mail, accountability, panic, …),
-  loosening-vs-tightening friction, root gating.
+    where new domains go). Generated blocklists are on/off toggles (keep/drop
+    the include line); unincluded ones in conf.d/ show as off.
+  - Programs: one window list plus a mode (killed always / during / outside the
+    windows) instead of separate kill_windows/allow_windows.
+- Time-window picker: inline from/to and day toggles, typed digits or ↑↓, and
+  a week grid drawn with glocker's own window evaluation (overnight-correct).
+- Out of scope for now: loosening-vs-tightening friction, root gating.
 
 ## Implementation steps
 
@@ -45,3 +47,7 @@ editing UX. Does not modify any existing glocker code.
 - [x] Screens: Domains, Programs, Keywords, Unblocking, Sudo, General, plus a shared window form. Check: every field can be edited from the keyboard in tmux.
 - [x] Save flow: validate, show diff, confirm, atomic write to `<file>.new` (`-inplace` to overwrite). Check: an invalid window blocks the save; the written file reloads with `config.LoadFile`.
 - [x] Quit guard on unsaved changes.
+- [x] Sidebar + help panel layout. Check: every stanza reachable from the sidebar; help changes with the focused row.
+- [x] All agent stanzas editable via the schema. Check: viewing every section of a near-empty config leaves it unchanged (test).
+- [x] Program kill mode. Check: flipping moves the list between kill_windows and allow_windows.
+- [x] Window picker with week grid. Check: typed 22:00–06:00 renders as overnight; digit bursts handled (test).

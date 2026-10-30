@@ -14,11 +14,10 @@ import (
 
 var (
 	titleStyle  = lipgloss.NewStyle().Bold(true)
-	tabStyle    = lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("8"))
-	activeTab   = lipgloss.NewStyle().Padding(0, 1).Bold(true).Reverse(true)
 	headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
 	dimStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	cursorStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Bold(true)
+	sideSel     = lipgloss.NewStyle().Bold(true).Reverse(true)
 	okStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
 	errStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
 	addStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
@@ -26,18 +25,25 @@ var (
 	hunkStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 )
 
+const sideW = 24
+
+// screen is something shown in the content pane (or full screen for diffs).
 type screen interface {
 	Update(a *app, msg tea.Msg) tea.Cmd
-	View(a *app) string
+	View(a *app, w, h int) string
+	// Help returns a line describing the focused thing and the keys that apply.
+	Help(a *app) (text, keys string)
 }
 
 type app struct {
 	doc       *Doc
 	suffix    string
-	tabNames  []string
-	tabs      []*listScreen
-	tab       int
-	stack     []screen
+	sections  []*section
+	roots     []*listScreen
+	sec       int
+	focusSide bool
+	stack     []screen // nested screens over the current section
+	full      screen   // full-screen overlay (the diff)
 	status    string
 	statusErr bool
 	quitArmed bool
@@ -45,80 +51,28 @@ type app struct {
 }
 
 func newApp(d *Doc, suffix string) *app {
-	a := &app{doc: d, suffix: suffix, w: 80, h: 24}
-	a.tabNames = []string{"Domains", "Programs", "Keywords", "Unblocking", "Sudo", "General"}
-	a.tabs = []*listScreen{a.domainsTab(), a.programsTab(), a.keywordsTab(), a.unblockingTab(), a.sudoTab(), a.generalTab()}
+	a := &app{doc: d, suffix: suffix, w: 100, h: 30, focusSide: true}
+	a.sections = sections()
+	for _, s := range a.sections {
+		a.roots = append(a.roots, a.sectionScreen(s))
+	}
 	return a
 }
 
 func (a *app) Init() tea.Cmd { return nil }
 
-func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		a.w, a.h = msg.Width, msg.Height
-		if top := a.top(); top != nil {
-			return a, top.Update(a, msg)
-		}
-		return a, nil
-	case tea.KeyMsg:
-		if msg.String() != "q" && msg.String() != "ctrl+c" {
-			a.quitArmed = false
-		}
-		if top := a.top(); top != nil {
-			return a, top.Update(a, msg)
-		}
-		switch msg.String() {
-		case "q", "ctrl+c":
-			return a, a.quit()
-		case "tab", "right":
-			a.tab = (a.tab + 1) % len(a.tabs)
-			return a, nil
-		case "shift+tab", "left":
-			a.tab = (a.tab + len(a.tabs) - 1) % len(a.tabs)
-			return a, nil
-		case "1", "2", "3", "4", "5", "6":
-			a.tab = int(msg.String()[0] - '1')
-			return a, nil
-		}
-		return a, a.tabs[a.tab].Update(a, msg)
-	}
-	if top := a.top(); top != nil {
-		return a, top.Update(a, msg)
-	}
-	return a, nil
-}
-
-func (a *app) View() string {
-	var b strings.Builder
-	if top := a.top(); top != nil {
-		b.WriteString(top.View(a))
-	} else {
-		var tabs []string
-		for i, n := range a.tabNames {
-			s := tabStyle
-			if i == a.tab {
-				s = activeTab
-			}
-			tabs = append(tabs, s.Render(fmt.Sprintf("%d %s", i+1, n)))
-		}
-		b.WriteString(strings.Join(tabs, "") + "\n\n")
-		b.WriteString(a.tabs[a.tab].View(a))
-	}
-	return b.String()
-}
-
 func (a *app) top() screen {
-	if len(a.stack) == 0 {
-		return nil
+	if len(a.stack) > 0 {
+		return a.stack[len(a.stack)-1]
 	}
-	return a.stack[len(a.stack)-1]
+	return a.roots[a.sec]
 }
 
 func (a *app) push(s screen) tea.Cmd {
 	a.stack = append(a.stack, s)
+	a.focusSide = false
 	if f, ok := s.(*formScreen); ok {
-		f.form = f.form.WithWidth(min(a.w, 60))
+		f.form = f.form.WithWidth(min(a.contentW(), 60))
 		return f.form.Init()
 	}
 	return nil
@@ -130,16 +84,113 @@ func (a *app) pop() {
 	}
 }
 
+func (a *app) contentW() int { return max(a.w-sideW-3, 30) }
+
+// helpH is the height of the bottom panel: rule, help text, keys, status.
+const helpH = 4
+
+func (a *app) bodyH() int { return max(a.h-helpH, 6) }
+
+func (a *app) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if ws, ok := msg.(tea.WindowSizeMsg); ok {
+		a.w, a.h = ws.Width, ws.Height
+	}
+	if a.full != nil {
+		return a, a.full.Update(a, msg)
+	}
+	km, isKey := msg.(tea.KeyMsg)
+	if !isKey {
+		if !a.focusSide {
+			return a, a.top().Update(a, msg)
+		}
+		return a, nil
+	}
+	k := km.String()
+	if k != "q" && k != "ctrl+c" {
+		a.quitArmed = false
+	}
+	if k == "ctrl+c" {
+		return a, a.quit()
+	}
+	if !a.focusSide {
+		return a, a.top().Update(a, msg)
+	}
+	switch k {
+	case "up", "k":
+		a.sec = (a.sec + len(a.sections) - 1) % len(a.sections)
+		a.stack = nil
+	case "down", "j":
+		a.sec = (a.sec + 1) % len(a.sections)
+		a.stack = nil
+	case "enter", "right", "l", "tab":
+		a.focusSide = false
+	case "s":
+		return a, a.save()
+	case "q":
+		return a, a.quit()
+	}
+	return a, nil
+}
+
+func (a *app) View() string {
+	if a.full != nil {
+		return a.full.View(a, a.w, a.h-1) + "\n" + a.statusLine()
+	}
+	bh := a.bodyH()
+	side := a.sidebar(bh)
+	content := lipgloss.NewStyle().Width(a.contentW()).MaxHeight(bh).Render(a.top().View(a, a.contentW(), bh))
+	sep := dimStyle.Render(strings.TrimSuffix(strings.Repeat("│\n", bh), "\n"))
+	body := lipgloss.JoinHorizontal(lipgloss.Top, side, " ", sep, " ", content)
+
+	var text, keys string
+	if a.focusSide {
+		s := a.sections[a.sec]
+		text, keys = s.help, "↑↓ section · enter open · s save · q quit"
+	} else {
+		text, keys = a.top().Help(a)
+	}
+	rule := dimStyle.Render(strings.Repeat("─", a.w))
+	helpLine := lipgloss.NewStyle().MaxWidth(a.w).Render(text)
+	return lipgloss.NewStyle().Height(bh).Render(body) + "\n" + rule + "\n" + helpLine + "\n" +
+		dimStyle.Render(truncate(keys, a.w)) + "\n" + a.statusLine()
+}
+
+func (a *app) sidebar(h int) string {
+	var b strings.Builder
+	b.WriteString(titleStyle.Render("glocker config") + "\n\n")
+	for i, s := range a.sections {
+		dot := " "
+		if s.state != nil {
+			switch s.state(a.secNode(s)) {
+			case "on":
+				dot = okStyle.Render("●")
+			case "off":
+				dot = dimStyle.Render("○")
+			}
+		}
+		label := fmt.Sprintf("%-*s", sideW-3, s.title)
+		switch {
+		case i == a.sec && a.focusSide:
+			label = sideSel.Render(label)
+		case i == a.sec:
+			label = titleStyle.Render(label)
+		}
+		b.WriteString(dot + " " + label + "\n")
+	}
+	return lipgloss.NewStyle().Width(sideW).Height(h).Render(b.String())
+}
+
 func (a *app) setStatus(s string, isErr bool) { a.status, a.statusErr = s, isErr }
 
 func (a *app) statusLine() string {
 	if a.status == "" {
 		return ""
 	}
+	s := truncate(a.status, a.w)
 	if a.statusErr {
-		return errStyle.Render(a.status)
+		return errStyle.Render(s)
 	}
-	return okStyle.Render(a.status)
+	return okStyle.Render(s)
 }
 
 func (a *app) quit() tea.Cmd {
@@ -165,7 +216,19 @@ func (a *app) save() tea.Cmd {
 		a.setStatus("No changes.", false)
 		return nil
 	}
-	return a.push(newDiffScreen(a, ch))
+	a.full = newDiffScreen(a, ch)
+	return nil
+}
+
+func truncate(s string, w int) string {
+	if lipgloss.Width(s) <= w {
+		return s
+	}
+	r := []rune(s)
+	for len(r) > 0 && lipgloss.Width(string(r))+1 > w {
+		r = r[:len(r)-1]
+	}
+	return string(r) + "…"
 }
 
 // ── list screens ─────────────────────────────────────────────────────────────
@@ -182,6 +245,8 @@ type row struct {
 	kind  rowKind
 	label string
 	value string
+	help  string
+	keys  string
 	act   func(key string) tea.Cmd // nil: not actionable
 }
 
@@ -193,7 +258,6 @@ type listScreen struct {
 	build  func() []row
 	cursor int
 	offset int
-	nested bool // pushed on the stack: esc goes back
 }
 
 func (l *listScreen) selectable(rows []row, i int) bool {
@@ -204,7 +268,7 @@ func (l *listScreen) clamp(rows []row) {
 	if l.selectable(rows, l.cursor) {
 		return
 	}
-	for d := 1; d < len(rows); d++ {
+	for d := 1; d < len(rows)+l.cursor; d++ {
 		if l.selectable(rows, l.cursor-d) {
 			l.cursor -= d
 			return
@@ -237,15 +301,13 @@ func (l *listScreen) Update(a *app, msg tea.Msg) tea.Cmd {
 		l.move(rows, -1)
 	case "down", "j":
 		l.move(rows, 1)
-	case "esc":
-		if l.nested {
+	case "esc", "left", "h", "shift+tab":
+		if len(a.stack) > 0 {
 			a.pop()
+		} else {
+			a.focusSide = true
 		}
-	case "q", "ctrl+c":
-		if l.nested {
-			a.pop()
-			return nil
-		}
+	case "q":
 		return a.quit()
 	case "s":
 		return a.save()
@@ -260,12 +322,32 @@ func (l *listScreen) Update(a *app, msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-func (l *listScreen) View(a *app) string {
+func (l *listScreen) Help(a *app) (string, string) {
+	rows := l.build()
+	l.clamp(rows)
+	back := "esc sections"
+	if len(a.stack) > 0 {
+		back = "esc back"
+	}
+	if !l.selectable(rows, l.cursor) {
+		return "", back
+	}
+	r := rows[l.cursor]
+	keys := r.keys
+	if keys != "" {
+		keys += " · "
+	}
+	return r.help, keys + "s save · " + back
+}
+
+func (l *listScreen) View(a *app, w, h int) string {
 	rows := l.build()
 	l.clamp(rows)
 	var b strings.Builder
+	used := 0
 	if l.title != "" {
 		b.WriteString(titleStyle.Render(l.title) + "\n\n")
+		used = 2
 	}
 	labelW := 0
 	for _, r := range rows {
@@ -273,8 +355,8 @@ func (l *listScreen) View(a *app) string {
 			labelW = max(labelW, lipgloss.Width(r.label))
 		}
 	}
-	// Keep the cursor on screen.
-	avail := max(a.h-8, 5)
+	labelW = min(labelW, w/2)
+	avail := max(h-used, 3)
 	if l.cursor < l.offset {
 		l.offset = l.cursor
 	}
@@ -284,6 +366,7 @@ func (l *listScreen) View(a *app) string {
 	if l.offset > 0 && l.offset < len(rows) && rows[l.offset-1].kind == rowHeader {
 		l.offset--
 	}
+	focused := !a.focusSide
 	end := min(len(rows), l.offset+avail)
 	for i := l.offset; i < end; i++ {
 		r := rows[i]
@@ -294,45 +377,37 @@ func (l *listScreen) View(a *app) string {
 			}
 			b.WriteString(headerStyle.Render(r.label) + "\n")
 		case rowNote:
-			b.WriteString("    " + dimStyle.Render(r.label) + "\n")
+			b.WriteString("  " + dimStyle.Render(truncate(r.label, w-2)) + "\n")
 		default:
-			mark := "  "
-			label := r.label
-			if i == l.cursor {
+			mark, label := "  ", truncate(r.label, max(labelW, w/2))
+			if i == l.cursor && focused {
 				mark = cursorStyle.Render("› ")
 				label = cursorStyle.Render(label)
 			}
 			line := mark + label
 			if r.value != "" {
-				pad := labelW - lipgloss.Width(r.label) + 2
-				line += strings.Repeat(" ", pad) + dimStyle.Render(r.value)
+				pad := max(labelW-lipgloss.Width(r.label), 0) + 2
+				line += strings.Repeat(" ", pad) + dimStyle.Render(truncate(r.value, max(w-labelW-6, 8)))
 			}
-			b.WriteString("  " + line + "\n")
+			b.WriteString(line + "\n")
 		}
 	}
-	b.WriteString("\n" + a.statusLine() + "\n")
-	hint := "↑↓ move · enter edit · space toggle · d delete · s save · "
-	if l.nested {
-		hint += "esc back"
-	} else {
-		hint += "tab switch · q quit"
-	}
-	b.WriteString(dimStyle.Render(hint))
 	return b.String()
 }
 
-// ── forms ────────────────────────────────────────────────────────────────────
+// ── text forms ───────────────────────────────────────────────────────────────
 
 type formScreen struct {
 	form *huh.Form
 	done func()
+	help string
 }
 
-func newForm(done func(), fields ...huh.Field) *formScreen {
+func newForm(help string, done func(), fields ...huh.Field) *formScreen {
 	km := huh.NewDefaultKeyMap()
 	km.Quit = key.NewBinding(key.WithKeys("esc", "ctrl+c"), key.WithHelp("esc", "cancel"))
-	f := huh.NewForm(huh.NewGroup(fields...)).WithKeyMap(km).WithShowHelp(true)
-	return &formScreen{form: f, done: done}
+	f := huh.NewForm(huh.NewGroup(fields...)).WithKeyMap(km).WithShowHelp(false)
+	return &formScreen{form: f, done: done, help: help}
 }
 
 func (f *formScreen) Update(a *app, msg tea.Msg) tea.Cmd {
@@ -350,7 +425,9 @@ func (f *formScreen) Update(a *app, msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-func (f *formScreen) View(a *app) string { return f.form.View() }
+func (f *formScreen) View(a *app, w, h int) string { return f.form.View() }
+
+func (f *formScreen) Help(a *app) (string, string) { return f.help, "enter confirm · esc cancel" }
 
 // ── diff + save ──────────────────────────────────────────────────────────────
 
@@ -382,7 +459,7 @@ func newDiffScreen(a *app, ch []Change) *diffScreen {
 		}
 		b.WriteString("\n")
 	}
-	vp := viewport.New(a.w, max(a.h-4, 5))
+	vp := viewport.New(a.w, max(a.h-5, 5))
 	vp.SetContent(b.String())
 	return &diffScreen{changes: ch, vp: vp}
 }
@@ -390,12 +467,12 @@ func newDiffScreen(a *app, ch []Change) *diffScreen {
 func (d *diffScreen) Update(a *app, msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		d.vp.Width, d.vp.Height = msg.Width, max(msg.Height-4, 5)
+		d.vp.Width, d.vp.Height = msg.Width, max(msg.Height-5, 5)
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "y":
 			written, err := a.doc.Write(d.changes, a.suffix)
-			a.pop()
+			a.full = nil
 			if err != nil {
 				a.setStatus("Write failed: "+err.Error(), true)
 			} else {
@@ -403,7 +480,7 @@ func (d *diffScreen) Update(a *app, msg tea.Msg) tea.Cmd {
 			}
 			return nil
 		case "n", "esc", "q":
-			a.pop()
+			a.full = nil
 			return nil
 		}
 	}
@@ -412,7 +489,9 @@ func (d *diffScreen) Update(a *app, msg tea.Msg) tea.Cmd {
 	return cmd
 }
 
-func (d *diffScreen) View(a *app) string {
+func (d *diffScreen) View(a *app, w, h int) string {
 	return titleStyle.Render("Review changes") + "\n\n" + d.vp.View() + "\n" +
 		dimStyle.Render("↑↓ scroll · y write · n back")
 }
+
+func (d *diffScreen) Help(a *app) (string, string) { return "", "" }

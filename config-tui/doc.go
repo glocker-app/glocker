@@ -60,7 +60,7 @@ func Load(path string) (*Doc, error) {
 	}
 	d := &Doc{BaseDir: filepath.Dir(path), Main: main}
 	included := map[string]bool{}
-	for _, n := range d.domainList().Content {
+	for _, n := range d.listContent() {
 		if n.Tag != includeTag {
 			continue
 		}
@@ -154,10 +154,18 @@ func (d *Doc) domainList() *yaml.Node {
 	return ensure(ensure(d.cfg(), "domains", yaml.MappingNode), "list", yaml.SequenceNode)
 }
 
+// listContent reads domains.list without creating it.
+func (d *Doc) listContent() []*yaml.Node {
+	if l := path(d.cfg(), "domains", "list"); l != nil {
+		return l.Content
+	}
+	return nil
+}
+
 func (d *Doc) Domains() []DomainEntry {
 	var out []DomainEntry
-	list := d.domainList()
-	for _, n := range list.Content {
+	list := path(d.cfg(), "domains", "list")
+	for _, n := range d.listContent() {
 		if n.Kind == yaml.MappingNode {
 			out = append(out, DomainEntry{d.Main, list, n})
 		}

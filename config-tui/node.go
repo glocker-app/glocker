@@ -201,3 +201,12 @@ func clone(n *yaml.Node) *yaml.Node {
 	}
 	return &c
 }
+
+// ensurePath walks nested mapping keys, creating missing mappings. Only call
+// it when writing: reads use path so viewing never adds empty stanzas.
+func ensurePath(m *yaml.Node, keys ...string) *yaml.Node {
+	for _, k := range keys {
+		m = ensure(m, k, yaml.MappingNode)
+	}
+	return m
+}
