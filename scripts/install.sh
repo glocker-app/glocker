@@ -45,12 +45,12 @@ cat <<'EOF'
 
 Done. glocker is installed and running — run `glocker` to see what's blocked.
 
-Review the schedules, forbidden programs and keywords in /etc/glocker/config.yaml.
-Your own sites are in /etc/glocker/conf.d/personal-domains.yaml. To change either
-(inside your sudo window):
+To review or change your sites, schedules and sudo window (inside your sudo window):
 
-  sudoedit /etc/glocker/config.yaml
-  sudo systemctl restart glocker
+  sudo glocker -edit
+
+Without sudo it opens read-only. The config is /etc/glocker/config.yaml, with your
+own sites in /etc/glocker/conf.d/personal-domains.yaml.
 
 More: https://glockerapp.com/habits.html
 

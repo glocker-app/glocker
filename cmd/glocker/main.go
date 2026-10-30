@@ -120,7 +120,7 @@ func printGroupedUsage() {
 func main() {
 	// Parse command-line flags
 	installFlag := flag.Bool("install", false, "Install glocker as a system service")
-	initFlag := flag.Bool("init", false, "Generate a starting config from the sample: fills in your login (and optional hosted dashboard + buddy email), keeping the sample's comments. Won't overwrite an existing config. Run as a normal user, before -install.")
+	initFlag := flag.Bool("init", false, "Generate a starting config from the sample: fills in your login (and optional hosted dashboard + buddy email), keeping the sample's comments. Won't overwrite an existing config. Run as a normal user, before -install; after install, change settings with -edit.")
 	confFlag := flag.String("conf", "conf/conf.yaml", "source config for -install (its dir also holds conf.d/); lets the config live outside the source tree")
 	uninstallReason := flag.String("uninstall", "", "Uninstall Glocker and revert all changes (provide reason)")
 	uninstallNote := flag.String("note", "", "Optional free-form note to attach to -uninstall (e.g. context for the reason)")
@@ -180,6 +180,7 @@ func main() {
 			fmt.Printf("  2. Add your own sites to %s.\n", filepath.Join(filepath.Dir(*confFlag), "conf.d", "personal-domains.yaml"))
 			fmt.Println("  3. Run 'make full-install' to fetch the standard blocklists and install glocker.")
 			fmt.Println("     (A bare 'glocker -install' skips the blocklist download — nothing to block.)")
+			fmt.Println("  4. After that, change settings with 'sudo glocker -edit' inside your sudo window.")
 		}
 		if res.sudoRestricted {
 			fmt.Println("\nsudo: allowed during sudoers.allow_windows, blocked outside them. The sample")
