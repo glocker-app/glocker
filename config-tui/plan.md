@@ -25,9 +25,10 @@ editing UX. Does not modify any existing glocker code.
   `-o` path (default `<input>.new`) so the real config is never touched while
   prototyping.
 - Screens (tabs):
-  - Domains: inline entries — add/remove, toggle unblockable, edit block
-    windows. `!include` blocklist packs shown as toggles (on/off = keep/drop the
-    include line). Contents of included files are read-only.
+  - Domains: inline entries plus non-generated includes (personal-domains.yaml,
+    where new domains go) — add/remove, toggle unblockable, edit block windows.
+    Generated blocklists (update_domains.py) are on/off toggles: keep/drop the
+    include line; unincluded ones in conf.d/ show as off.
   - Programs: same shape as domains (kill/allow windows, extendible).
   - Keywords: URL/content keywords + whitelist.
   - Unblocking: reasons, temp_unblock_time, max_per_day.
