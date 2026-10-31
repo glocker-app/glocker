@@ -57,3 +57,24 @@ func TestSetSubscription(t *testing.T) {
 		t.Errorf("unknown user err = %v, want ErrRecordNotFound", err)
 	}
 }
+
+func TestHasAccessTrial(t *testing.T) {
+	future := time.Now().Add(7 * 24 * time.Hour)
+	past := time.Now().Add(-time.Hour)
+	cases := []struct {
+		name string
+		u    User
+		want bool
+	}{
+		{"no sub, no trial", User{}, false},
+		{"trial in future", User{TrialEndsAt: &future}, true},
+		{"trial lapsed", User{TrialEndsAt: &past}, false},
+		{"subscribed, trial field ignored", User{SubStatus: SubStatusActive, TrialEndsAt: &past}, true},
+		{"expired sub still in trial window is read-only", User{SubStatus: SubStatusExpired, TrialEndsAt: &future}, false},
+	}
+	for _, c := range cases {
+		if got := c.u.HasAccess(); got != c.want {
+			t.Errorf("%s: HasAccess()=%v, want %v", c.name, got, c.want)
+		}
+	}
+}

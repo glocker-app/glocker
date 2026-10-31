@@ -67,6 +67,18 @@ type User struct {
 	// (on dashboard load). The reconcile is throttled off this so it doesn't fire on
 	// every /api/me, and it self-heals a missed or reordered webhook.
 	SubSyncedAt time.Time `json:"-"`
+
+	// TrialEndsAt is the no-card app-trial deadline, set at email verification
+	// (see TrialLength). While it's in the future and the account has never
+	// subscribed (SubStatus == ""), HasAccess grants the paid tier — no card, no
+	// Polar subscription. Nil for accounts created before trials existed and for
+	// any account that has subscribed. See [[polar-billing-gotchas]].
+	TrialEndsAt *time.Time `json:"trialEndsAt"`
+	// TrialRemind3dAt / TrialRemindEndAt record when the two trial-ending reminder
+	// emails were sent, so the scheduler sweep sends each at most once. Nil until
+	// sent.
+	TrialRemind3dAt  *time.Time `json:"-"`
+	TrialRemindEndAt *time.Time `json:"-"`
 }
 
 // VerificationToken is a single-use, expiring token emailed to a new account so

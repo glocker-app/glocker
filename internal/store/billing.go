@@ -16,12 +16,26 @@ const (
 	SubStatusExpired  = "expired"  // access revoked: cancellation took effect, or payment lapsed
 )
 
+// TrialLength is the no-card app-trial window, set at email verification.
+const TrialLength = 14 * 24 * time.Hour
+
+// InTrial reports whether the account is inside its no-card app trial: it has
+// never subscribed (SubStatus == "") and the trial deadline is still in the
+// future. Time-based, so it reverts to read-only on its own when the deadline
+// passes — nothing writes the row to end the trial.
+func (u *User) InTrial() bool {
+	return u.SubStatus == "" && u.TrialEndsAt != nil && time.Now().Before(*u.TrialEndsAt)
+}
+
 // HasAccess reports whether the account is entitled to the paid product right now
-// — writing (ingest + dashboard feature edits). Access holds during the trial,
-// while active, and through a scheduled cancellation until the period ends. An
-// expired or never-subscribed account has no access (read-only). Reads are never
-// gated on this; enforcement (ingest/write refusal) is elsewhere.
+// — writing (ingest + dashboard feature edits). Access holds during the no-card
+// app trial, while active, and through a scheduled cancellation until the period
+// ends. An expired or trial-lapsed account has no access (read-only). Reads are
+// never gated on this; enforcement (ingest/write refusal) is elsewhere.
 func (u *User) HasAccess() bool {
+	if u.InTrial() {
+		return true
+	}
 	switch u.SubStatus {
 	case SubStatusTrialing, SubStatusActive, SubStatusCanceled, SubStatusPastDue:
 		// A set period-end bounds access. Without this, a lost `revoke`/`canceled`
