@@ -10,7 +10,9 @@ import (
 // 503 if the DB is unreachable. Unlike /api/health (session-gated, account-scoped)
 // it touches no account data — no counts, no identity. It also reports the build
 // version so `curl /healthz` confirms what's deployed; that's a git hash of a
-// private repo, so it maps to nothing publicly (no CVE surface).
+// private repo, so it maps to nothing publicly (no CVE surface). "schema" is the
+// version the DB was last migrated to (store.CurrentSchemaVersion once a deploy's
+// `glockpeek -migrate` has run) — so it flags a node serving against an un-migrated DB.
 func handleHealthz(w http.ResponseWriter, r *http.Request) {
 	sqldb, err := db.DB.DB()
 	if err == nil {
@@ -23,5 +25,5 @@ func handleHealthz(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"ok":false,"version":%q,"error":"db unavailable"}`+"\n", buildVersion)
 		return
 	}
-	fmt.Fprintf(w, `{"ok":true,"version":%q}`+"\n", buildVersion)
+	fmt.Fprintf(w, `{"ok":true,"version":%q,"schema":%d}`+"\n", buildVersion, db.SchemaVersion())
 }

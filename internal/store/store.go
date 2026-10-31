@@ -159,6 +159,11 @@ func (db *DB) Migrate() error {
 			return fmt.Errorf("store: drop legacy rules.tag: %w", err)
 		}
 	}
+	// Record the schema version last, so the marker only advances once every
+	// step above has succeeded.
+	if err := db.stampSchemaVersion(); err != nil {
+		return fmt.Errorf("store: stamp schema version: %w", err)
+	}
 	return nil
 }
 

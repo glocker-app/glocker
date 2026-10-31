@@ -44,6 +44,7 @@ paths:
                 properties:
                   ok: { type: boolean }
                   version: { type: string }
+                  schema: { type: integer, description: 'Schema version the DB was last migrated to.' }
         "503":
           description: DB unreachable
           content:

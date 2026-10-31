@@ -309,6 +309,17 @@ type KeyVault struct {
 	Vault  string `json:"-"`
 }
 
+// SchemaMeta is a single-row table (id = 1) holding the schema version the DB
+// was last migrated to. It lets /healthz report which schema the data is
+// actually on, independent of the running binary — so a node that booted with
+// SkipMigrate before `glockpeek -migrate` ran shows the pre-deploy number. It's
+// a hand-maintained marker (see CurrentSchemaVersion), not a count of historical
+// migrations and not something that drives them.
+type SchemaMeta struct {
+	ID      uint `gorm:"primaryKey" json:"-"`
+	Version int  `json:"-"`
+}
+
 // AllModels is the migration set. Kept in one place so Migrate and tests stay in
 // sync.
 func AllModels() []any {
@@ -319,7 +330,7 @@ func AllModels() []any {
 		&SyncStatus{}, &KeyVault{}, &DeviceConfig{},
 		&Tag{}, &TagOverride{}, &RuleTag{}, &DefaultRule{},
 		&AccountabilityConfig{},
-		&RateHit{}, &CaptchaUse{}, &SchedulerLease{},
+		&RateHit{}, &CaptchaUse{}, &SchedulerLease{}, &SchemaMeta{},
 	}
 }
 
