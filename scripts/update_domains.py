@@ -672,7 +672,7 @@ def update_source(source_id: int) -> str:
 def strip_managed_sources():
     """Delete every generated conf.d/ blocklist file AND its `!include` line in
     conf.yaml (so nothing is left pointing at a deleted file). The hand-maintained
-    conf.d/domains-personal.yaml and its include are untouched."""
+    conf.d/personal-domains.yaml and its include are untouched."""
     print("\nRemoving all generated blocklist files from conf.d/...\n")
 
     removed_sources = []
@@ -695,7 +695,7 @@ def strip_managed_sources():
         return
 
     print(f"\n  Removed {len(removed_sources)} generated blocklist file(s).")
-    print("  The personal list (conf.d/domains-personal.yaml) is untouched.\n")
+    print("  The personal list (conf.d/personal-domains.yaml) is untouched.\n")
 
 ## Source Listing
 def list_sources():
