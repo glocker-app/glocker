@@ -124,14 +124,14 @@ func TestAdminCancelSubscription(t *testing.T) {
 
 	mux := http.NewServeMux()
 	Register(mux, sdb, Options{Auth: true, AdminEmail: "admin@x.com",
-		Billing: BillingOptions{Enabled: true, APIBase: polar.URL, APIToken: "tok", ProductID: "p", PaidDeviceLimit: -1}})
+		Billing: BillingOptions{Enabled: true, APIBase: polar.URL, APIToken: "tok", ProductID: "p"}})
 	req := func(target, tok string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", target, nil)
 		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: tok})
 		return do(mux, r)
 	}
 
-	if err := sdb.SetSubscription(bob.ID, store.SubStatusActive, "sub_live", time.Now().Add(720*time.Hour), -1, time.Time{}); err != nil {
+	if err := sdb.SetSubscription(bob.ID, store.SubStatusActive, "sub_live", time.Now().Add(720*time.Hour), time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	bobID := strconv.FormatUint(uint64(bob.ID), 10)
@@ -140,7 +140,7 @@ func TestAdminCancelSubscription(t *testing.T) {
 	if rec := req("/api/admin/cancel-subscription?id="+bobID, bobTok); rec.Code != http.StatusForbidden {
 		t.Errorf("non-admin cancel: got %d, want 403", rec.Code)
 	}
-	// Admin revokes at Polar → glockpeek resets to the free tier (blank, free cap).
+	// Admin revokes at Polar → glockpeek resets the subscription to blank.
 	if rec := req("/api/admin/cancel-subscription?id="+bobID, adminTok); rec.Code != http.StatusOK {
 		t.Fatalf("admin cancel: %d %s", rec.Code, rec.Body.String())
 	}
@@ -151,8 +151,8 @@ func TestAdminCancelSubscription(t *testing.T) {
 	if after.SubStatus != "" || after.SubID != "" {
 		t.Errorf("not reset to free: status=%q id=%q", after.SubStatus, after.SubID)
 	}
-	if store.EffectiveDeviceLimit(after) != store.DefaultFreeDevices {
-		t.Errorf("device limit not reset: %d", store.EffectiveDeviceLimit(after))
+	if store.EffectiveDeviceLimit(after) != store.DefaultDeviceCap {
+		t.Errorf("device limit not at flat default: %d", store.EffectiveDeviceLimit(after))
 	}
 	// A free account (no live sub) → idempotent no-op reset, no Polar call.
 	revoked = ""
@@ -185,7 +185,7 @@ func TestAdminGrantSubscription(t *testing.T) {
 
 	mux := http.NewServeMux()
 	Register(mux, sdb, Options{Auth: true, AdminEmail: "admin@x.com",
-		Billing: BillingOptions{Enabled: true, APIBase: "http://unused", APIToken: "tok", ProductID: "p", PaidDeviceLimit: 7}})
+		Billing: BillingOptions{Enabled: true, APIBase: "http://unused", APIToken: "tok", ProductID: "p"}})
 	req := func(target, tok, body string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest("POST", target, strings.NewReader(body))
 		r.AddCookie(&http.Cookie{Name: sessionCookie, Value: tok})
@@ -197,7 +197,8 @@ func TestAdminGrantSubscription(t *testing.T) {
 	if rec := req("/api/admin/grant-subscription?id="+bobID, bobTok, ""); rec.Code != http.StatusForbidden {
 		t.Errorf("non-admin grant: got %d, want 403", rec.Code)
 	}
-	// Admin comps bob → active, paid cap, empty sub id, permanent (zero end).
+	// Admin comps bob → active, empty sub id, permanent (zero end). The device cap
+	// stays the flat default — the comp grants access, not devices.
 	if rec := req("/api/admin/grant-subscription?id="+bobID, adminTok, ""); rec.Code != http.StatusOK {
 		t.Fatalf("admin grant: %d %s", rec.Code, rec.Body.String())
 	}
@@ -208,8 +209,8 @@ func TestAdminGrantSubscription(t *testing.T) {
 	if !after.SubCurrentEnd.IsZero() {
 		t.Errorf("permanent comp should have zero end, got %v", after.SubCurrentEnd)
 	}
-	if store.EffectiveDeviceLimit(after) != 7 {
-		t.Errorf("paid device cap not applied: got %d, want 7", store.EffectiveDeviceLimit(after))
+	if store.EffectiveDeviceLimit(after) != store.DefaultDeviceCap {
+		t.Errorf("device cap not at flat default: got %d, want %d", store.EffectiveDeviceLimit(after), store.DefaultDeviceCap)
 	}
 	if !after.HasAccess() {
 		t.Error("comped account should have access")
@@ -217,7 +218,7 @@ func TestAdminGrantSubscription(t *testing.T) {
 	// A LIVE, renewing sub (active/trialing) is refused (409) — nothing to grant, and
 	// blanking its live sub id would orphan it at Polar. carol is active.
 	carol, _ := sdb.CreateUser("carol@x.com", "longenough1")
-	if err := sdb.SetSubscription(carol.ID, store.SubStatusActive, "sub_live", time.Now().Add(720*time.Hour), 7, time.Time{}); err != nil {
+	if err := sdb.SetSubscription(carol.ID, store.SubStatusActive, "sub_live", time.Now().Add(720*time.Hour), time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	carolID := strconv.FormatUint(uint64(carol.ID), 10)
@@ -228,7 +229,7 @@ func TestAdminGrantSubscription(t *testing.T) {
 	// A CANCELED sub still in its grace period (has access, won't renew) IS
 	// enable-able — the admin comps it to permanent, clearing the ending sub id.
 	fred, _ := sdb.CreateUser("fred@x.com", "longenough1")
-	if err := sdb.SetSubscription(fred.ID, store.SubStatusCanceled, "sub_ending", time.Now().Add(240*time.Hour), 7, time.Time{}); err != nil {
+	if err := sdb.SetSubscription(fred.ID, store.SubStatusCanceled, "sub_ending", time.Now().Add(240*time.Hour), time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	fredID := strconv.FormatUint(uint64(fred.ID), 10)
@@ -245,7 +246,7 @@ func TestAdminGrantSubscription(t *testing.T) {
 	// comp-able — the previous status/sub-id guard wrongly blocked exactly this. The
 	// grant clears the dead sub id so the reconcile leaves the comp alone.
 	erin, _ := sdb.CreateUser("erin@x.com", "longenough1")
-	if err := sdb.SetSubscription(erin.ID, store.SubStatusExpired, "sub_dead", time.Now().Add(-time.Hour), 0, time.Time{}); err != nil {
+	if err := sdb.SetSubscription(erin.ID, store.SubStatusExpired, "sub_dead", time.Now().Add(-time.Hour), time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	erinID := strconv.FormatUint(uint64(erin.ID), 10)

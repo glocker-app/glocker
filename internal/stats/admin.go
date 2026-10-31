@@ -194,7 +194,7 @@ func adminGrantSubscription(w http.ResponseWriter, r *http.Request) {
 		end = time.UnixMilli(in.UntilMillis)
 	}
 	// Empty sub id on purpose (keeps the comp off the Polar reconcile path).
-	if err := db.SetSubscription(u.ID, store.SubStatusActive, "", end, billing.PaidDeviceLimit, time.Now()); err != nil {
+	if err := db.SetSubscription(u.ID, store.SubStatusActive, "", end, time.Now()); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			http.Error(w, "no such user", http.StatusNotFound)
 			return

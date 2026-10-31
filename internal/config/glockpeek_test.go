@@ -86,8 +86,8 @@ func TestLoadGlockpeekConfig(t *testing.T) {
 	if !gp.Billing.Enabled || gp.Billing.Provider != "polar" || gp.Billing.ProductID != "prod_x" {
 		t.Errorf("billing stanza not parsed: %+v", gp.Billing)
 	}
-	// Unset API base + paid limit resolve to production + unlimited.
-	if gp.Billing.ResolvedAPIBase() != DefaultPolarAPIBase || gp.Billing.ResolvedPaidLimit() != -1 {
-		t.Errorf("billing defaults wrong: base=%q limit=%d", gp.Billing.ResolvedAPIBase(), gp.Billing.ResolvedPaidLimit())
+	// Unset API base resolves to production.
+	if gp.Billing.ResolvedAPIBase() != DefaultPolarAPIBase {
+		t.Errorf("billing defaults wrong: base=%q", gp.Billing.ResolvedAPIBase())
 	}
 }

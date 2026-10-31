@@ -11,18 +11,22 @@ import (
 // number of tokens an account may hold is capped by User.DeviceLimit, with more
 // devices offered as a paid upgrade.
 
-// DefaultFreeDevices is the device (API-token) cap for a new, free-tier account.
-const DefaultFreeDevices = 1
+// DefaultDeviceCap is the device (API-token) cap applied to every account —
+// free, trialing, and paid alike. Connecting a device is gated on access
+// (trial/subscription), not on count; this is a flat abuse ceiling, not a paid
+// lever. An admin can override it per account via SetDeviceLimit.
+const DefaultDeviceCap = 5
 
-// EffectiveDeviceLimit resolves a user's device cap: the zero value (free tier)
-// maps to DefaultFreeDevices, and a negative value means unlimited (returned as
-// -1). Callers treat a negative return as "no limit".
+// EffectiveDeviceLimit resolves a user's device cap: the zero value (no admin
+// override) maps to DefaultDeviceCap, a negative value means unlimited (returned
+// as -1), and a positive value is an admin-set per-account cap. Callers treat a
+// negative return as "no limit".
 func EffectiveDeviceLimit(u *User) int {
 	switch {
 	case u.DeviceLimit < 0:
 		return -1
 	case u.DeviceLimit == 0:
-		return DefaultFreeDevices
+		return DefaultDeviceCap
 	default:
 		return u.DeviceLimit
 	}

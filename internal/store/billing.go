@@ -38,20 +38,20 @@ func (u *User) HasAccess() bool {
 	}
 }
 
-// SetSubscription records a user's subscription state from a billing webhook and
-// sets DeviceLimit — the actual enforcement lever — accordingly: deviceLimit is
-// the paid cap while access is granted, or 0 (back to the free tier) once
-// revoked. It is idempotent: the same event delivered twice yields the same row,
-// so the MoR re-delivering webhooks is safe. Returns gorm.ErrRecordNotFound if
-// userID matches no account.
-func (db *DB) SetSubscription(userID uint, status, subID string, currentEnd time.Time, deviceLimit int, eventAt time.Time) error {
-	// A map (not a struct) so zero values are written too — revoking must set
-	// device_limit back to 0, which struct-based Updates would skip.
+// SetSubscription records a user's subscription state from a billing webhook.
+// Access is gated on status + period end (see HasAccess), not on a device cap —
+// the cap is a flat ceiling now (store.DefaultDeviceCap), so billing no longer
+// touches device_limit (that column is only the admin per-account override). It
+// is idempotent: the same event delivered twice yields the same row, so the MoR
+// re-delivering webhooks is safe. Returns gorm.ErrRecordNotFound if userID
+// matches no account.
+func (db *DB) SetSubscription(userID uint, status, subID string, currentEnd time.Time, eventAt time.Time) error {
+	// A map (not a struct) so zero values (e.g. clearing sub_id/sub_status on
+	// revoke) are written too, which struct-based Updates would skip.
 	res := db.Model(&User{}).Where("id = ?", userID).Updates(map[string]any{
 		"sub_status":      status,
 		"sub_id":          subID,
 		"sub_current_end": currentEnd,
-		"device_limit":    deviceLimit,
 		"sub_event_at":    eventAt,
 	})
 	if res.Error != nil {
@@ -79,8 +79,9 @@ func (db *DB) StampSubSynced(userID uint) error {
 	return db.Model(&User{}).Where("id = ?", userID).Update("sub_synced_at", time.Now()).Error
 }
 
-// ClearSubscription resets an account to the free tier: no subscription status,
-// no stored subscription id, and the free device cap. Used by the admin "cancel
+// ClearSubscription resets an account to the free tier: no subscription status
+// and no stored subscription id. The device cap is left untouched (it's the flat
+// default or an admin override, not a billing lever). Used by the admin "cancel
 // subscription" action after revoking at the provider. Returns
 // gorm.ErrRecordNotFound if userID matches no account.
 func (db *DB) ClearSubscription(userID uint) error {
@@ -88,5 +89,5 @@ func (db *DB) ClearSubscription(userID uint) error {
 	// the revoke we just triggered (its modified_at is earlier) is dropped by the
 	// ordering guard instead of re-expiring the account we just reset. A genuinely
 	// new subscription later carries a later modified_at and still applies.
-	return db.SetSubscription(userID, "", "", time.Time{}, 0, time.Now())
+	return db.SetSubscription(userID, "", "", time.Time{}, time.Now())
 }

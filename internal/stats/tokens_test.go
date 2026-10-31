@@ -21,9 +21,9 @@ func TestStoreDeviceLimitAndTokenOps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Fresh accounts are free tier: effective limit is DefaultFreeDevices.
-	if got := store.EffectiveDeviceLimit(u); got != store.DefaultFreeDevices {
-		t.Errorf("default device limit = %d, want %d", got, store.DefaultFreeDevices)
+	// Every account gets the flat default device cap.
+	if got := store.EffectiveDeviceLimit(u); got != store.DefaultDeviceCap {
+		t.Errorf("default device limit = %d, want %d", got, store.DefaultDeviceCap)
 	}
 	if n, _ := sdb.CountAPITokens(u.ID); n != 0 {
 		t.Errorf("new account token count = %d, want 0", n)
@@ -134,9 +134,15 @@ func TestTokensEndpoint_LimitMintRevoke(t *testing.T) {
 		return lr
 	}
 
-	// Empty to start, free-tier limit of 1, add allowed.
-	if lr := list(); lr.Used != 0 || lr.Limit != store.DefaultFreeDevices || !lr.CanAdd {
+	// Empty to start, flat default cap, add allowed.
+	if lr := list(); lr.Used != 0 || lr.Limit != store.DefaultDeviceCap || !lr.CanAdd {
 		t.Fatalf("initial list = %+v", lr)
+	}
+
+	// Pin an admin override of 1 so the cap boundary is exercised with a single
+	// mint (rather than minting the full flat default).
+	if err := sdb.SetDeviceLimit("owner@x.com", 1); err != nil {
+		t.Fatal(err)
 	}
 
 	// Mint one → plaintext returned once.

@@ -105,10 +105,6 @@ type BillingConfig struct {
 	// (https://api.polar.sh); set the sandbox (https://sandbox-api.polar.sh) for
 	// testing.
 	APIBase string `yaml:"api_base"`
-	// PaidDeviceLimit is the device (API-token) cap granted while a subscription
-	// is active. 0 (unset) resolves to unlimited — a paid tier capped at zero
-	// devices would be nonsensical; set a positive number for a finite cap.
-	PaidDeviceLimit int `yaml:"paid_device_limit"`
 	// SuccessURL is where Polar redirects after a completed checkout. Empty falls
 	// back to AppURL (the dashboard).
 	SuccessURL string `yaml:"success_url"`
@@ -125,16 +121,6 @@ func (b BillingConfig) ResolvedAPIBase() string {
 		return DefaultPolarAPIBase
 	}
 	return b.APIBase
-}
-
-// ResolvedPaidLimit returns the device cap to grant an active subscriber. An
-// unset (0) value means unlimited (-1), matching store.EffectiveDeviceLimit's
-// "negative = no limit" convention.
-func (b BillingConfig) ResolvedPaidLimit() int {
-	if b.PaidDeviceLimit == 0 {
-		return -1
-	}
-	return b.PaidDeviceLimit
 }
 
 // glockpeekFile is the on-disk wrapper: a single top-level `glockpeek:` stanza.

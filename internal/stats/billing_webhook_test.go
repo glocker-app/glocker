@@ -29,10 +29,9 @@ func billingMux(t *testing.T) (*http.ServeMux, *store.DB, *standardwebhooks.Webh
 	Register(mux, sdb, Options{
 		Auth: true,
 		Billing: BillingOptions{
-			Enabled:         true,
-			WebhookSecret:   secret,
-			ProductID:       "prod_test",
-			PaidDeviceLimit: -1, // unlimited
+			Enabled:       true,
+			WebhookSecret: secret,
+			ProductID:     "prod_test",
 		},
 	})
 	wh, err := standardwebhooks.NewWebhook(secret)
@@ -70,24 +69,28 @@ func TestBillingWebhook_GrantAndRevoke(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// A valid subscription.active grants the unlimited paid cap.
+	// A valid subscription.active grants access. The device cap is the flat
+	// default and billing doesn't touch it.
 	rec := do(mux, signedWebhook(t, wh, subPayload("subscription.active", u.ID)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("active webhook: code %d (%s)", rec.Code, rec.Body.String())
 	}
 	got, _ := sdb.UserByEmail("payer@x.com")
-	if store.EffectiveDeviceLimit(got) != -1 || got.SubStatus != store.SubStatusActive {
-		t.Errorf("after active: limit=%d status=%q, want -1/active", store.EffectiveDeviceLimit(got), got.SubStatus)
+	if got.SubStatus != store.SubStatusActive || !got.HasAccess() {
+		t.Errorf("after active: status=%q access=%v, want active/true", got.SubStatus, got.HasAccess())
+	}
+	if store.EffectiveDeviceLimit(got) != store.DefaultDeviceCap {
+		t.Errorf("after active: cap=%d, want flat default %d", store.EffectiveDeviceLimit(got), store.DefaultDeviceCap)
 	}
 
-	// subscription.revoked drops the cap back to the free tier.
+	// subscription.revoked ends access; the cap is unchanged.
 	rec = do(mux, signedWebhook(t, wh, subPayload("subscription.revoked", u.ID)))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("revoked webhook: code %d", rec.Code)
 	}
 	got, _ = sdb.UserByEmail("payer@x.com")
-	if store.EffectiveDeviceLimit(got) != store.DefaultFreeDevices || got.SubStatus != store.SubStatusExpired {
-		t.Errorf("after revoke: limit=%d status=%q, want %d/expired", store.EffectiveDeviceLimit(got), got.SubStatus, store.DefaultFreeDevices)
+	if got.SubStatus != store.SubStatusExpired || got.HasAccess() {
+		t.Errorf("after revoke: status=%q access=%v, want expired/false", got.SubStatus, got.HasAccess())
 	}
 }
 
@@ -106,8 +109,8 @@ func TestBillingWebhook_PastDueGrace(t *testing.T) {
 		t.Fatalf("past_due webhook: %d %s", rec.Code, rec.Body.String())
 	}
 	got, _ := sdb.UserByEmail("late@x.com")
-	if got.SubStatus != store.SubStatusPastDue || !got.HasAccess() || store.EffectiveDeviceLimit(got) != -1 {
-		t.Errorf("past_due: status=%q access=%v cap=%d, want past_due/true/-1", got.SubStatus, got.HasAccess(), store.EffectiveDeviceLimit(got))
+	if got.SubStatus != store.SubStatusPastDue || !got.HasAccess() {
+		t.Errorf("past_due: status=%q access=%v, want past_due/true", got.SubStatus, got.HasAccess())
 	}
 	base, _ := time.Parse(time.RFC3339, periodEnd)
 	if want := base.Add(pastDueGrace); !got.SubCurrentEnd.Equal(want) {
@@ -131,7 +134,7 @@ func TestBillingWebhook_PastDueGrace(t *testing.T) {
 	}
 
 	// past_due past the grace deadline → the period-end bound denies access.
-	_ = sdb.SetSubscription(u.ID, store.SubStatusPastDue, "sub_pd", time.Now().Add(-time.Hour), -1, time.Time{})
+	_ = sdb.SetSubscription(u.ID, store.SubStatusPastDue, "sub_pd", time.Now().Add(-time.Hour), time.Time{})
 	if got, _ = sdb.UserByEmail("late@x.com"); got.HasAccess() {
 		t.Error("past_due past grace should not have access")
 	}
@@ -151,8 +154,8 @@ func TestBillingWebhook_RejectsBadSignature(t *testing.T) {
 		t.Fatalf("tampered signature: code %d, want 401", rec.Code)
 	}
 	got, _ := sdb.UserByEmail("payer2@x.com")
-	if store.EffectiveDeviceLimit(got) != store.DefaultFreeDevices || got.SubStatus != "" {
-		t.Errorf("tampered event must not grant access: limit=%d status=%q", store.EffectiveDeviceLimit(got), got.SubStatus)
+	if got.SubStatus != "" || got.HasAccess() {
+		t.Errorf("tampered event must not grant access: status=%q access=%v", got.SubStatus, got.HasAccess())
 	}
 }
 

@@ -78,5 +78,4 @@ glockpeek:
   #   product_id: ""                        #   the Polar subscription product id (annual plan)
   #   product_id_monthly: ""                #   optional monthly plan; empty = annual only
   #   api_base: "https://api.polar.sh"      #   use https://sandbox-api.polar.sh to test
-  #   paid_device_limit: -1                 #   devices granted while active (0/unset = unlimited)
   #   success_url: ""                       #   post-checkout redirect (empty = app_url)

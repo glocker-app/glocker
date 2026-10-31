@@ -17,41 +17,43 @@ func TestSetSubscription(t *testing.T) {
 
 	end := time.Now().Add(30 * 24 * time.Hour).Round(time.Second)
 
-	// Grant: active subscription with an unlimited paid cap.
-	if err := db.SetSubscription(u.ID, SubStatusActive, "sub_123", end, -1, time.Time{}); err != nil {
+	// Grant: active subscription. The device cap stays the flat default — billing
+	// no longer touches device_limit.
+	if err := db.SetSubscription(u.ID, SubStatusActive, "sub_123", end, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := db.UserByEmail("sub@x.com")
 	if got.SubStatus != SubStatusActive || got.SubID != "sub_123" {
 		t.Errorf("status/id = %q/%q, want active/sub_123", got.SubStatus, got.SubID)
 	}
-	if EffectiveDeviceLimit(got) != -1 {
-		t.Errorf("device limit = %d, want -1 (unlimited)", EffectiveDeviceLimit(got))
+	if EffectiveDeviceLimit(got) != DefaultDeviceCap {
+		t.Errorf("device limit = %d, want %d (flat default)", EffectiveDeviceLimit(got), DefaultDeviceCap)
+	}
+
+	// An admin per-account override must survive subscription writes.
+	if err := db.SetDeviceLimit("sub@x.com", 9); err != nil {
+		t.Fatal(err)
 	}
 
 	// Idempotent: replaying the same grant leaves the same state.
-	if err := db.SetSubscription(u.ID, SubStatusActive, "sub_123", end, -1, time.Time{}); err != nil {
+	if err := db.SetSubscription(u.ID, SubStatusActive, "sub_123", end, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
-	got, _ = db.UserByEmail("sub@x.com")
-	if EffectiveDeviceLimit(got) != -1 {
-		t.Errorf("device limit after replay = %d, want -1", EffectiveDeviceLimit(got))
-	}
 
-	// Revoke: expired drops the cap back to the free tier (0 -> DefaultFreeDevices).
-	if err := db.SetSubscription(u.ID, SubStatusExpired, "sub_123", end, 0, time.Time{}); err != nil {
+	// Revoke: status flips to expired; the admin override is left intact.
+	if err := db.SetSubscription(u.ID, SubStatusExpired, "sub_123", end, time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = db.UserByEmail("sub@x.com")
 	if got.SubStatus != SubStatusExpired {
 		t.Errorf("status = %q, want expired", got.SubStatus)
 	}
-	if EffectiveDeviceLimit(got) != DefaultFreeDevices {
-		t.Errorf("device limit after revoke = %d, want %d (free)", EffectiveDeviceLimit(got), DefaultFreeDevices)
+	if EffectiveDeviceLimit(got) != 9 {
+		t.Errorf("device limit after revoke = %d, want 9 (admin override preserved)", EffectiveDeviceLimit(got))
 	}
 
 	// Unknown user is an error, not a silent no-op.
-	if err := db.SetSubscription(99999, SubStatusActive, "x", end, -1, time.Time{}); !errors.Is(err, gorm.ErrRecordNotFound) {
+	if err := db.SetSubscription(99999, SubStatusActive, "x", end, time.Time{}); !errors.Is(err, gorm.ErrRecordNotFound) {
 		t.Errorf("unknown user err = %v, want ErrRecordNotFound", err)
 	}
 }

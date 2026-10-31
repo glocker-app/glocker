@@ -41,7 +41,6 @@ type BillingOptions struct {
 	ProductID        string // Polar subscription product id (annual plan)
 	ProductIDMonthly string // optional monthly plan; empty = annual only
 	APIBase          string // resolved Polar API base (production if unset)
-	PaidDeviceLimit  int    // device cap while active (-1 unlimited)
 	SuccessURL       string // post-checkout redirect (falls back to AppURL upstream)
 }
 
@@ -355,7 +354,7 @@ func handleBillingCancel(w http.ResponseWriter, r *http.Request) {
 	if sub.ModifiedAt != nil {
 		eventAt = *sub.ModifiedAt
 	}
-	if err := db.SetSubscription(u.ID, store.SubStatusCanceled, u.SubID, end, billing.PaidDeviceLimit, eventAt); err != nil {
+	if err := db.SetSubscription(u.ID, store.SubStatusCanceled, u.SubID, end, eventAt); err != nil {
 		log.Printf("billing: recording cancel for user %d: %v", u.ID, err)
 		http.Error(w, "could not record cancellation", http.StatusInternalServerError)
 		return
@@ -503,12 +502,12 @@ func maybeReconcileSubscription(ctx context.Context, u *store.User) *store.User 
 		_ = db.StampSubSynced(u.ID)
 		return refreshUser(u)
 	}
-	if status, end, cap := mapPolarStatus(sub); status != "" && (status != u.SubStatus || !end.Equal(u.SubCurrentEnd)) {
+	if status, end := mapPolarStatus(sub); status != "" && (status != u.SubStatus || !end.Equal(u.SubCurrentEnd)) {
 		eventAt := time.Time{}
 		if sub.ModifiedAt != nil {
 			eventAt = *sub.ModifiedAt
 		}
-		if err := db.SetSubscription(u.ID, status, u.SubID, end, cap, eventAt); err != nil {
+		if err := db.SetSubscription(u.ID, status, u.SubID, end, eventAt); err != nil {
 			log.Printf("billing: reconcile write failed for user %d: %v", u.ID, err)
 		}
 	}
@@ -534,30 +533,30 @@ func pastDueEnd(periodEnd time.Time) time.Time {
 	return periodEnd.Add(pastDueGrace)
 }
 
-// mapPolarStatus maps a live Polar subscription onto our local status/end/cap,
-// mirroring applyBillingEvent. An empty status means "leave the stored state
-// alone" (e.g. past_due dunning — access is held through Polar's grace).
-func mapPolarStatus(sub *polarSubscription) (status string, end time.Time, deviceLimit int) {
+// mapPolarStatus maps a live Polar subscription onto our local status + access-
+// until, mirroring applyBillingEvent. An empty status means "leave the stored
+// state alone" (e.g. past_due dunning — access is held through Polar's grace).
+func mapPolarStatus(sub *polarSubscription) (status string, end time.Time) {
 	switch {
 	case sub.Status == "canceled" || sub.Status == "unpaid" || sub.Status == "incomplete_expired":
-		// Ended at Polar: revoke to the free tier.
-		return store.SubStatusExpired, sub.CurrentPeriodEnd, 0
+		// Ended at Polar: access revoked.
+		return store.SubStatusExpired, sub.CurrentPeriodEnd
 	case sub.CancelAtPeriodEnd:
-		// Scheduled to cancel: keep the paid cap until the period actually ends.
+		// Scheduled to cancel: keep access until the period actually ends.
 		end = sub.CurrentPeriodEnd
 		if sub.EndsAt != nil {
 			end = *sub.EndsAt
 		}
-		return store.SubStatusCanceled, end, billing.PaidDeviceLimit
+		return store.SubStatusCanceled, end
 	case sub.Status == store.SubStatusTrialing:
-		return store.SubStatusTrialing, sub.CurrentPeriodEnd, billing.PaidDeviceLimit
+		return store.SubStatusTrialing, sub.CurrentPeriodEnd
 	case sub.Status == store.SubStatusActive:
-		return store.SubStatusActive, sub.CurrentPeriodEnd, billing.PaidDeviceLimit
+		return store.SubStatusActive, sub.CurrentPeriodEnd
 	case sub.Status == store.SubStatusPastDue:
 		// Failed renewal: keep access through the grace window, then revoke takes over.
-		return store.SubStatusPastDue, pastDueEnd(sub.CurrentPeriodEnd), billing.PaidDeviceLimit
+		return store.SubStatusPastDue, pastDueEnd(sub.CurrentPeriodEnd)
 	default:
-		return "", time.Time{}, 0
+		return "", time.Time{}
 	}
 }
 
@@ -674,30 +673,29 @@ func applyBillingEvent(evt polarSubscriptionEvent) error {
 		// re-delivered or reordered updated can't flip a cancel back to active. The
 		// subscriber keeps the paid cap until the period ends (revoked drops it).
 		if evt.Data.CancelAtPeriodEnd {
-			return db.SetSubscription(userID, store.SubStatusCanceled, subID, periodEnd(), billing.PaidDeviceLimit, eventAt)
+			return db.SetSubscription(userID, store.SubStatusCanceled, subID, periodEnd(), eventAt)
 		}
 		// Otherwise grant by status: a card-up-front trial arrives as "trialing"
 		// (subscription.created) and auto-converts to "active".
 		switch evt.Data.Status {
 		case store.SubStatusTrialing:
-			return db.SetSubscription(userID, store.SubStatusTrialing, subID, evt.Data.CurrentPeriodEnd, billing.PaidDeviceLimit, eventAt)
+			return db.SetSubscription(userID, store.SubStatusTrialing, subID, evt.Data.CurrentPeriodEnd, eventAt)
 		case store.SubStatusActive:
-			return db.SetSubscription(userID, store.SubStatusActive, subID, evt.Data.CurrentPeriodEnd, billing.PaidDeviceLimit, eventAt)
+			return db.SetSubscription(userID, store.SubStatusActive, subID, evt.Data.CurrentPeriodEnd, eventAt)
 		case store.SubStatusPastDue:
 			// Renewal failed: hold access through a grace window (Polar's dunning keeps
 			// retrying the card + emailing the customer), then revoked→expired takes over.
-			return db.SetSubscription(userID, store.SubStatusPastDue, subID, pastDueEnd(evt.Data.CurrentPeriodEnd), billing.PaidDeviceLimit, eventAt)
+			return db.SetSubscription(userID, store.SubStatusPastDue, subID, pastDueEnd(evt.Data.CurrentPeriodEnd), eventAt)
 		default:
 			return errIgnoredEvent
 		}
 	case "subscription.canceled":
-		// Cancellation scheduled: keep access + the paid cap until the period ends
-		// (Polar sends subscription.revoked then); record the end for "cancels on X".
-		return db.SetSubscription(userID, store.SubStatusCanceled, subID, periodEnd(), billing.PaidDeviceLimit, eventAt)
+		// Cancellation scheduled: keep access until the period ends (Polar sends
+		// subscription.revoked then); record the end for "cancels on X".
+		return db.SetSubscription(userID, store.SubStatusCanceled, subID, periodEnd(), eventAt)
 	case "subscription.revoked":
-		// Access lost now (cancellation took effect or payment lapsed) — drop the
-		// cap back to the free tier.
-		return db.SetSubscription(userID, store.SubStatusExpired, subID, evt.Data.CurrentPeriodEnd, 0, eventAt)
+		// Access lost now (cancellation took effect or payment lapsed).
+		return db.SetSubscription(userID, store.SubStatusExpired, subID, evt.Data.CurrentPeriodEnd, eventAt)
 	default:
 		return errIgnoredEvent
 	}

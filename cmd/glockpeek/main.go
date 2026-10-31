@@ -128,7 +128,6 @@ func main() {
 				ProductID:        gp.Billing.ProductID,
 				ProductIDMonthly: gp.Billing.ProductIDMonthly,
 				APIBase:          gp.Billing.ResolvedAPIBase(),
-				PaidDeviceLimit:  gp.Billing.ResolvedPaidLimit(),
 				SuccessURL:       successURL,
 			}
 		}

@@ -43,7 +43,7 @@ func TestBillingPortal(t *testing.T) {
 		Auth: true,
 		Billing: BillingOptions{
 			Enabled: true, APIToken: "polar_at_x", APIBase: stub.URL,
-			ProductID: "prod_test", PaidDeviceLimit: -1,
+			ProductID: "prod_test",
 		},
 	})
 

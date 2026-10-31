@@ -24,7 +24,7 @@ func billingMuxEnabled(t *testing.T) (*http.ServeMux, *store.DB) {
 	mux := http.NewServeMux()
 	Register(mux, sdb, Options{
 		Auth:    true,
-		Billing: BillingOptions{Enabled: true, ProductID: "p", PaidDeviceLimit: -1},
+		Billing: BillingOptions{Enabled: true, ProductID: "p"},
 	})
 	return mux, sdb
 }
@@ -85,7 +85,7 @@ func TestAccessGate_ReadOnlyWhenLapsed(t *testing.T) {
 	}
 
 	// Grant a trial → writes now allowed.
-	if err := sdb.SetSubscription(uid, store.SubStatusTrialing, "sub_1", time.Now().Add(14*24*time.Hour), -1, time.Time{}); err != nil {
+	if err := sdb.SetSubscription(uid, store.SubStatusTrialing, "sub_1", time.Now().Add(14*24*time.Hour), time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	if c := ingest(); c != http.StatusOK {
@@ -145,11 +145,11 @@ func TestBillingCancel(t *testing.T) {
 	mux := http.NewServeMux()
 	Register(mux, sdb, Options{
 		Auth:    true,
-		Billing: BillingOptions{Enabled: true, APIBase: polar.URL, APIToken: "tok", ProductID: "p", PaidDeviceLimit: -1},
+		Billing: BillingOptions{Enabled: true, APIBase: polar.URL, APIToken: "tok", ProductID: "p"},
 	})
 
 	uid, cookie, _ := account(t, sdb, "cancel@x.com")
-	if err := sdb.SetSubscription(uid, store.SubStatusActive, "sub_abc", time.Now().Add(720*time.Hour), -1, time.Time{}); err != nil {
+	if err := sdb.SetSubscription(uid, store.SubStatusActive, "sub_abc", time.Now().Add(720*time.Hour), time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	r := httptest.NewRequest("POST", "/api/billing/cancel", nil)
@@ -198,9 +198,9 @@ func TestBillingCancelAlreadyCanceling(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sdb.Close() })
 	mux := http.NewServeMux()
-	Register(mux, sdb, Options{Auth: true, Billing: BillingOptions{Enabled: true, APIBase: polar.URL, APIToken: "tok", ProductID: "p", PaidDeviceLimit: -1}})
+	Register(mux, sdb, Options{Auth: true, Billing: BillingOptions{Enabled: true, APIBase: polar.URL, APIToken: "tok", ProductID: "p"}})
 	uid, cookie, _ := account(t, sdb, "already@x.com")
-	if err := sdb.SetSubscription(uid, store.SubStatusTrialing, "sub_x", time.Now().Add(240*time.Hour), -1, time.Time{}); err != nil {
+	if err := sdb.SetSubscription(uid, store.SubStatusTrialing, "sub_x", time.Now().Add(240*time.Hour), time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 	r := httptest.NewRequest("POST", "/api/billing/cancel", nil)
@@ -236,9 +236,9 @@ func TestBillingReconcileOnLoad(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sdb.Close() })
 	mux := http.NewServeMux()
-	Register(mux, sdb, Options{Auth: true, Billing: BillingOptions{Enabled: true, APIBase: polar.URL, APIToken: "tok", ProductID: "p", PaidDeviceLimit: -1}})
+	Register(mux, sdb, Options{Auth: true, Billing: BillingOptions{Enabled: true, APIBase: polar.URL, APIToken: "tok", ProductID: "p"}})
 	uid, cookie, _ := account(t, sdb, "drift@x.com")
-	if err := sdb.SetSubscription(uid, store.SubStatusTrialing, "sub_d", time.Now().Add(240*time.Hour), -1, time.Time{}); err != nil {
+	if err := sdb.SetSubscription(uid, store.SubStatusTrialing, "sub_d", time.Now().Add(240*time.Hour), time.Time{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -281,7 +281,7 @@ func TestMapPolarStatus(t *testing.T) {
 		{"incomplete-nochange", polarSubscription{Status: "incomplete"}, ""}, // leave stored state
 	}
 	for _, c := range cases {
-		if got, _, _ := mapPolarStatus(&c.sub); got != c.want {
+		if got, _ := mapPolarStatus(&c.sub); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}
 	}
