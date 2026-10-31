@@ -260,6 +260,8 @@ paths:
                   subStatus: { type: string, description: '"" (free), trialing, active, canceled, past_due, expired.' }
                   deviceLimit: { type: integer, description: Effective cap; -1 = unlimited. }
                   subCurrentEnd: { type: string, format: date-time }
+                  trialEndsAt: { type: string, format: date-time, nullable: true, description: 'No-card app-trial deadline; null if the account has none.' }
+                  inTrial: { type: boolean, description: 'Currently inside the no-card app trial (never subscribed, deadline in the future).' }
                   version: { type: string }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
