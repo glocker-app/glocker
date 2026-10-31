@@ -3639,8 +3639,11 @@ function userRow(u) {
 
   const main = document.createElement("div");
   main.className = "user-main";
-  const email = document.createElement("span");
+  // The email is a mailto: link so an admin can reach a user from here (one-off
+  // support), without any sending infrastructure in glockpeek.
+  const email = document.createElement("a");
   email.className = "user-email";
+  email.href = "mailto:" + u.email;
   email.textContent = u.email;
   if (u.isAdmin) email.append(badge("admin", "admin"));
   if (!u.verified) email.append(badge("unverified", "unverified"));
