@@ -137,8 +137,8 @@ config, glocker restarts automatically to pick up the new
 config. If you've edited it manually you need to restart glocker using
 `sudo systemctl restart glocker`. 
 
-::: {.video data-yt="Gr3iOxcVxH8" data-poster="video-config.jpg" data-title="Configuring glocker"}
-[Watch: configuring glocker](https://youtu.be/Gr3iOxcVxH8)
+::: {.video data-yt="x3G67lR8CMM" data-poster="video-config.jpg" data-title="Editing the config"}
+[Watch: editing the config](https://youtu.be/x3G67lR8CMM)
 :::
 
 ### System behaviour
