@@ -33,7 +33,12 @@ func billingMuxEnabled(t *testing.T) (*http.ServeMux, *store.DB) {
 // refused with 402, while a trialing account may write.
 func TestAccessGate_ReadOnlyWhenLapsed(t *testing.T) {
 	mux, sdb := billingMuxEnabled(t)
-	uid, cookie, token := account(t, sdb, "lapsed@x.com") // subStatus "" → no access
+	uid, cookie, token := account(t, sdb, "lapsed@x.com") // subStatus ""
+	// account() verifies the user, which starts a no-card trial. Expire it so this
+	// is a genuinely lapsed account (trial ended, never subscribed → no access).
+	if err := sdb.SetTrialEnd(uid, time.Now().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
 
 	ingest := func() int {
 		r := httptest.NewRequest("POST", "/api/ingest",

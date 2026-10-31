@@ -154,8 +154,10 @@ func TestBillingWebhook_RejectsBadSignature(t *testing.T) {
 		t.Fatalf("tampered signature: code %d, want 401", rec.Code)
 	}
 	got, _ := sdb.UserByEmail("payer2@x.com")
-	if got.SubStatus != "" || got.HasAccess() {
-		t.Errorf("tampered event must not grant access: status=%q access=%v", got.SubStatus, got.HasAccess())
+	// A tampered event must not write a subscription. (The account still has its
+	// no-card trial, so access alone isn't the signal here.)
+	if got.SubStatus != "" || got.SubID != "" {
+		t.Errorf("tampered event must not write a subscription: status=%q id=%q", got.SubStatus, got.SubID)
 	}
 }
 
