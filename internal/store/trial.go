@@ -27,20 +27,8 @@ func (db *DB) MarkTrialRemindEnd(userID uint, at time.Time) error {
 	return db.Model(&User{}).Where("id = ?", userID).Update("trial_remind_end_at", at).Error
 }
 
-// UsersMissingTrial returns verified, never-subscribed accounts that have no
-// trial deadline — the set a one-off backfill grants a trial to when the feature
-// ships. Subscribed and already-trialing accounts are excluded, so a re-run is a
-// no-op. Scoped on sub_status, not sub_id, so an expired account (which may also
-// have an empty sub_id) is left read-only rather than handed a fresh trial.
-func (db *DB) UsersMissingTrial() ([]User, error) {
-	var users []User
-	err := db.Where("verified = ? AND sub_status = ? AND trial_ends_at IS NULL", true, "").
-		Order("id").Find(&users).Error
-	return users, err
-}
-
-// SetTrialEnd sets an account's no-card trial deadline. Used by the backfill and
-// by tests; the normal path sets it at verification.
+// SetTrialEnd sets an account's no-card trial deadline. The normal path sets it
+// at verification; this is for admin adjustment and tests.
 func (db *DB) SetTrialEnd(userID uint, at time.Time) error {
 	return db.Model(&User{}).Where("id = ?", userID).Update("trial_ends_at", at).Error
 }

@@ -87,43 +87,6 @@ func TestTrialStartsAtVerification(t *testing.T) {
 	}
 }
 
-func TestUsersMissingTrial_BackfillScope(t *testing.T) {
-	db := openMem(t)
-
-	// nullTrial clears the trial CreateUser set, simulating a pre-feature row.
-	nullTrial := func(id uint) {
-		if err := db.Model(&User{}).Where("id = ?", id).Update("trial_ends_at", nil).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	// Verified, never subscribed, no trial → eligible.
-	plain, _ := db.CreateUser("plain@x.com", "longenough1")
-	nullTrial(plain.ID)
-
-	// Unverified signup → not eligible (trial starts at its verification).
-	_, _, _ = db.RegisterUser("pending@x.com", "longenough1")
-
-	// Expired subscriber with an empty sub id → must NOT get a fresh trial.
-	exp, _ := db.CreateUser("expired@x.com", "longenough1")
-	nullTrial(exp.ID)
-	if err := db.SetSubscription(exp.ID, SubStatusExpired, "", time.Now().Add(-time.Hour), time.Time{}); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := db.UsersMissingTrial()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 1 || got[0].Email != "plain@x.com" {
-		emails := make([]string, len(got))
-		for i, u := range got {
-			emails[i] = u.Email
-		}
-		t.Fatalf("backfill scope = %v, want [plain@x.com]", emails)
-	}
-}
-
 func TestDeleteUserData_RemovesAllUserScoped(t *testing.T) {
 	db := openTestDB(t)
 	u, err := db.CreateUser("del@x.com", "pw123456") // verified; seeds rules
