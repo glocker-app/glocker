@@ -690,6 +690,11 @@ Your best and current streaks are also prominently displayed along
 with some statistics about your glocker agents syncing. 
 
 ## Analytics
+
+::: {.video data-yt="Bjo4ExDJBEo" data-poster="video-glockpeek.jpg" data-title="A walk through glockpeek"}
+[Watch: a walk through glockpeek](https://youtu.be/Bjo4ExDJBEo)
+:::
+
 You can see your behaviour in this section. It starts with a date
 range picker. Select a range to get details. It gives you a quick
 overview of violations, unblocks, and unmanaged times. Once you pick a
