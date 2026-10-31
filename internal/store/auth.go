@@ -97,6 +97,12 @@ func (db *DB) createUser(email, password string, verified bool) (*User, error) {
 		return nil, err
 	}
 	u := &User{Email: email, Username: email, PasswordHash: hash, Verified: verified}
+	// An account that's active on creation starts its no-card trial now; a
+	// self-serve account starts it at verification (its real activation point).
+	if verified {
+		trialEnd := time.Now().Add(TrialLength)
+		u.TrialEndsAt = &trialEnd
+	}
 	if err := db.Create(u).Error; err != nil {
 		return nil, err
 	}

@@ -97,8 +97,17 @@ func (db *DB) VerifyEmail(token string) (*User, error) {
 	if err := db.First(&u, vt.UserID).Error; err != nil {
 		return nil, err
 	}
+	// Verification is the self-serve account's activation point, so the no-card
+	// trial clock starts here (not at sign-up, which can precede the first login
+	// by up to the verification window). Don't reset it if already set (a
+	// re-verify shouldn't extend the trial).
+	trialEnd := time.Now().Add(TrialLength)
 	if err := db.Transaction(func(tx *DB) error {
-		if err := tx.Model(&User{}).Where("id = ?", u.ID).Update("verified", true).Error; err != nil {
+		updates := map[string]any{"verified": true}
+		if u.TrialEndsAt == nil {
+			updates["trial_ends_at"] = trialEnd
+		}
+		if err := tx.Model(&User{}).Where("id = ?", u.ID).Updates(updates).Error; err != nil {
 			return err
 		}
 		return tx.Where("token = ?", token).Delete(&VerificationToken{}).Error
@@ -106,6 +115,9 @@ func (db *DB) VerifyEmail(token string) (*User, error) {
 		return nil, err
 	}
 	u.Verified = true
+	if u.TrialEndsAt == nil {
+		u.TrialEndsAt = &trialEnd
+	}
 	_ = db.SeedAccountRules(u.ID) // seed starter rules once, now that the account is active
 	return &u, nil
 }

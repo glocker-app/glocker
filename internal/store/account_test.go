@@ -54,6 +54,39 @@ func TestRegisterUser_PreHijack(t *testing.T) {
 
 // DeleteUserData must remove every user-scoped table and leave system-owned rows
 // (Glocker:* tags, user_id 0) intact.
+func TestTrialStartsAtVerification(t *testing.T) {
+	db := openMem(t)
+
+	// Self-serve: no trial until the account verifies.
+	u, tok, err := db.RegisterUser("trial@x.com", "longenough1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.TrialEndsAt != nil {
+		t.Error("unverified signup should not have a trial yet")
+	}
+	v, err := db.VerifyEmail(tok)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v.TrialEndsAt == nil || !v.InTrial() {
+		t.Fatalf("verified account should be in trial, got TrialEndsAt=%v", v.TrialEndsAt)
+	}
+	got, _ := db.UserByEmail("trial@x.com")
+	if got.TrialEndsAt == nil || !got.InTrial() {
+		t.Error("trial not persisted at verification")
+	}
+
+	// Admin/CLI accounts are active on creation, so they trial immediately.
+	a, err := db.CreateUser("admin@x.com", "longenough1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.TrialEndsAt == nil || !a.InTrial() {
+		t.Error("admin-created account should start its trial on creation")
+	}
+}
+
 func TestDeleteUserData_RemovesAllUserScoped(t *testing.T) {
 	db := openTestDB(t)
 	u, err := db.CreateUser("del@x.com", "pw123456") // verified; seeds rules
