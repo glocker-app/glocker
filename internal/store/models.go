@@ -74,11 +74,11 @@ type User struct {
 	// Polar subscription. Nil for accounts created before trials existed and for
 	// any account that has subscribed. See [[polar-billing-gotchas]].
 	TrialEndsAt *time.Time `json:"trialEndsAt"`
-	// TrialRemind3dAt / TrialRemindEndAt record when the two trial-ending reminder
-	// emails were sent, so the scheduler sweep sends each at most once. Nil until
-	// sent.
-	TrialRemind3dAt  *time.Time `json:"-"`
-	TrialRemindEndAt *time.Time `json:"-"`
+	// TrialRemindSoonAt / TrialRemindEndAt record when the two trial reminder emails
+	// (ending soon, ended) were sent, so the scheduler sweep sends each at most
+	// once. Nil until sent.
+	TrialRemindSoonAt *time.Time `json:"-"`
+	TrialRemindEndAt  *time.Time `json:"-"`
 }
 
 // VerificationToken is a single-use, expiring token emailed to a new account so

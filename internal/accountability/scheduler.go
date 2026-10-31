@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"strings"
 	"time"
@@ -102,7 +103,11 @@ func (n *Scheduler) maybeTick() {
 	n.tick(n.now())
 }
 
-// tick does one pass over the opted-in accounts.
+// trialRemindBefore is how long before a no-card trial ends the "ending soon"
+// reminder goes out.
+const trialRemindBefore = 3 * 24 * time.Hour
+
+// tick does one pass over the opted-in accounts, then the trial-reminder sweep.
 func (n *Scheduler) tick(now time.Time) {
 	cfgs, err := n.db.EnabledAccountabilityConfigs()
 	if err != nil {
@@ -111,6 +116,44 @@ func (n *Scheduler) tick(now time.Time) {
 	}
 	for _, c := range cfgs {
 		n.process(c, now)
+	}
+	// Trial reminders are a hosted-billing concern — skip them for self-hosted
+	// instances, which have no subscription to nudge toward (requireAccess=false).
+	if n.requireAccess {
+		n.sweepTrials(now)
+	}
+}
+
+// sweepTrials sends the two no-card-trial reminders — one as the trial nears its
+// end, one once it has ended — each at most once, to the account's own email.
+func (n *Scheduler) sweepTrials(now time.Time) {
+	users, err := n.db.TrialReminderCandidates()
+	if err != nil {
+		slog.Warn("scheduler: listing trial candidates failed", "err", err)
+		return
+	}
+	for _, u := range users {
+		if u.TrialEndsAt == nil || u.Email == "" {
+			continue
+		}
+		left := u.TrialEndsAt.Sub(now)
+		switch {
+		case left <= 0 && u.TrialRemindEndAt == nil:
+			subj, text, html := trialReminderEmail(0, true, n.appURL)
+			if err := n.mail.Send(context.Background(), u.Email, subj, text+textFooter, html); err == nil {
+				_ = n.db.MarkTrialRemindEnd(u.ID, now)
+			} else {
+				slog.Warn("scheduler: trial-ended email failed", "user", u.ID, "err", err)
+			}
+		case left > 0 && left <= trialRemindBefore && u.TrialRemindSoonAt == nil:
+			days := int(math.Ceil(left.Hours() / 24))
+			subj, text, html := trialReminderEmail(days, false, n.appURL)
+			if err := n.mail.Send(context.Background(), u.Email, subj, text+textFooter, html); err == nil {
+				_ = n.db.MarkTrialRemindSoon(u.ID, now)
+			} else {
+				slog.Warn("scheduler: trial-ending email failed", "user", u.ID, "err", err)
+			}
+		}
 	}
 }
 

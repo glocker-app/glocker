@@ -110,6 +110,27 @@ func wentDarkEmail(lastSeen, now time.Time, who string) (subject, text, html str
 	return
 }
 
+// trialReminderEmail is the no-card trial nudge sent to the account's own email:
+// one when the trial is ending soon, one when it has ended. subscribeURL is the
+// dashboard (the Subscribe action lives there). Copy stays terse.
+func trialReminderEmail(daysLeft int, ended bool, subscribeURL string) (subject, text, html string) {
+	var line string
+	if ended {
+		subject = "Your glockpeek trial has ended"
+		line = "Your trial has ended. The dashboard is read-only and syncing is paused until you subscribe."
+	} else {
+		subject = "Your glockpeek trial is ending"
+		d := fmt.Sprintf("%d day%s", daysLeft, map[bool]string{true: "", false: "s"}[daysLeft == 1])
+		line = fmt.Sprintf("Your trial ends in %s. Subscribe to keep syncing and using the dashboard.", d)
+	}
+	text = line + "\n\nSubscribe: " + subscribeURL + "\n"
+	inner := fmt.Sprintf(`<p style="margin:0 0 16px;font-size:15px">%s</p>`, htmlpkg.EscapeString(line)) +
+		fmt.Sprintf(`<a href="%s" style="display:inline-block;padding:9px 18px;background:#ff4d4d;color:#fff;border-radius:7px;font-weight:600;text-decoration:none">Subscribe</a>`,
+			htmlpkg.EscapeString(subscribeURL))
+	html = emailShell("", inner)
+	return
+}
+
 // durationWords renders a coarse "2h 5m"-style span.
 func durationWords(d time.Duration) string {
 	if d < time.Minute {

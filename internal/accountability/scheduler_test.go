@@ -212,3 +212,71 @@ func TestDigestNotDue(t *testing.T) {
 		t.Fatalf("digest not due (2h < 24h) should send nothing, got %d", len(fm.sent))
 	}
 }
+
+// trialNotifier is a scheduler with billing/access on, so the trial sweep runs.
+func trialNotifier(db *store.DB, fm *fakeMailer) *Scheduler {
+	return &Scheduler{db: db, mail: fm, appURL: "https://my.example.com", now: time.Now, requireAccess: true}
+}
+
+// The two trial reminders fire once each, at the right time, and never twice.
+func TestTrialReminders(t *testing.T) {
+	db := newDB(t)
+	u, err := db.CreateUser("trialer@example.com", "longenough1") // verified → trial set
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u.TrialEndsAt == nil {
+		t.Fatal("created account has no trial")
+	}
+	end := *u.TrialEndsAt
+
+	// Too early (well before the 3-day window): nothing.
+	fm := &fakeMailer{}
+	trialNotifier(db, fm).tick(end.Add(-10 * 24 * time.Hour))
+	if len(fm.sent) != 0 {
+		t.Fatalf("early sweep sent %d, want 0", len(fm.sent))
+	}
+
+	// Inside the 3-day window: one "ending soon" email, to the account itself.
+	trialNotifier(db, fm).tick(end.Add(-2 * 24 * time.Hour))
+	if len(fm.sent) != 1 || fm.sent[0].to != "trialer@example.com" {
+		t.Fatalf("ending-soon sweep: %+v", fm.sent)
+	}
+	if !strings.Contains(fm.sent[0].subject, "ending") {
+		t.Errorf("subject = %q, want the ending-soon notice", fm.sent[0].subject)
+	}
+	// Running again in the window doesn't resend.
+	trialNotifier(db, fm).tick(end.Add(-1 * 24 * time.Hour))
+	if len(fm.sent) != 1 {
+		t.Fatalf("resend in window: got %d emails, want 1", len(fm.sent))
+	}
+
+	// After the trial ends: one "ended" email, then never again.
+	trialNotifier(db, fm).tick(end.Add(time.Hour))
+	if len(fm.sent) != 2 || !strings.Contains(fm.sent[1].subject, "ended") {
+		t.Fatalf("ended sweep: %+v", fm.sent)
+	}
+	trialNotifier(db, fm).tick(end.Add(2 * time.Hour))
+	if len(fm.sent) != 2 {
+		t.Fatalf("resend after end: got %d emails, want 2", len(fm.sent))
+	}
+}
+
+// A subscribed account gets no trial reminders.
+func TestTrialRemindersSkipSubscribed(t *testing.T) {
+	db := newDB(t)
+	u, err := db.CreateUser("paid@example.com", "longenough1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	end := *u.TrialEndsAt
+	if err := db.SetSubscription(u.ID, store.SubStatusActive, "sub_x", end.Add(365*24*time.Hour), time.Time{}); err != nil {
+		t.Fatal(err)
+	}
+	fm := &fakeMailer{}
+	trialNotifier(db, fm).tick(end.Add(-2 * 24 * time.Hour))
+	trialNotifier(db, fm).tick(end.Add(time.Hour))
+	if len(fm.sent) != 0 {
+		t.Fatalf("subscribed account got %d trial emails, want 0", len(fm.sent))
+	}
+}
