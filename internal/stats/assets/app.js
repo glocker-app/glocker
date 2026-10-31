@@ -3887,10 +3887,10 @@ async function cancelSubscription(btn) {
   }
 }
 
-// renderAccessBanner reflects the account's subscription state at the top of the
-// dashboard: a trial countdown, a lapsed read-only warning with a Subscribe CTA,
-// or a start-trial CTA for a never-subscribed account. Sets state.readOnly, which
-// write controls consult. No-op when billing is off (local / self-host).
+// renderAccessBanner reflects the account's access state at the top of the
+// dashboard: a no-card trial countdown, a lapsed read-only warning with a
+// Subscribe CTA, or a cancellation notice. Sets state.readOnly, which write
+// controls consult. No-op when billing is off (local / self-host).
 function renderAccessBanner() {
   const el = document.getElementById("access-banner");
   if (!el) return;
@@ -3898,7 +3898,7 @@ function renderAccessBanner() {
   if (!me.billing) { el.hidden = true; state.readOnly = false; return; }
 
   const s = me.subStatus;
-  const hasAccess = s === "trialing" || s === "active" || s === "canceled" || s === "past_due";
+  const hasAccess = me.inTrial || s === "trialing" || s === "active" || s === "canceled" || s === "past_due";
   state.readOnly = !hasAccess;
 
   // A live, non-canceling subscription needs no banner.
@@ -3908,9 +3908,15 @@ function renderAccessBanner() {
   el.textContent = "";
   const end = me.subCurrentEnd ? new Date(me.subCurrentEnd) : null;
   const dshort = end ? end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+  const trialEnd = me.trialEndsAt ? new Date(me.trialEndsAt) : null;
 
   let msg, cta, info = true;
-  if (s === "trialing") {
+  if (me.inTrial) {
+    // No-card app trial: never subscribed, trial still running.
+    const days = trialEnd ? Math.max(0, Math.ceil((trialEnd - Date.now()) / 86400000)) : null;
+    msg = days != null ? `Trial — ${days} day${days === 1 ? "" : "s"} left.` : "Trial active.";
+    cta = "Subscribe";
+  } else if (s === "trialing") {
     const days = end ? Math.max(0, Math.ceil((end - Date.now()) / 86400000)) : null;
     msg = days != null ? `Free trial — ${days} day${days === 1 ? "" : "s"} left.` : "Free trial active.";
     cta = "Manage subscription";
@@ -3922,7 +3928,8 @@ function renderAccessBanner() {
   } else if (s === "expired") {
     msg = "Your subscription has lapsed — the dashboard is read-only and syncing is paused."; cta = "Subscribe"; info = false;
   } else {
-    msg = "Start your 2-week free trial to connect devices and use the dashboard."; cta = "Choose a plan"; info = false;
+    // Never subscribed and the no-card trial has ended — read-only.
+    msg = "Your trial has ended — the dashboard is read-only and syncing is paused."; cta = "Subscribe"; info = false;
   }
   el.classList.add(info ? "access-banner--info" : "access-banner--warn");
   el.append(document.createTextNode(msg + " "));
@@ -4036,17 +4043,21 @@ function renderSubscription() {
   const live = s === "trialing" || s === "active";
   const end = me.subCurrentEnd ? new Date(me.subCurrentEnd) : null;
   const dlong = end ? end.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }) : "";
-  const p = planPill(s);
+  const p = me.inTrial ? { text: "Trial", cls: "ok" } : planPill(s);
   const planLabel = me.plan === "monthly" ? "Monthly ($10/mo)" : me.plan === "annual" ? "Annual ($99/yr)" : "";
   const titled = live || s === "canceled" || s === "past_due";
 
+  const trialEnd = me.trialEndsAt ? new Date(me.trialEndsAt) : null;
+  const trialDays = trialEnd ? Math.max(0, Math.ceil((trialEnd - Date.now()) / 86400000)) : null;
+
   let statusLine;
-  if (s === "trialing") statusLine = end ? `Free trial — ends ${dlong}, then billing begins.` : "Free trial active.";
+  if (me.inTrial) statusLine = trialDays != null ? `Trial — ${trialDays} day${trialDays === 1 ? "" : "s"} left.` : "Trial active.";
+  else if (s === "trialing") statusLine = end ? `Free trial — ends ${dlong}, then billing begins.` : "Free trial active.";
   else if (s === "active") statusLine = end ? `Renews ${dlong}.` : "Active.";
   else if (s === "canceled") statusLine = end ? `Access until ${dlong} — won't renew.` : "Set to cancel at period end.";
   else if (s === "past_due") statusLine = "Renewal payment failed — update your card to keep access.";
   else if (s === "expired") statusLine = "Lapsed — the dashboard is read-only and syncing is paused.";
-  else statusLine = "You're on the free tier. Start a 2-week free trial to sync devices and use the dashboard.";
+  else statusLine = "Your trial has ended — the dashboard is read-only and syncing is paused.";
 
   let actions = "";
   if (live) {
@@ -4061,7 +4072,7 @@ function renderSubscription() {
     actions += `<button id="sub-monthly" class="btn-ghost" type="button">$10 / month</button>`;
     actions += `<button id="sub-annual" class="btn-primary" type="button">$99 / year · save ~2 months</button>`;
   } else {
-    actions += `<button id="sub-annual" class="btn-primary" type="button">${s === "expired" ? "Resubscribe" : "Start free trial"}</button>`;
+    actions += `<button id="sub-annual" class="btn-primary" type="button">${s === "expired" ? "Resubscribe" : "Subscribe · $99/yr"}</button>`;
   }
 
   el.innerHTML =

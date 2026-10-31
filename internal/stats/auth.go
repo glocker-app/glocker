@@ -255,6 +255,10 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		"subStatus":      u.SubStatus,
 		"deviceLimit":    store.EffectiveDeviceLimit(u),
 		"subCurrentEnd":  u.SubCurrentEnd,
-		"version":        buildVersion,
+		// No-card trial: the deadline (null if none) + whether it's currently active,
+		// so the dashboard can show "Trial: N days left · Subscribe".
+		"trialEndsAt": u.TrialEndsAt,
+		"inTrial":     u.InTrial(),
+		"version":     buildVersion,
 	})
 }
