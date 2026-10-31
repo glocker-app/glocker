@@ -10,6 +10,7 @@
 //	glockpeek -passwd  <name>        # change a password
 //	glockpeek -addtoken <name>       # mint an ingest API token for <name> (printed once)
 //	glockpeek -setlimit <email> -devices <n>   # set an account's device cap (<0 = unlimited)
+//	glockpeek -backfill-trials [-dry-run]       # one-off: give never-subscribed accounts a 14-day trial
 //
 // This replaces the old command-line log viewer; run the server as its own
 // service (see extras/glockpeek.service).
@@ -54,6 +55,8 @@ func main() {
 	passwd := flag.String("passwd", "", "change the password for this email, then exit")
 	addToken := flag.String("addtoken", "", "mint an ingest API token for this account (email), then exit")
 	setLimit := flag.String("setlimit", "", "set the device (API-token) limit for this email (use with -devices), then exit")
+	backfillTrials := flag.Bool("backfill-trials", false, "give every verified, never-subscribed account a 14-day no-card trial from now (one-off); pairs with -dry-run to only list who'd be affected")
+	dryRun := flag.Bool("dry-run", false, "with -backfill-trials, list the affected accounts without writing")
 	importRules := flag.String("import-rules", "", "load Glocker starter rules from a JSON file ({\"rules\":[{tag,program,title}]}) into the default-rules template that new accounts seed from, then exit")
 	migrateFlag := flag.Bool("migrate", false, "run DB migrations, then exit — the explicit pre-deploy step for hosted/multi-node (local + admin subcommands still migrate on open)")
 	devices := flag.Int("devices", 1, "device limit to apply with -setlimit (negative = unlimited)")
@@ -194,6 +197,9 @@ func main() {
 	case *setLimit != "":
 		runSetLimit(db, *setLimit, *devices)
 		return
+	case *backfillTrials:
+		runBackfillTrials(db, *dryRun)
+		return
 	case *importRules != "":
 		runImportRules(db, *importRules)
 		return
@@ -323,6 +329,33 @@ func runSetLimit(db *store.DB, email string, n int) {
 		label = "unlimited"
 	}
 	fmt.Printf("device limit for %q set to %s\n", email, label)
+}
+
+// runBackfillTrials grants a 14-day no-card trial (from now) to every verified,
+// never-subscribed account that doesn't have one — the one-off at feature launch.
+// -dry-run lists who'd be affected without writing, for a rehearsal on a restored
+// prod copy. Re-running is a no-op (accounts with a trial are excluded).
+func runBackfillTrials(db *store.DB, dry bool) {
+	users, err := db.UsersMissingTrial()
+	if err != nil {
+		log.Fatalf("glockpeek: backfill-trials: %v", err)
+	}
+	end := time.Now().Add(store.TrialLength)
+	for _, u := range users {
+		if dry {
+			fmt.Printf("would set trial for %s\n", u.Email)
+			continue
+		}
+		if err := db.SetTrialEnd(u.ID, end); err != nil {
+			log.Fatalf("glockpeek: backfill-trials: set %s: %v", u.Email, err)
+		}
+		fmt.Printf("set trial for %s\n", u.Email)
+	}
+	verb := "set"
+	if dry {
+		verb = "would set"
+	}
+	fmt.Printf("%s a trial for %d account(s) (ends %s)\n", verb, len(users), end.Format("2006-01-02"))
 }
 
 // readNewPassword reads a password without echo from a TTY, or a single line
