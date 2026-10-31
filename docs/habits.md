@@ -493,7 +493,8 @@ glockpeek instance. If you're using the hosted version of glocker, you
 will need an ingest bearer token for authentication. This is specified in
 `token`. You will also need to set `encrypt` to `true` so that the
 data will be encrypted before going to glockpeek. The sync frequency is
-specified in `interval_seconds`. 
+specified in `interval_seconds`. The hosted version starts with a 14-day
+free trial — no card needed. It covers up to 5 machines.
 
 *glockpeek* has a separate config file in `conf/glockpeek.yaml` which
 we'll briefly talk about here
