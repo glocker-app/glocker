@@ -456,6 +456,24 @@ function bootProgress(done, total, final) {
   bootUI.root.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
 }
 
+// renderSetupPanel shows the first-run checklist on the hosted dashboard until a
+// machine has synced. Hidden when read-only, since no device can be connected.
+function renderSetupPanel(me) {
+  const el = document.getElementById("setup-panel");
+  if (!el) return;
+  el.hidden = !(me && me.billing && !me.hasSyncedDevice && !state.readOnly);
+  if (el.hidden) return;
+  const copy = document.getElementById("setup-copy");
+  copy.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById("setup-install").textContent);
+      copy.textContent = "Copied ✓";
+      setTimeout(() => { copy.textContent = "Copy"; }, 1500);
+    } catch { /* clipboard may be blocked; the text is on-screen to copy manually */ }
+  };
+  document.getElementById("setup-devices").onclick = () => routeTo("devices");
+}
+
 // maybeAskHeardFrom shows the one-time, optional "how did you hear about Glocker?"
 // prompt (post-signup). Best-effort: a failed POST never blocks the dashboard.
 function maybeAskHeardFrom(me) {
@@ -573,6 +591,7 @@ async function bootDashboard(me) {
   document.getElementById("loading").hidden = true;
   document.getElementById("dash").hidden = false;
   maybeAskHeardFrom(state.me);
+  renderSetupPanel(state.me);
 
   // Data-sync panel (last daemon push). Refresh periodically so "N ago" stays
   // current without a reload.

@@ -248,6 +248,8 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		"e2e": db.HasVault(u.ID), "encrypted": db.AccountEncrypted(u.ID),
 		// Prompt for "how did you hear about Glocker?" once, post-signup, until answered.
 		"askHeardFrom": authEnabled && u.HeardFrom == nil,
+		// Whether to show the first-run setup checklist.
+		"hasSyncedDevice": db.HasSyncedDevice(u.ID),
 		// Billing/plan info so the dashboard can show the tier + gate the upgrade CTA.
 		"billing":        billingEnabled,
 		"billingMonthly": billingEnabled && billing.ProductIDMonthly != "", // offer the monthly plan?

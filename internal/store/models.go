@@ -79,6 +79,9 @@ type User struct {
 	// once. Nil until sent.
 	TrialRemindSoonAt *time.Time `json:"-"`
 	TrialRemindEndAt  *time.Time `json:"-"`
+	// SetupRemindAt records when the "no machine connected yet" email was sent, so
+	// the scheduler sweep sends it at most once. Nil until sent.
+	SetupRemindAt *time.Time `json:"-"`
 }
 
 // VerificationToken is a single-use, expiring token emailed to a new account so

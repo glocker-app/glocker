@@ -107,6 +107,10 @@ func (n *Scheduler) maybeTick() {
 // reminder goes out.
 const trialRemindBefore = 3 * 24 * time.Hour
 
+// setupRemindAfter is how long after verification an account with no connected
+// machine gets the setup reminder.
+const setupRemindAfter = 2 * 24 * time.Hour
+
 // tick does one pass over the opted-in accounts, then the trial-reminder sweep.
 func (n *Scheduler) tick(now time.Time) {
 	cfgs, err := n.db.EnabledAccountabilityConfigs()
@@ -121,6 +125,7 @@ func (n *Scheduler) tick(now time.Time) {
 	// instances, which have no subscription to nudge toward (requireAccess=false).
 	if n.requireAccess {
 		n.sweepTrials(now)
+		n.sweepSetup(now)
 	}
 }
 
@@ -153,6 +158,27 @@ func (n *Scheduler) sweepTrials(now time.Time) {
 			} else {
 				slog.Warn("scheduler: trial-ending email failed", "user", u.ID, "err", err)
 			}
+		}
+	}
+}
+
+// sweepSetup sends the one-time reminder to trial accounts that haven't connected
+// a machine. Verification time isn't stored, so it's derived from the trial end.
+func (n *Scheduler) sweepSetup(now time.Time) {
+	users, err := n.db.SetupReminderCandidates(now)
+	if err != nil {
+		slog.Warn("scheduler: listing setup candidates failed", "err", err)
+		return
+	}
+	for _, u := range users {
+		if u.Email == "" || now.Before(u.TrialEndsAt.Add(setupRemindAfter-store.TrialLength)) {
+			continue
+		}
+		subj, text, html := SetupEmail(n.appURL, true)
+		if err := n.mail.Send(context.Background(), u.Email, subj, text, html); err == nil {
+			_ = n.db.MarkSetupRemind(u.ID, now)
+		} else {
+			slog.Warn("scheduler: setup reminder failed", "user", u.ID, "err", err)
 		}
 	}
 }

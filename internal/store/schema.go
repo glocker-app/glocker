@@ -7,7 +7,7 @@ import "gorm.io/gorm/clause"
 // whenever a schema change ships, so a deployed DB can report what it's on via
 // /healthz and drift from the binary is visible. AutoMigrate still does the
 // actual DDL; this number only records that it ran.
-const CurrentSchemaVersion = 1
+const CurrentSchemaVersion = 2
 
 // stampSchemaVersion records CurrentSchemaVersion in the single-row schema_meta
 // table. Called at the end of Migrate (after the DDL succeeds), so the stamp

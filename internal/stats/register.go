@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
 
+	"glocker/internal/accountability"
 	"glocker/internal/store"
 )
 
@@ -86,12 +88,19 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 // handleVerify consumes the token from the emailed link, marks the account
 // verified, and shows a small landing page (not JSON — it's opened in a browser).
 func handleVerify(w http.ResponseWriter, r *http.Request) {
-	_, err := db.VerifyEmail(r.URL.Query().Get("token"))
+	u, err := db.VerifyEmail(r.URL.Query().Get("token"))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = io.WriteString(w, verifyLandingHTML(false))
 		return
+	}
+	// Best-effort: the scheduler's setup reminder is the fallback if this fails.
+	if billingEnabled && mail != nil && mail.Enabled() {
+		subj, text, html := accountability.SetupEmail(appURL, false)
+		if err := mail.Send(r.Context(), u.Email, subj, text, html); err != nil {
+			slog.Warn("setup email failed", "user", u.ID, "err", err)
+		}
 	}
 	_, _ = io.WriteString(w, verifyLandingHTML(true))
 }

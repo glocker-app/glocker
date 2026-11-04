@@ -32,3 +32,27 @@ func (db *DB) MarkTrialRemindEnd(userID uint, at time.Time) error {
 func (db *DB) SetTrialEnd(userID uint, at time.Time) error {
 	return db.Model(&User{}).Where("id = ?", userID).Update("trial_ends_at", at).Error
 }
+
+// SetupReminderCandidates returns accounts on a running no-card trial that have
+// never synced from a machine and haven't had the setup reminder yet. Never-used
+// tokens don't count: minting one doesn't mean the machine got connected.
+func (db *DB) SetupReminderCandidates(now time.Time) ([]User, error) {
+	var users []User
+	err := db.Where("verified = ? AND sub_status = ? AND trial_ends_at > ? AND setup_remind_at IS NULL AND "+
+		"id NOT IN (SELECT user_id FROM api_tokens WHERE last_used_at IS NOT NULL)", true, "", now).
+		Find(&users).Error
+	return users, err
+}
+
+// MarkSetupRemind records that the setup reminder was sent.
+func (db *DB) MarkSetupRemind(userID uint, at time.Time) error {
+	return db.Model(&User{}).Where("id = ?", userID).Update("setup_remind_at", at).Error
+}
+
+// HasSyncedDevice reports whether the account has a live device that has synced
+// at least once.
+func (db *DB) HasSyncedDevice(userID uint) bool {
+	var n int64
+	db.Model(&APIToken{}).Where("user_id = ? AND revoked_at IS NULL AND last_used_at IS NOT NULL", userID).Count(&n)
+	return n > 0
+}

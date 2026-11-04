@@ -1637,3 +1637,10 @@ canvas { max-height: 260px; }
 .ic-text { flex: 1 1 auto; min-width: 0; color: var(--ink-dim); }
 .insight-config { margin: 9px 0 0; padding: 11px 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 0.77rem; line-height: 1.55; color: var(--ink-dim); overflow-x: auto; white-space: pre; }
 .insight-more { margin: 4px 0 0; font-size: 0.82rem; color: var(--ink-faint); }
+
+/* First-run setup checklist */
+.setup-panel { margin: 14px clamp(16px, 3vw, 40px) 2px; }
+.setup-steps { margin: 12px 0 0; padding-left: 20px; display: grid; gap: 14px; }
+.setup-steps li > div { margin-top: 6px; }
+.setup-command { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.setup-command code { flex: 1 1 280px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; word-break: break-all; }

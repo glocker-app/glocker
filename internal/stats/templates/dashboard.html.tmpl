@@ -82,6 +82,25 @@
 
       <div id="access-banner" class="access-banner" hidden></div>
 
+      <section id="setup-panel" class="panel setup-panel" hidden>
+        <div class="panel-head">
+          <h2>Connect your first machine</h2>
+        </div>
+        <ol class="setup-steps">
+          <li>
+            <span>Install glocker</span>
+            <div class="setup-command">
+              <code id="setup-install">curl -fsSL https://glockerapp.com/glocker-installer.sh | sh</code>
+              <button id="setup-copy" class="btn-ghost" type="button">Copy</button>
+            </div>
+          </li>
+          <li>
+            <span>Connect the machine</span>
+            <div><button id="setup-devices" class="btn-primary" type="button">Connect a device</button></div>
+          </li>
+        </ol>
+      </section>
+
       <div id="heard-prompt" class="access-banner access-banner--info" hidden>
         <span>How did you hear about Glocker?</span>
         <div class="banner-actions">

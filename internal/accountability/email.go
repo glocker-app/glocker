@@ -131,6 +131,27 @@ func trialReminderEmail(daysLeft int, ended bool, subscribeURL string) (subject,
 	return
 }
 
+// installCommand is the hosted setup's first step, shown in the setup emails.
+const installCommand = "curl -fsSL https://glockerapp.com/glocker-installer.sh | sh"
+
+// SetupEmail tells a new account how to connect its first machine, sent at
+// verification. reminder is the later nudge for an account that still hasn't.
+func SetupEmail(appURL string, reminder bool) (subject, text, html string) {
+	subject = "Set up glockpeek"
+	if reminder {
+		subject = "No machine connected to glockpeek yet"
+	}
+	devices := strings.TrimRight(appURL, "/") + "/devices"
+	text = "1. Install glocker:\n\n" + installCommand + "\n\n2. Connect the machine:\n\n" + devices + "\n" + textFooter
+	inner := `<p style="margin:0 0 8px;font-size:15px">1. Install glocker:</p>` +
+		`<pre style="margin:0 0 16px;padding:10px 12px;background:#f4f5f7;border-radius:6px;font-size:12px;white-space:pre-wrap;word-break:break-all">` + htmlpkg.EscapeString(installCommand) + `</pre>` +
+		`<p style="margin:0 0 12px;font-size:15px">2. Connect the machine:</p>` +
+		fmt.Sprintf(`<a href="%s" style="display:inline-block;padding:9px 18px;background:#ff4d4d;color:#fff;border-radius:7px;font-weight:600;text-decoration:none">Connect a device</a>`,
+			htmlpkg.EscapeString(devices))
+	html = emailShell("", inner)
+	return
+}
+
 // durationWords renders a coarse "2h 5m"-style span.
 func durationWords(d time.Duration) string {
 	if d < time.Minute {

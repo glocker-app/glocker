@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"glocker/internal/store"
 )
@@ -499,5 +500,54 @@ func TestRulesGetPut(t *testing.T) {
 	// The rejected PUTs didn't clobber the good state.
 	if len(getRules()) != 1 {
 		t.Errorf("rejected PUT should not have changed the rules")
+	}
+}
+
+// Verifying a hosted account sends the setup steps, once, and /api/me reports
+// whether a machine has synced so the dashboard can show the checklist.
+func TestVerifySendsSetupEmail(t *testing.T) {
+	sdb, err := store.Open(store.Options{Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "test.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sdb.Close() })
+	fm := &fakeMailer{}
+	mux := http.NewServeMux()
+	Register(mux, sdb, Options{Auth: true, Mailer: fm, AppURL: "https://my.example.com",
+		Billing: BillingOptions{Enabled: true, WebhookSecret: "whsec_dGVzdA==", ProductID: "prod_test"}})
+
+	req := httptest.NewRequest("POST", "/api/register", strings.NewReader(`{"email":"new@x.com","password":"longenough1"}`))
+	if rec := do(mux, req); rec.Code != http.StatusOK {
+		t.Fatalf("register: %d %s", rec.Code, rec.Body.String())
+	}
+	var vt store.VerificationToken
+	if err := sdb.First(&vt).Error; err != nil {
+		t.Fatal(err)
+	}
+	for range 2 { // the second click fails, and must not send again
+		do(mux, httptest.NewRequest("GET", "/verify?token="+vt.Token, nil))
+	}
+	if len(fm.text) != 2 || !strings.Contains(fm.text[1], "glocker-installer.sh") || !strings.Contains(fm.text[1], "https://my.example.com/devices") {
+		t.Fatalf("emails = %q, want the verify link then the setup steps", fm.text)
+	}
+
+	u, err := sdb.UserByEmail("new@x.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sdb.HasSyncedDevice(u.ID) {
+		t.Error("new account reports a synced device")
+	}
+	if _, err := sdb.CreateAPIToken(u.ID, "laptop"); err != nil {
+		t.Fatal(err)
+	}
+	if sdb.HasSyncedDevice(u.ID) {
+		t.Error("a never-used token counts as synced")
+	}
+	if err := sdb.Model(&store.APIToken{}).Where("user_id = ?", u.ID).Update("last_used_at", time.Now()).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !sdb.HasSyncedDevice(u.ID) {
+		t.Error("a used token should count as synced")
 	}
 }

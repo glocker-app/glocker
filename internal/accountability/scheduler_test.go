@@ -229,6 +229,9 @@ func TestTrialReminders(t *testing.T) {
 		t.Fatal("created account has no trial")
 	}
 	end := *u.TrialEndsAt
+	if err := db.MarkSetupRemind(u.ID, time.Now()); err != nil { // only trial emails here
+		t.Fatal(err)
+	}
 
 	// Too early (well before the 3-day window): nothing.
 	fm := &fakeMailer{}
@@ -278,5 +281,54 @@ func TestTrialRemindersSkipSubscribed(t *testing.T) {
 	trialNotifier(db, fm).tick(end.Add(time.Hour))
 	if len(fm.sent) != 0 {
 		t.Fatalf("subscribed account got %d trial emails, want 0", len(fm.sent))
+	}
+}
+
+// The setup reminder waits two days after verification, goes out once, and skips
+// accounts that have synced from a machine.
+func TestSetupReminder(t *testing.T) {
+	db := newDB(t)
+	u, err := db.CreateUser("nodevice@example.com", "longenough1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified := u.TrialEndsAt.Add(-store.TrialLength)
+
+	fm := &fakeMailer{}
+	trialNotifier(db, fm).tick(verified.Add(24 * time.Hour))
+	if len(fm.sent) != 0 {
+		t.Fatalf("early sweep sent %d, want 0", len(fm.sent))
+	}
+	trialNotifier(db, fm).tick(verified.Add(setupRemindAfter + time.Minute))
+	if len(fm.sent) != 1 || fm.sent[0].to != u.Email || !strings.Contains(fm.sent[0].text, "/devices") {
+		t.Fatalf("reminder sweep: %+v", fm.sent)
+	}
+	trialNotifier(db, fm).tick(verified.Add(setupRemindAfter + time.Hour))
+	if len(fm.sent) != 1 {
+		t.Fatalf("resend: got %d emails, want 1", len(fm.sent))
+	}
+
+	// A minted token that never synced still gets it; one that synced doesn't.
+	unused, err := db.CreateUser("unused@example.com", "longenough1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateAPIToken(unused.ID, "laptop"); err != nil {
+		t.Fatal(err)
+	}
+	synced, err := db.CreateUser("synced@example.com", "longenough1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.CreateAPIToken(synced.ID, "laptop"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&store.APIToken{}).Where("user_id = ?", synced.ID).Update("last_used_at", time.Now()).Error; err != nil {
+		t.Fatal(err)
+	}
+	fm = &fakeMailer{}
+	trialNotifier(db, fm).tick(unused.TrialEndsAt.Add(setupRemindAfter - store.TrialLength + time.Minute))
+	if len(fm.sent) != 1 || fm.sent[0].to != "unused@example.com" {
+		t.Fatalf("token sweep: %+v", fm.sent)
 	}
 }
