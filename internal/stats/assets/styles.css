@@ -1340,12 +1340,12 @@ canvas { max-height: 260px; }
   display: flex; flex-direction: column; gap: 6px;
   font-family: var(--display); font-size: 12px; color: var(--ink-dim);
 }
-.login-card input {
+.login-card input, .login-card select {
   font-family: var(--mono); font-size: 14px; color: var(--ink);
   background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px;
   padding: 10px 12px; outline: none; transition: border-color 0.15s, box-shadow 0.15s;
 }
-.login-card input:focus { border-color: var(--signal); box-shadow: 0 0 0 2px rgba(192, 86, 74,0.2); }
+.login-card select:focus, .login-card input:focus { border-color: var(--signal); box-shadow: 0 0 0 2px rgba(192, 86, 74,0.2); }
 .login-card .btn-primary { margin-top: 4px; padding: 10px 14px; }
 .login-error {
   margin: 0; font-family: var(--mono); font-size: 12.5px; color: var(--danger, #ff4d4d);
@@ -1466,10 +1466,11 @@ canvas { max-height: 260px; }
   background: var(--panel-2); border: 1px solid var(--line);
   border-left: 3px solid var(--slate);
 }
-.access-banner--info { border-left-color: var(--signal); background: rgba(75, 189, 212, 0.07); }
+.access-banner--info { color: #f1f8f8; background: #1f5a66; border-color: #1f5a66; }
+.access-banner--info .btn-primary { color: #1f2a37; background: #f6d77a; border-color: #f6d77a; }
+.access-banner--info .btn-primary:hover { background: #f9e29b; border-color: #f9e29b; }
 .access-banner--warn { border-left-color: var(--danger); background: rgba(185, 107, 110, 0.09); color: var(--ink); }
-.access-banner > .btn-primary, .access-banner > .btn-ghost, .access-banner > .banner-actions { margin-left: auto; }
-.access-banner .banner-actions { display: flex; align-items: center; gap: 10px; }
+.access-banner > .btn-primary, .access-banner > .btn-ghost { margin-left: auto; }
 
 /* Subscription page */
 .sub-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -1638,9 +1639,35 @@ canvas { max-height: 260px; }
 .insight-config { margin: 9px 0 0; padding: 11px 13px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; font-family: var(--mono); font-size: 0.77rem; line-height: 1.55; color: var(--ink-dim); overflow-x: auto; white-space: pre; }
 .insight-more { margin: 4px 0 0; font-size: 0.82rem; color: var(--ink-faint); }
 
-/* First-run setup checklist */
-.setup-panel { margin: 14px clamp(16px, 3vw, 40px) 2px; }
-.setup-steps { margin: 12px 0 0; padding-left: 20px; display: grid; gap: 14px; }
+/* Welcome panel: its own colour, unlike anything else on the page */
+.setup-panel {
+  margin: 14px clamp(16px, 3vw, 40px) 2px; padding: 24px 28px;
+  color: #f1f8f8; background: #1f5a66; border-color: #1f5a66;
+}
+.setup-panel h2 {
+  margin: 0 0 8px; color: #fff; font-family: var(--display);
+  font-size: 22px; letter-spacing: normal; text-transform: none;
+}
+.setup-panel p { margin: 0; max-width: 70ch; }
+.setup-panel p + p { margin-top: 10px; }
+.setup-panel a { color: #f6d77a; }
+.setup-steps { margin: 16px 0; padding-left: 20px; display: grid; gap: 14px; }
 .setup-steps li > div { margin-top: 6px; }
 .setup-command { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.setup-command code { flex: 1 1 280px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; word-break: break-all; }
+.setup-command code {
+  flex: 1 1 280px; padding: 8px 10px; overflow-wrap: anywhere;
+  color: #fff; background: rgba(0, 0, 0, 0.25); border-radius: 6px;
+}
+.setup-panel .btn-ghost { color: #f1f8f8; border-color: rgba(255, 255, 255, 0.45); }
+.setup-panel .btn-ghost:hover { color: #fff; border-color: #fff; background: transparent; }
+.setup-panel .btn-primary { color: #1f2a37; background: #f6d77a; border-color: #f6d77a; }
+.setup-panel .btn-primary:hover { background: #f9e29b; border-color: #f9e29b; }
+
+/* Stand-in for the data views until a machine has synced */
+.dash--empty .view[data-view="overview"],
+.dash--empty .view[data-view="analytics"],
+.dash--empty .view[data-view="insights"] { display: none; }
+.no-data { text-align: center; }
+.no-data h2 { margin: 0 0 16px; font-family: var(--display); font-size: 20px; letter-spacing: normal; text-transform: none; }
+.no-data a { display: inline-block; max-width: 480px; color: var(--ink-dim); font-size: 13px; }
+.no-data img { display: block; width: 100%; height: auto; margin-bottom: 8px; border: 1px solid var(--line); border-radius: 6px; }

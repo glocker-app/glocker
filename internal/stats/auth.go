@@ -246,9 +246,7 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{
 		"id": u.ID, "email": u.Email, "auth": authEnabled, "admin": isAdmin(u),
 		"e2e": db.HasVault(u.ID), "encrypted": db.AccountEncrypted(u.ID),
-		// Prompt for "how did you hear about Glocker?" once, post-signup, until answered.
-		"askHeardFrom": authEnabled && u.HeardFrom == nil,
-		// Whether to show the first-run setup checklist.
+		// Whether to show the welcome panel.
 		"hasSyncedDevice": db.HasSyncedDevice(u.ID),
 		// Billing/plan info so the dashboard can show the tier + gate the upgrade CTA.
 		"billing":        billingEnabled,

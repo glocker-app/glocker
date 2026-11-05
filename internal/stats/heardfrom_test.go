@@ -1,7 +1,6 @@
 package stats
 
 import (
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,60 +10,39 @@ import (
 	"glocker/internal/store"
 )
 
-// askHeardFrom flips true→false once answered, and the answer (or the skip
-// sentinel) is persisted.
-func TestHeardFromPromptLifecycle(t *testing.T) {
+// The sign-up form's optional answer is stored, trimmed and capped; leaving it
+// out stores nothing.
+func TestRegisterStoresHeardFrom(t *testing.T) {
 	sdb, err := store.Open(store.Options{Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "test.db")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sdb.Close() })
 	mux := http.NewServeMux()
-	Register(mux, sdb, Options{Auth: true})
+	Register(mux, sdb, Options{Auth: true, Mailer: &fakeMailer{}, AppURL: "https://my.example.com"})
 
-	ask := func(cookie *http.Cookie) bool {
-		r := httptest.NewRequest("GET", "/api/me", nil)
-		r.AddCookie(cookie)
-		rec := do(mux, r)
-		if rec.Code != http.StatusOK {
-			t.Fatalf("/api/me: %d (%s)", rec.Code, rec.Body.String())
+	register := func(ip, email, heard string) *store.User {
+		t.Helper()
+		body := `{"email":"` + email + `","password":"longenough1","heardFrom":"` + heard + `"}`
+		req := httptest.NewRequest("POST", "/api/register", strings.NewReader(body))
+		req.Header.Set("X-Forwarded-For", ip)
+		if rec := do(mux, req); rec.Code != http.StatusOK {
+			t.Fatalf("register %s: %d %s", email, rec.Code, rec.Body.String())
 		}
-		var m map[string]any
-		if err := json.Unmarshal(rec.Body.Bytes(), &m); err != nil {
+		u, err := sdb.UserByEmail(email)
+		if err != nil {
 			t.Fatal(err)
 		}
-		return m["askHeardFrom"] == true
-	}
-	post := func(cookie *http.Cookie, body string) int {
-		r := httptest.NewRequest("POST", "/api/heard-from", strings.NewReader(body))
-		r.AddCookie(cookie)
-		return do(mux, r).Code
+		return u
 	}
 
-	// Answered path.
-	_, c1, _ := account(t, sdb, "a@x.com")
-	if !ask(c1) {
-		t.Fatal("new account should be asked")
+	if u := register("203.0.113.1", "a@x.com", "  Reddit "); u.HeardFrom == nil || *u.HeardFrom != "Reddit" {
+		t.Errorf("answer not stored: %v", u.HeardFrom)
 	}
-	if code := post(c1, `{"source":"Reddit"}`); code != http.StatusOK {
-		t.Fatalf("post: %d", code)
+	if u := register("203.0.113.2", "b@x.com", ""); u.HeardFrom != nil {
+		t.Errorf("blank answer stored: %q", *u.HeardFrom)
 	}
-	if ask(c1) {
-		t.Fatal("answered account should not be asked again")
-	}
-	if u, _ := sdb.UserByEmail("a@x.com"); u == nil || u.HeardFrom == nil || *u.HeardFrom != "Reddit" {
-		t.Fatalf("heard_from not stored: %+v", u)
-	}
-
-	// Dismiss (empty source) stores the sentinel and stops asking.
-	_, c2, _ := account(t, sdb, "b@x.com")
-	if code := post(c2, `{"source":""}`); code != http.StatusOK {
-		t.Fatalf("skip post: %d", code)
-	}
-	if ask(c2) {
-		t.Fatal("dismissed account should not be asked again")
-	}
-	if u, _ := sdb.UserByEmail("b@x.com"); u == nil || u.HeardFrom == nil || *u.HeardFrom != "(skipped)" {
-		t.Fatalf("skip sentinel not stored: %+v", u)
+	if u := register("203.0.113.3", "c@x.com", strings.Repeat("x", 500)); u.HeardFrom == nil || len(*u.HeardFrom) != 120 {
+		t.Errorf("long answer not capped: %v", u.HeardFrom)
 	}
 }

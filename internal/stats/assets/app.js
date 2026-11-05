@@ -137,6 +137,12 @@ function setupRegister() {
   document.getElementById("show-register").onclick = (e) => { e.preventDefault(); show("register"); ensureCaptcha(); };
   document.getElementById("show-login").onclick = (e) => { e.preventDefault(); show("login"); };
 
+  const heard = document.getElementById("reg-heard");
+  const heardOther = document.getElementById("reg-heard-other");
+  heard.onchange = () => {
+    heardOther.hidden = heard.value !== "Other";
+    if (!heardOther.hidden) heardOther.focus();
+  };
   regForm.onsubmit = async (e) => {
     e.preventDefault();
     regErr.hidden = true;
@@ -149,6 +155,8 @@ function setupRegister() {
       regErr.hidden = false;
       return;
     }
+    let heardFrom = document.getElementById("reg-heard").value;
+    if (heardFrom === "Other") heardFrom = document.getElementById("reg-heard-other").value.trim() || "Other";
     const submit = document.getElementById("register-submit");
     submit.disabled = true;
     // Wait for the background PoW solve (usually already done), then include it.
@@ -158,7 +166,7 @@ function setupRegister() {
       res = await fetch("api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, altcha }),
+        body: JSON.stringify({ email, password, altcha, heardFrom }),
       });
     } catch (err) {
       regErr.textContent = `Could not reach the server: ${err.message}`;
@@ -456,12 +464,17 @@ function bootProgress(done, total, final) {
   bootUI.root.setAttribute("aria-valuenow", String(Math.round(frac * 100)));
 }
 
-// renderSetupPanel shows the first-run checklist on the hosted dashboard until a
-// machine has synced. Hidden when read-only, since no device can be connected.
+// renderSetupPanel welcomes a hosted account until a machine has synced, and
+// carries the trial date while the trial banner is held back. Off when read-only,
+// since no device can be connected, and on the Devices view, which it points to.
 function renderSetupPanel(me) {
   const el = document.getElementById("setup-panel");
   if (!el) return;
-  el.hidden = !(me && me.billing && !me.hasSyncedDevice && !state.readOnly);
+  // With nothing synced, the data views would only show empty charts and a perfect score.
+  const noData = !!(me && me.billing && !me.hasSyncedDevice);
+  document.getElementById("dash").classList.toggle("dash--empty", noData);
+  document.getElementById("no-data").hidden = !noData || !["overview", "analytics", "insights"].includes(state.view);
+  el.hidden = !(me && me.billing && !me.hasSyncedDevice && !state.readOnly) || state.view === "devices";
   if (el.hidden) return;
   const copy = document.getElementById("setup-copy");
   copy.onclick = async () => {
@@ -472,38 +485,12 @@ function renderSetupPanel(me) {
     } catch { /* clipboard may be blocked; the text is on-screen to copy manually */ }
   };
   document.getElementById("setup-devices").onclick = () => routeTo("devices");
-}
-
-// maybeAskHeardFrom shows the one-time, optional "how did you hear about Glocker?"
-// prompt (post-signup). Best-effort: a failed POST never blocks the dashboard.
-function maybeAskHeardFrom(me) {
-  if (!me || !me.askHeardFrom) return;
-  const el = document.getElementById("heard-prompt");
-  if (!el) return;
-  const sel = document.getElementById("heard-select");
-  const other = document.getElementById("heard-other");
-  sel.onchange = () => {
-    other.hidden = sel.value !== "Other";
-    if (!other.hidden) other.focus();
-  };
-  const send = async (source) => {
-    el.hidden = true;
-    try {
-      await fetch("api/heard-from", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source }),
-      });
-    } catch { /* best-effort — the answer is a nice-to-have */ }
-  };
-  document.getElementById("heard-save").onclick = () => {
-    let v = sel.value;
-    if (!v) { sel.focus(); return; }
-    if (v === "Other") v = other.value.trim() || "Other";
-    send(v);
-  };
-  document.getElementById("heard-skip").onclick = () => send("");
-  el.hidden = false;
+  const trial = document.getElementById("setup-trial");
+  trial.hidden = !(me.inTrial && me.trialEndsAt);
+  if (trial.hidden) return;
+  document.getElementById("setup-trial-end").textContent = new Date(me.trialEndsAt)
+    .toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+  document.getElementById("setup-subscribe").onclick = (e) => { e.preventDefault(); routeTo("subscription"); };
 }
 
 async function bootDashboard(me) {
@@ -590,7 +577,6 @@ async function bootDashboard(me) {
 
   document.getElementById("loading").hidden = true;
   document.getElementById("dash").hidden = false;
-  maybeAskHeardFrom(state.me);
   renderSetupPanel(state.me);
 
   // Data-sync panel (last daemon push). Refresh periodically so "N ago" stays
@@ -831,6 +817,7 @@ function setView(view) {
   if (view === "config") renderConfig();
   if (view === "insights") renderInsights();
   if (view === "devices") renderDevices();
+  renderSetupPanel(state.me);
   if (view === "subscription") renderSubscription();
   if (view === "admin") { renderAdminMetrics(); renderUsers(); }
   // Charts built while their view was display:none have zero size; fix on reveal.
@@ -3922,6 +3909,10 @@ function renderAccessBanner() {
   const s = me.subStatus;
   const hasAccess = me.inTrial || s === "trialing" || s === "active" || s === "canceled" || s === "past_due";
   state.readOnly = !hasAccess;
+
+  // A new account's trial date is in the welcome panel; the banner starts on the
+  // first load after a machine has synced.
+  if (me.inTrial && !me.hasSyncedDevice) { el.hidden = true; return; }
 
   // A live, non-canceling subscription needs no banner.
   if (s === "active") { el.hidden = true; return; }

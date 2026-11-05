@@ -42,9 +42,9 @@ type User struct {
 	RulesSeeded bool      `json:"-"`
 	CreatedAt   time.Time `json:"createdAt"`
 
-	// HeardFrom is the optional post-signup "how did you hear about Glocker?"
-	// answer. Nullable: nil until answered; set once (including the sentinel
-	// "(skipped)" when dismissed) so the prompt isn't shown again.
+	// HeardFrom is the optional "how did you hear about glocker?" answer from the
+	// sign-up form. Nil if not answered; older accounts may hold the sentinel
+	// "(skipped)" from when this was a dashboard prompt.
 	HeardFrom *string `json:"-"`
 
 	// Subscription state for the hosted paid tier. The Merchant-of-Record

@@ -44,6 +44,8 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 		Altcha   string `json:"altcha"` // proof-of-work captcha solution
+		// HeardFrom is the optional "how did you hear about glocker?" answer.
+		HeardFrom string `json:"heardFrom"`
 	}
 	if err := json.Unmarshal(body, &in); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -71,6 +73,15 @@ func handleRegister(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	if src := strings.TrimSpace(in.HeardFrom); src != "" {
+		if len(src) > 120 {
+			src = src[:120]
+		}
+		if err := db.SetHeardFrom(u.ID, src); err != nil {
+			slog.Warn("saving heard-from failed", "user", u.ID, "err", err)
+		}
 	}
 
 	// Send the verification email; if it can't go out, roll the account back so

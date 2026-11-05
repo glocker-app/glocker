@@ -83,44 +83,35 @@
       <div id="access-banner" class="access-banner" hidden></div>
 
       <section id="setup-panel" class="panel setup-panel" hidden>
-        <div class="panel-head">
-          <h2>Connect your first machine</h2>
-        </div>
+        <h2>Welcome to glocker</h2>
+        <p>We're happy to have you here. To see insights about your usage and suggestions, you need to connect a machine to the dashboard. You can do that by:</p>
         <ol class="setup-steps">
           <li>
-            <span>Install glocker</span>
+            <span>Installing glocker</span>
             <div class="setup-command">
               <code id="setup-install">curl -fsSL https://glockerapp.com/glocker-installer.sh | sh</code>
               <button id="setup-copy" class="btn-ghost" type="button">Copy</button>
             </div>
           </li>
           <li>
-            <span>Connect the machine</span>
+            <span>Connecting the machine</span>
             <div><button id="setup-devices" class="btn-primary" type="button">Connect a device</button></div>
           </li>
         </ol>
+        <p>Reload this page once it's connected.</p>
+        <p id="setup-trial" hidden>You're currently on the initial trial period till <span id="setup-trial-end"></span>, so feel free to experiment. You can <a href="/subscription" id="setup-subscribe">subscribe</a> at any time.</p>
       </section>
 
-      <div id="heard-prompt" class="access-banner access-banner--info" hidden>
-        <span>How did you hear about Glocker?</span>
-        <div class="banner-actions">
-          <select id="heard-select" aria-label="How did you hear about Glocker?">
-            <option value="">Choose…</option>
-            <option>Search engine</option>
-            <option>Reddit</option>
-            <option>Hacker News</option>
-            <option>A friend or colleague</option>
-            <option>Blog or article</option>
-            <option>YouTube</option>
-            <option>Other</option>
-          </select>
-          <input id="heard-other" type="text" placeholder="where?" maxlength="120" hidden>
-          <button id="heard-save" class="btn-primary">Save</button>
-          <button id="heard-skip" class="btn-ghost">Dismiss</button>
-        </div>
-      </div>
-
       <main id="dash" hidden>
+        <!-- Stands in for the data views until a machine has synced. -->
+        <section id="no-data" class="panel no-data" hidden>
+          <h2>Connect a machine to see insights</h2>
+          <a href="https://youtu.be/Bjo4ExDJBEo" target="_blank" rel="noopener">
+            <img src="/video-glockpeek.jpg" width="1280" height="720" alt="A walk through glockpeek" />
+            <span>Watch a walk through glockpeek</span>
+          </a>
+        </section>
+
         <!-- Overview -->
         <section class="view active" data-view="overview">
           <section class="panel score-hero" title="A 0–100 health score over all recorded history (not the selected window): 100 minus weighted penalties for unmanaged time, violations, and deliberate days. Hover each penalty for its weight.">
@@ -474,6 +465,19 @@
       </label>
       <label>Confirm password
         <input id="reg-pass2" name="password2" type="password" autocomplete="new-password" minlength="8" required />
+      </label>
+      <label>How did you hear about glocker? (optional)
+        <select id="reg-heard">
+          <option value="">Choose…</option>
+          <option>Search engine</option>
+          <option>Reddit</option>
+          <option>Hacker News</option>
+          <option>A friend or colleague</option>
+          <option>Blog or article</option>
+          <option>YouTube</option>
+          <option>Other</option>
+        </select>
+        <input id="reg-heard-other" type="text" maxlength="120" placeholder="Where?" aria-label="Where did you hear about glocker?" hidden />
       </label>
       <button type="submit" class="btn-primary" id="register-submit">Create account</button>
       {{ if .TermsURL }}<p class="login-alt">Creating an account accepts the <a href="{{ .TermsURL }}" target="_blank" rel="noopener">privacy &amp; terms</a>.</p>{{ end }}

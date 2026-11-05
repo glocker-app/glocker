@@ -49,10 +49,10 @@ func (db *DB) MarkSetupRemind(userID uint, at time.Time) error {
 	return db.Model(&User{}).Where("id = ?", userID).Update("setup_remind_at", at).Error
 }
 
-// HasSyncedDevice reports whether the account has a live device that has synced
-// at least once.
+// HasSyncedDevice reports whether any device, revoked or not, has ever synced for
+// the account, which also means it has history to show.
 func (db *DB) HasSyncedDevice(userID uint) bool {
 	var n int64
-	db.Model(&APIToken{}).Where("user_id = ? AND revoked_at IS NULL AND last_used_at IS NOT NULL", userID).Count(&n)
+	db.Model(&APIToken{}).Where("user_id = ? AND last_used_at IS NOT NULL", userID).Count(&n)
 	return n > 0
 }
