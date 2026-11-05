@@ -77,6 +77,7 @@ sha256sum -c SHA256SUMS
 - Guide: [docs/habits.md](docs/habits.md) (also at
   [glockerapp.com/habits.html](https://glockerapp.com/habits.html))
 - Discord: [discord.gg/4qJp9uYyam](https://discord.gg/4qJp9uYyam)
+- Support the project: [Buy Me a Coffee](https://buymeacoffee.com/noufalibrahim)
 
 ## License
 
