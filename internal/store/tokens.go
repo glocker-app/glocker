@@ -7,15 +7,15 @@ import (
 )
 
 // Device/token management for the hosted dashboard. Each ingest API token
-// represents one connected device (a glocker agent syncing to glockpeek). The
-// number of tokens an account may hold is capped by User.DeviceLimit, with more
-// devices offered as a paid upgrade.
+// represents one connected device (a glocker agent syncing to glockpeek).
+// Accounts may connect any number of devices right now; connecting is gated on
+// access (trial/subscription), not on count.
 
-// DefaultDeviceCap is the device (API-token) cap applied to every account —
-// free, trialing, and paid alike. Connecting a device is gated on access
-// (trial/subscription), not on count; this is a flat abuse ceiling, not a paid
-// lever. An admin can override it per account via SetDeviceLimit.
-const DefaultDeviceCap = 5
+// DefaultDeviceCap is the device (API-token) cap applied to accounts with no
+// admin override. -1 means unlimited: device count is not capped or a paid lever
+// right now. The cap machinery (this default plus the per-account SetDeviceLimit
+// override) is kept so a future tier can impose a limit without new plumbing.
+const DefaultDeviceCap = -1
 
 // EffectiveDeviceLimit resolves a user's device cap: the zero value (no admin
 // override) maps to DefaultDeviceCap, a negative value means unlimited (returned
