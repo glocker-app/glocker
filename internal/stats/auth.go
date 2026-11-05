@@ -247,7 +247,7 @@ func handleMe(w http.ResponseWriter, r *http.Request) {
 		"id": u.ID, "email": u.Email, "auth": authEnabled, "admin": isAdmin(u),
 		"e2e": db.HasVault(u.ID), "encrypted": db.AccountEncrypted(u.ID),
 		// Whether to show the welcome panel.
-		"hasSyncedDevice": db.HasSyncedDevice(u.ID),
+		"hasSyncedData": db.HasSyncedData(u.ID),
 		// Billing/plan info so the dashboard can show the tier + gate the upgrade CTA.
 		"billing":        billingEnabled,
 		"billingMonthly": billingEnabled && billing.ProductIDMonthly != "", // offer the monthly plan?

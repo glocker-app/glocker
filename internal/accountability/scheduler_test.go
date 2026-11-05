@@ -308,7 +308,7 @@ func TestSetupReminder(t *testing.T) {
 		t.Fatalf("resend: got %d emails, want 1", len(fm.sent))
 	}
 
-	// A minted token that never synced still gets it; one that synced doesn't.
+	// A token that was used but never ingested still gets it; a real sync doesn't.
 	unused, err := db.CreateUser("unused@example.com", "longenough1")
 	if err != nil {
 		t.Fatal(err)
@@ -316,14 +316,14 @@ func TestSetupReminder(t *testing.T) {
 	if _, err := db.CreateAPIToken(unused.ID, "laptop"); err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Model(&store.APIToken{}).Where("user_id = ?", unused.ID).Update("last_used_at", time.Now()).Error; err != nil {
+		t.Fatal(err)
+	}
 	synced, err := db.CreateUser("synced@example.com", "longenough1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.CreateAPIToken(synced.ID, "laptop"); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Model(&store.APIToken{}).Where("user_id = ?", synced.ID).Update("last_used_at", time.Now()).Error; err != nil {
+	if err := db.RecordIngest(synced.ID, store.SyncStatus{LastHeartbeat: 1}); err != nil {
 		t.Fatal(err)
 	}
 	fm = &fakeMailer{}

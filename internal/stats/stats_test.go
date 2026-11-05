@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"glocker/internal/store"
 )
@@ -503,8 +502,8 @@ func TestRulesGetPut(t *testing.T) {
 	}
 }
 
-// Verifying a hosted account sends the setup steps, once, and /api/me reports
-// whether a machine has synced so the dashboard can show the checklist.
+// Verifying a hosted account sends the setup steps, once, and only an accepted
+// ingest counts as having synced data.
 func TestVerifySendsSetupEmail(t *testing.T) {
 	sdb, err := store.Open(store.Options{Driver: "sqlite", DSN: filepath.Join(t.TempDir(), "test.db")})
 	if err != nil {
@@ -535,19 +534,31 @@ func TestVerifySendsSetupEmail(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sdb.HasSyncedDevice(u.ID) {
-		t.Error("new account reports a synced device")
+	if sdb.HasSyncedData(u.ID) {
+		t.Error("new account reports synced data")
 	}
-	if _, err := sdb.CreateAPIToken(u.ID, "laptop"); err != nil {
+	tok, err := sdb.CreateAPIToken(u.ID, "laptop")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if sdb.HasSyncedDevice(u.ID) {
-		t.Error("a never-used token counts as synced")
+	withToken := func(method, path, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		r.Header.Set("Authorization", "Bearer "+tok)
+		return do(mux, r)
 	}
-	if err := sdb.Model(&store.APIToken{}).Where("user_id = ?", u.ID).Update("last_used_at", time.Now()).Error; err != nil {
-		t.Fatal(err)
+	// Using the token without sending data (as -connect and the cursor seed do)
+	// doesn't count.
+	withToken("GET", "/api/vault", "")
+	if rec := withToken("GET", "/api/ingest", ""); rec.Code != http.StatusOK {
+		t.Fatalf("cursors: %d %s", rec.Code, rec.Body.String())
 	}
-	if !sdb.HasSyncedDevice(u.ID) {
-		t.Error("a used token should count as synced")
+	if sdb.HasSyncedData(u.ID) {
+		t.Error("token use without an ingest counts as synced")
+	}
+	if rec := withToken("POST", "/api/ingest", `{"encrypted":true}`); rec.Code != http.StatusOK {
+		t.Fatalf("ingest: %d %s", rec.Code, rec.Body.String())
+	}
+	if !sdb.HasSyncedData(u.ID) {
+		t.Error("an accepted ingest should count as synced")
 	}
 }

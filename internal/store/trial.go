@@ -34,12 +34,11 @@ func (db *DB) SetTrialEnd(userID uint, at time.Time) error {
 }
 
 // SetupReminderCandidates returns accounts on a running no-card trial that have
-// never synced from a machine and haven't had the setup reminder yet. Never-used
-// tokens don't count: minting one doesn't mean the machine got connected.
+// never had a batch ingested and haven't had the setup reminder yet.
 func (db *DB) SetupReminderCandidates(now time.Time) ([]User, error) {
 	var users []User
-	err := db.Where("verified = ? AND sub_status = ? AND trial_ends_at > ? AND setup_remind_at IS NULL AND "+
-		"id NOT IN (SELECT user_id FROM api_tokens WHERE last_used_at IS NOT NULL)", true, "", now).
+	err := db.Where("verified = ? AND sub_status = ? AND trial_ends_at > ? AND setup_remind_at IS NULL AND id NOT IN (?)",
+		true, "", now, db.Model(&SyncStatus{}).Select("user_id")).
 		Find(&users).Error
 	return users, err
 }
@@ -49,10 +48,11 @@ func (db *DB) MarkSetupRemind(userID uint, at time.Time) error {
 	return db.Model(&User{}).Where("id = ?", userID).Update("setup_remind_at", at).Error
 }
 
-// HasSyncedDevice reports whether any device, revoked or not, has ever synced for
-// the account, which also means it has history to show.
-func (db *DB) HasSyncedDevice(userID uint) bool {
+// HasSyncedData reports whether a batch has ever been ingested for the account.
+// APIToken.LastUsedAt can't answer this: any token use stamps it, including
+// `glocker -connect` fetching the vault, with no data sent.
+func (db *DB) HasSyncedData(userID uint) bool {
 	var n int64
-	db.Model(&APIToken{}).Where("user_id = ? AND last_used_at IS NOT NULL", userID).Count(&n)
+	db.Model(&SyncStatus{}).Where("user_id = ?", userID).Count(&n)
 	return n > 0
 }

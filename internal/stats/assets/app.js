@@ -471,10 +471,10 @@ function renderSetupPanel(me) {
   const el = document.getElementById("setup-panel");
   if (!el) return;
   // With nothing synced, the data views would only show empty charts and a perfect score.
-  const noData = !!(me && me.billing && !me.hasSyncedDevice);
+  const noData = !!(me && me.billing && !me.hasSyncedData);
   document.getElementById("dash").classList.toggle("dash--empty", noData);
   document.getElementById("no-data").hidden = !noData || !["overview", "analytics", "insights"].includes(state.view);
-  el.hidden = !(me && me.billing && !me.hasSyncedDevice && !state.readOnly) || state.view === "devices";
+  el.hidden = !(me && me.billing && !me.hasSyncedData && !state.readOnly) || state.view === "devices";
   if (el.hidden) return;
   const copy = document.getElementById("setup-copy");
   copy.onclick = async () => {
@@ -3912,7 +3912,7 @@ function renderAccessBanner() {
 
   // A new account's trial date is in the welcome panel; the banner starts on the
   // first load after a machine has synced.
-  if (me.inTrial && !me.hasSyncedDevice) { el.hidden = true; return; }
+  if (me.inTrial && !me.hasSyncedData) { el.hidden = true; return; }
 
   // A live, non-canceling subscription needs no banner.
   if (s === "active") { el.hidden = true; return; }
