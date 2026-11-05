@@ -1,5 +1,8 @@
 # Glocker
 
+[![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/4qJp9uYyam)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/noufalibrahim)
+
 A distraction blocker for Linux. It blocks sites and apps on a schedule, makes
 turning it off slow and deliberate, and logs your usage.
 
@@ -76,8 +79,6 @@ sha256sum -c SHA256SUMS
 - Website: [glockerapp.com](https://glockerapp.com)
 - Guide: [docs/habits.md](docs/habits.md) (also at
   [glockerapp.com/habits.html](https://glockerapp.com/habits.html))
-- Discord: [discord.gg/4qJp9uYyam](https://discord.gg/4qJp9uYyam)
-- Support the project: [Buy Me a Coffee](https://buymeacoffee.com/noufalibrahim)
 
 ## License
 
