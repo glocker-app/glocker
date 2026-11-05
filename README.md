@@ -76,6 +76,7 @@ sha256sum -c SHA256SUMS
 - Website: [glockerapp.com](https://glockerapp.com)
 - Guide: [docs/habits.md](docs/habits.md) (also at
   [glockerapp.com/habits.html](https://glockerapp.com/habits.html))
+- Discord: [discord.gg/4qJp9uYyam](https://discord.gg/4qJp9uYyam)
 
 ## License
 
