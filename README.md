@@ -1,5 +1,9 @@
 # Glocker
 
+[![Tests](https://img.shields.io/github/actions/workflow/status/glocker-app/glocker/tests.yml?branch=master&label=tests)](https://github.com/glocker-app/glocker/actions/workflows/tests.yml)
+[![Latest release](https://img.shields.io/github/v/release/glocker-app/glocker)](https://github.com/glocker-app/glocker/releases/latest)
+[![Last commit](https://img.shields.io/github/last-commit/glocker-app/glocker)](https://github.com/glocker-app/glocker/commits/master)
+[![License](https://img.shields.io/github/license/glocker-app/glocker)](LICENSE)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/4qJp9uYyam)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/noufalibrahim)
 
