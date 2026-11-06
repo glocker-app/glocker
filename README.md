@@ -84,6 +84,18 @@ sha256sum -c SHA256SUMS
 - Guide: [docs/habits.md](docs/habits.md) (also at
   [glockerapp.com/habits.html](https://glockerapp.com/habits.html))
 
+## Use of AI
+
+glocker is almost wholly AI-written and human-directed. It started as an
+experiment by the author in using AI coding assistants (mainly Claude Code)
+to build something useful for personal use, and grew into a full product.
+The author decides what gets built and how it should behave; the code is
+written by the assistant. Most recent commits carry a
+`Co-Authored-By: Claude` line.
+
+It has been tested by hand and run daily on the author's own machines for
+over a year, and has a few other users.
+
 ## License
 
 GNU AGPLv3. See [LICENSE](LICENSE).
