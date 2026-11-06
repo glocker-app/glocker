@@ -440,11 +440,10 @@ usual way and it logs information to `log_file` every
 necessary parameters for the X window system to gather the
 statistics. On GNOME/Wayland it works a little differently. `display`
 and `xauthority` are ignored. Instead, glocker talks to your session
-over D-Bus. It also needs a small GNOME Shell extension to read the
+over D-Bus. On KDE and Gnome, it needs a small extension to read the
 focused window, which the installer sets up for you. glocker
 automatically detects X11 or Wayland and uses whichever keys
-apply. There are a few systems (KDE Plasma, etc.)  which we don't
-support yet.
+apply.
 
 The `log_file` will contain usage statistics. Each entry in this
 file contains a timestamp and then a list of windows. Each window
